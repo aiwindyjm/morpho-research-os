@@ -263,6 +263,493 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。但�
 最后必须按统一交接格式返回任务 ID、结果、文件、检查结果、契约/文档更新、限制和下一任务。
 ```
 
+## 其余 37 个任务的中文提示词
+
+使用下面任一任务提示词时，先复制“通用执行前缀”，再复制对应任务块。前缀是全部任务共同的强制规则，任务块定义具体范围。两部分合在一起才是一份完整提示词。
+
+### 通用执行前缀
+
+```text
+你正在参与 Morpho Research OS 的 AI 并行开发。维护者是产品负责人和最终审查者。
+
+开始前必须阅读 AGENTS.md、DO_NOT_BREAK.md、docs/PRD.md、docs/ARCHITECTURE.md、docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md，以及任务块列出的专项文档。先检查依赖任务是否完成、当前 Git 状态和允许修改范围。
+
+只实现当前任务的一个结果，不处理顺手发现的其他问题，不覆盖用户或其他 Agent 的修改。契约先于实现；遇到 Schema、IPC、Worker Protocol、Migration、Provider Interface、Navigation 或 Global Design Token 缺失/冲突时，停止相关实现并提交契约或 ADR 提案，不得自行创造第二套规则。
+
+禁止引入未批准的框架、状态库、数据库、队列或 Agent Framework。禁止使用真实 API Key 或真实 Provider。测试只使用 Mock 和 Fixture。禁止把 private/、本地对话、个人计划、数据库、Cache、日志或 Secret 加入 Git。
+
+完成后运行任务指定检查、git diff --check 和 scripts/check-public-boundary.ps1，审查变更文件中是否混入无关内容。不要自行发布 Release。
+
+最后按以下格式返回：
+完成任务：<任务 ID>
+结果：<一句话>
+修改文件：<路径>
+执行检查：<命令和结果>
+契约/文档更新：<路径或无>
+已知限制：<无或列表>
+建议的下一任务：<任务 ID 或无>
+```
+
+### W0 契约与仓库基线
+
+#### `W0-01`：仓库所有权图和模块边界
+
+```text
+执行 W0-01。专项阅读 docs/architecture/REPOSITORY.md、docs/architecture/MODULE_BOUNDARIES.md、docs/ARCHITECTURE_INVARIANTS.md 和 docs/development/PROJECT_SETUP.md。
+
+目标：核对并统一 Frontend、Tauri Rust Core、Python Worker、Shared Schema、Prompt、Provider、Test、Documentation 的目录归属、依赖方向和禁止跨层行为。
+
+允许修改：上述架构/仓库说明文档和必要的目录占位文件。禁止添加生产代码、依赖、Schema 字段或新技术决策。
+
+验收：目录树与模块边界互相一致；每个目录有唯一责任；UI→Rust→Worker 依赖方向明确；SQLite、Secrets、Filesystem、Vault 权限归属无冲突；文档链接有效。
+```
+
+#### `W0-02`：统一 Schema 包布局
+
+```text
+执行 W0-02，依赖 W0-01。专项阅读 docs/DATA_MODEL.md、packages/schemas/MIGRATIONS.md、docs/data/ 下的 Schema 文档和 docs/api/ERRORS.md。
+
+目标：定义 packages/schemas 的目录、命名、版本、JSON Schema $id、兼容性、代码生成输入输出和跨语言校验约定。
+
+允许修改：packages/schemas 的规范/索引文件及直接相关文档。禁止新增未经批准的领域字段、生成运行时代码或修改现有持久化语义。
+
+验收：明确 canonical source、版本升级规则、Zod/Pydantic/Serde 生成边界、Fixture 校验方式和破坏性变更流程；现有 research-config.v1.json 符合约定。
+```
+
+#### `W0-03`：版本与兼容性元数据
+
+```text
+执行 W0-03，依赖 W0-01。专项阅读 VERSION、docs/development/RELEASE_STRATEGY.md、docs/development/RELEASE.md、packages/schemas/MIGRATIONS.md 和 Worker API 文档。
+
+目标：固定 App Version、Schema Version、Prompt Version、Worker Version、Worker Protocol Version、Vault Schema Version 的来源、格式和兼容性矩阵。
+
+允许修改：版本/发布/兼容性文档和 VERSION 相关校验说明。禁止发布版本、修改产品范围或编造尚不存在的运行时版本同步代码。
+
+验收：每种版本只有一个权威来源；兼容/拒绝/迁移条件明确；README、Cargo、Package、Worker 后续如何读取 VERSION 有清晰规则。
+```
+
+#### `W0-04`：质量门禁与离线测试框架
+
+```text
+执行 W0-04，依赖 W0-01。专项阅读 docs/TESTING.md、docs/testing/MOCKS.md、.github/workflows/ci.yml 和 docs/development/CODING_GUIDELINES.md。
+
+目标：建立与当前仓库阶段匹配的 CI/本地质量门禁，覆盖文档、私有边界、Schema，以及后续 TypeScript/Rust/Python 测试入口。
+
+允许修改：.github/workflows、测试配置、scripts 和测试文档。禁止添加业务代码、调用真实 Provider、要求本地 Secret 或引入复杂 CI 平台。
+
+验收：当前文档仓库检查可运行；不存在的运行时工具采用条件化或后续占位而不会虚假通过；失败信息可理解；本地命令与 CI 一致。
+```
+
+#### `W0-05`：Fixture 与 Golden Result 约定
+
+```text
+执行 W0-05，依赖 W0-02 和 W0-04。专项阅读 docs/TESTING.md、docs/testing/MOCKS.md、docs/data/ 下的契约文档和 examples 目录规划。
+
+目标：定义 Fixture ID、目录命名、输入、期望输出、Provenance、Schema Version、Prompt Version、稳定字段和允许变化字段。
+
+允许修改：examples/fixtures 的规范、最小合成 Fixture 和相关测试文档。禁止加入大体积抓取数据、版权不明内容、个人数据或真实 Provider Response。
+
+验收：一个最小离线 Fixture 能通过 Schema 校验；Golden Result 的更新审核规则明确；时间戳、随机 ID 等非确定字段有规范化策略。
+```
+
+### W1-A 前端基础后续任务
+
+#### `UI-02`：Design Token 与组件原语
+
+```text
+执行 UI-02，依赖 UI-01。专项阅读 docs/frontend/DESIGN_SYSTEM.md、DESIGN_TOKENS.md、UI_COMPONENTS.md、COMPONENT_REGISTRY.md、UX_RULES.md、ACCESSIBILITY.md 和 AI_FRONTEND_RULES.md。
+
+目标：按现有技术栈实现已批准的 Design Token 和首批注册 UI Primitive，并提供组件测试/展示入口。
+
+允许修改：packages/ui 和必要的前端测试文件。禁止修改全局视觉方向、增加新颜色/间距体系、引入第二个 UI Framework、实现业务组件或页面。
+
+验收：Token 无页面硬编码副本；组件 API 类型明确；Keyboard、Focus、Disabled、Loading 基础状态可用；Registry 与实现一致；测试通过。
+```
+
+#### `UI-03`：应用布局与导航壳
+
+```text
+执行 UI-03，依赖 UI-02。专项阅读 docs/frontend/PAGE_PATTERNS.md、PAGE_SPECIFICATION.md、UX_RULES.md、ACCESSIBILITY.md 和 COMPONENT_REGISTRY.md。
+
+目标：实现多研究项目工具的应用壳、项目切换入口和已批准的核心路由占位状态。
+
+允许修改：apps/desktop 前端的 app/layout/navigation 相关文件和测试。禁止实现业务页面内容、修改导航信息架构、直连后端或重新设计 Token。
+
+验收：项目切换交互清晰；Desktop/Tablet/Mobile 响应规则符合规范；每个路由有 Loading/Empty/Error 占位；Keyboard 与 Focus 顺序通过测试。
+```
+
+#### `UI-04`：类型化 IPC/Query 服务边界
+
+```text
+执行 UI-04，依赖 UI-01 和 W0-02。专项阅读 docs/API.md、docs/architecture/MODULE_BOUNDARIES.md、docs/frontend/AI_FRONTEND_RULES.md 和批准的 Schema 约定。
+
+目标：建立前端 Service、TanStack Query 和 Tauri Invoke/Event 的类型化边界，并提供 Mock Transport。
+
+允许修改：apps/desktop 前端 services、types、query 和测试文件。禁止实现 Rust Command、访问 SQLite/Filesystem/Secrets/Process、修改 IPC 契约或添加临时 JSON。
+
+验收：组件不直接调用 invoke；Query Key 集中定义；Result/Error 类型来自批准契约；Mock Transport 可测试成功、失败和取消；架构检查通过。
+```
+
+#### `UI-05`：上下文 AI Assistant 壳
+
+```text
+执行 UI-05，依赖 UI-02 和 UI-03。专项阅读 docs/PRD.md 中 AI Assistant 定位、页面规范、UX/Accessibility 和组件注册表。
+
+目标：实现绑定当前 Project 的紧凑 AI Assistant 浮层，包含解释进度、建议下一任务、检查待审核项、记录决定的 UI 壳和显式保存动作。
+
+允许修改：Assistant Feature、注册业务组件和相关测试。禁止连接真实 LLM、持久化对话、读取 Secret、创建全局聊天产品或改变导航。
+
+验收：切换 Project 会更新并隔离上下文；打开/关闭/Focus/Keyboard 可用；保存动作仅调用 Mock Service；空/加载/错误状态齐全。
+```
+
+### W1-B Rust Core 后续任务
+
+#### `RUST-02`：SQLite 与 Migration Runner
+
+```text
+执行 RUST-02，依赖 RUST-01 和 W0-03。专项阅读 docs/DATA_MODEL.md、packages/schemas/MIGRATIONS.md、docs/architecture/REPOSITORY.md 和 docs/backend/AI_BACKEND_RULES.md。
+
+目标：建立 SQLite 连接配置、外键/事务默认值、编号 Migration Runner、当前 Schema Version 查询和升级测试。
+
+允许修改：Rust Core 的 database/migrations 模块和测试。禁止实现完整业务 Repository、读取 API Key、把知识 Markdown 当作 SQLite 主资产或直接修改生产数据库。
+
+验收：空库可从头迁移；旧版本可逐步升级；重复执行幂等；失败不会标记成功；Migration 状态有测试；数据库路径不进入 Git。
+```
+
+#### `RUST-03`：Repository Transaction 边界
+
+```text
+执行 RUST-03，依赖 RUST-02 和 W0-02。专项阅读 docs/DATA_MODEL.md、docs/backend/AI_BACKEND_RULES.md、ARCHITECTURE_INVARIANTS.md 和 Schema 契约。
+
+目标：建立 Domain Service → Repository → SQLite 的最小边界，提供显式事务、外键、幂等和错误转换示例。
+
+允许修改：Rust Repository/Transaction 模块和测试。禁止实现所有业务 Entity、绕过 Repository 写 SQL、让前端直接访问数据库或改变 Schema。
+
+验收：提交/回滚、外键失败、重复 Idempotency Key、结构化 Database Error 均有测试；事务边界不会泄漏到 UI。
+```
+
+#### `RUST-04`：OS Keychain 与配置边界
+
+```text
+执行 RUST-04，依赖 RUST-01。专项阅读 docs/api/PROVIDERS.md、docs/ARCHITECTURE.md、docs/backend/AI_BACKEND_RULES.md、SECURITY.md 和 Secrets 规则。
+
+目标：建立 Key Reference、应用配置和 Fake Keychain 接口；真实密钥只由 OS Secure Storage 管理。
+
+允许修改：Rust Core 的 secrets/config 模块和测试。禁止把密钥写入 SQLite 普通表、日志、Prompt、Event、Git 或前端状态；禁止连接真实 Provider。
+
+验收：保存/读取/删除引用行为可测；缺失密钥、权限失败、脱敏日志可测；配置导出不包含 Secret Value；错误可区分 Retryable。
+```
+
+#### `RUST-05`：Worker Supervisor 生命周期
+
+```text
+执行 RUST-05，依赖 RUST-01 和 W2-02。专项阅读 docs/ARCHITECTURE.md、docs/api/ERRORS.md、docs/architecture/MODULE_BOUNDARIES.md 和 Worker Protocol 契约。
+
+目标：实现 Worker Process 启动、健康检查、版本兼容、有限重启、关闭、取消和 WORKER_NOT_AVAILABLE 错误的 Supervisor 骨架。
+
+允许修改：Rust Worker Supervisor、协议 Client 和 Fake Worker 测试。禁止实现 Python 研究逻辑、Provider、Task DAG 或绕过协议直接调用脚本。
+
+验收：健康成功、启动失败、协议不兼容、崩溃重启、取消、关闭和重试耗尽均有测试；重启有上限和退避；Event 不重复转发。
+```
+
+### W1-C Python Worker 后续任务
+
+#### `PY-02`：健康检查与版本接口
+
+```text
+执行 PY-02，依赖 PY-01 和 W2-02。专项阅读 docs/ARCHITECTURE.md、docs/API.md、docs/api/ERRORS.md 和 Worker Protocol 契约。
+
+目标：实现 /health、/version 和协议兼容性响应，提供本地测试 Server/Client。
+
+允许修改：apps/research-worker 的 transport/health 模块和测试。禁止执行研究任务、连接真实 Provider、写 Vault 或处理 API Key Value。
+
+验收：健康响应包含进程状态、Worker Version、Protocol Version；版本不兼容可识别；超时和异常有稳定错误；pytest 通过。
+```
+
+#### `PY-03`：JSONL/SSE Event 原语
+
+```text
+执行 PY-03，依赖 PY-02 和 W2-02。专项阅读 docs/ARCHITECTURE.md、docs/api/ERRORS.md、Worker Event Envelope 契约和隐私规则。
+
+目标：实现有序、追加式、可重连、可脱敏的 Job Event 编码、游标和 SSE 输出原语。
+
+允许修改：Worker transport/events 模块和测试。禁止创建领域状态机、写 SQLite、把原始 LLM Response 或 Secret 放入 Event。
+
+验收：Event ID/序号稳定；断线后可从游标续传；重复 Event 可识别；敏感字段脱敏；格式错误和关闭状态可测。
+```
+
+#### `PY-04`：Orchestrator 与 Worker 接口骨架
+
+```text
+执行 PY-04，依赖 PY-01 和 W0-02。专项阅读 docs/architecture/RESEARCH_ENGINE.md、docs/PRD.md、docs/data/ 下 Knowledge/Claim/Evidence 文档和 Prompt 规范。
+
+目标：建立 Planner、Search、Extraction、Entity、Relation、Validation、Writer 的轻量接口和 Orchestrator 调度骨架。
+
+允许修改：apps/research-worker 的 domain/application 接口和 Mock 实现。禁止实现真实研究算法、复杂 Multi-Agent、Provider 网络请求或直接持久化。
+
+验收：接口输入输出类型明确；Orchestrator 可按 Task ID 调用 Mock；失败可返回结构化 Error；LLM 输出不能绕过 Parse/Validate/Normalize。
+```
+
+#### `PY-05`：Provider 接口与 Mock Adapter
+
+```text
+执行 PY-05，依赖 PY-04 和 W2-03。专项阅读 docs/api/PROVIDERS.md、docs/ai/MODEL_ROUTING.md、docs/ai/CACHE_AND_COST.md 和 Mock 规范。
+
+目标：实现 Provider-neutral 的 LLMProvider、SearchProvider、EmbeddingProvider 接口及本地 Mock Adapter。
+
+允许修改：Worker provider ports、Mock Adapter、Usage 类型和测试。禁止实现具体厂商生产 SDK、保存 API Key、把 Provider 类型泄漏到 Domain 或进行真实网络调用。
+
+验收：Base URL、Key Reference、Model、Timeout、Retry、Token、Duration、Estimated Cost 可表达；超时/认证/无效结构化输出可模拟；依赖注入可测。
+```
+
+### W1-D 测试任务
+
+#### `TEST-03`：契约与架构检查
+
+```text
+执行 TEST-03，依赖 W0-02 和 W0-04。专项阅读 docs/TESTING.md、docs/ARCHITECTURE_INVARIANTS.md、AGENTS.md 和 scripts 目录。
+
+目标：增加自动检查 Schema Drift、禁止前端直接访问后端资源、私有文件误跟踪、必需文档缺失和 Provider 真实调用。
+
+允许修改：tests/architecture、scripts、CI 和测试文档。禁止通过放宽规则来让失败通过；禁止把私有文件加入白名单。
+
+验收：故意违反规则时检查失败；正常仓库通过；错误信息指向文件和修复方式；CI 与本地脚本行为一致。
+```
+
+#### `TEST-04`：Playwright Mock 应用 Harness
+
+```text
+执行 TEST-04，依赖 UI-01 和 TEST-02。专项阅读 docs/TESTING.md、docs/testing/MOCKS.md、docs/frontend/ACCESSIBILITY.md 和 Playwright 配置规范。
+
+目标：建立不需要网络、API Key 或真实 Worker 的桌面 UI E2E Harness，支持项目切换、Assistant、Loading/Empty/Error 基础流程。
+
+允许修改：tests/e2e、Playwright 配置、Mock Transport 和测试文档。禁止修改生产业务逻辑、调用真实 Provider 或截图中包含私有内容。
+
+验收：CI 可启动 Harness；测试可稳定运行；失败保留可诊断截图/Trace；测试数据来自 Fixture；测试结束清理临时目录。
+```
+
+### W2 跨边界契约任务
+
+#### `W2-01`：Project/Config/Plan/Task Schema
+
+```text
+执行 W2-01，依赖 W0-02 和 TEST-01。专项阅读 docs/PRD.md、docs/DATA_MODEL.md、docs/data/KNOWLEDGE_SCHEMA.md、packages/schemas/MIGRATIONS.md 和 Fixture 规范。
+
+目标：冻结 Project、ResearchConfig、ResearchPlan、ResearchSection、ResearchTask、TaskDependency、ResearchRun 的跨语言 Schema。
+
+允许修改：packages/schemas、对应 Zod/Pydantic/Serde 校验入口、契约示例和测试。禁止增加未批准 Entity、修改产品字段含义或直接生成数据库 Migration。
+
+验收：必填/可选/Enum/时间/ID/JSON 边界明确；三端校验结果一致；非法状态和依赖可识别；向后兼容规则有测试。
+```
+
+#### `W2-02`：Worker Protocol 与 Event Envelope
+
+```text
+执行 W2-02，依赖 W0-03、PY-02、PY-03、RUST-05。专项阅读 docs/ARCHITECTURE.md、docs/API.md、docs/api/ERRORS.md 和 Worker 生命周期规则。
+
+目标：冻结 /health、/version、/jobs、/jobs/{id}、/cancel、/events 的请求、响应、状态、兼容性和错误 Envelope。
+
+允许修改：协议 Schema、示例、Rust/Python 合同测试和协议文档。禁止在本任务实现 Planner、DAG、真实 Process 或业务持久化。
+
+验收：命令与 Event 分离；Event 有序、可重连、可取消、可脱敏；Protocol Version 不兼容时明确拒绝；请求/响应示例通过校验。
+```
+
+#### `W2-03`：Provider 接口与用量记录
+
+```text
+执行 W2-03，依赖 W0-02 和 PY-05。专项阅读 docs/api/PROVIDERS.md、docs/ai/MODEL_ROUTING.md、docs/ai/CACHE_AND_COST.md、docs/DATA_MODEL.md。
+
+目标：冻结 Provider-neutral 的 LLM/Search/Embedding 接口、配置、Retry Policy、Usage Record 和错误映射。
+
+允许修改：Provider 契约、类型、Mock 合同测试和文档。禁止绑定具体模型名、把厂商字段带入 Domain、保存 Key Value 或实现生产 Adapter。
+
+验收：Provider、Model、Duration、Input/Output Token、Estimated Cost、Cache 命中和 Retry 可记录；认证/超时/限流错误可分类；未来 Model Routing 可扩展。
+```
+
+#### `W2-04`：Prompt Metadata 与 Structured Output 契约
+
+```text
+执行 W2-04，依赖 W0-02 和 PY-04。专项阅读 docs/ai/PROMPT_ARCHITECTURE.md、docs/data/CLAIM_SCHEMA.md、EVIDENCE_SCHEMA.md、KNOWLEDGE_SCHEMA.md。
+
+目标：冻结 Prompt ID、Version、用途、输入 Schema、输出 Schema、模型要求、Golden Case 和解析流程。
+
+允许修改：packages/prompts 的元数据规范、Schema 示例和测试。禁止把 Prompt 散落到业务代码、允许纯文本直写数据库或绕过 Validate/Normalize。
+
+验收：LLM → Parse → Validate → Normalize → Persist 流程可追踪；输出不合格有稳定错误；Prompt Version 可用于 Cache Key 和回归测试。
+```
+
+#### `W2-05`：类型化 Tauri IPC 接入
+
+```text
+执行 W2-05，依赖 UI-04、RUST-01、W2-01、W2-02。专项阅读 docs/API.md、docs/architecture/MODULE_BOUNDARIES.md、前端 Service 规则和 Rust Command 规则。
+
+目标：把类型化 Project/Job 查询与操作接入 Tauri IPC，并让前端使用 Mock/真实边界一致的 Service。
+
+允许修改：前端 Service、Rust IPC Adapter、契约测试和必要文档。禁止让 React 直接访问 SQLite、Filesystem、Secrets 或 Worker Process；禁止新增临时 JSON。
+
+验收：请求、响应、Error、取消和 Event 类型一致；前端不依赖 Rust 内部类型；IPC 错误可展示；集成 Mock 测试通过。
+```
+
+### W3 研究流程任务
+
+#### `RES-01`：Planner 与 Plan Review
+
+```text
+执行 RES-01，依赖 W2-01、W2-04、PY-04。专项阅读 docs/architecture/RESEARCH_ENGINE.md、docs/PRD.md、docs/data/KNOWLEDGE_SCHEMA.md、前端 Page Spec 和 Planner Prompt 契约。
+
+目标：将 ResearchConfig 转换为结构化 ResearchPlan/Section/Task 草案，提供用户批准、修改、重新生成和拒绝状态。
+
+允许修改：Worker Planner、Planner Prompt/Fixture、计划 Service 和对应 UI Feature。禁止直接执行 Search、写 Vault、覆盖用户配置或把自然语言结果直接持久化。
+
+验收：输出通过 Schema、来源目标和研究维度可追踪、Plan 需要用户批准后才能运行；Mock LLM 无效输出可恢复；批准/修改流程有测试。
+```
+
+#### `RES-02`：可恢复 Task DAG
+
+```text
+执行 RES-02，依赖 W2-01、W2-02、RUST-02。专项阅读 docs/architecture/RESEARCH_ENGINE.md、docs/PRD.md、Task 状态规范和 SQLite 数据模型。
+
+目标：实现 PENDING、PLANNING、RUNNING、PAUSED、VALIDATING、NEEDS_REVIEW、COMPLETED、FAILED、CANCELLED 的合法状态机、依赖和检查点。
+
+允许修改：Orchestrator Scheduler、Rust Task Repository、状态测试和 UI Task 状态映射。禁止把所有任务改成串行、绕过 Orchestrator 改状态或添加分布式队列。
+
+验收：DAG 可并行 Fan-out/Fan-in；循环依赖被拒绝；暂停/取消/重试/崩溃恢复可测；只有 Orchestrator 转移状态；Idempotency Key 防止重复执行。
+```
+
+#### `RES-03`：Search Adapter 与 Source 去重
+
+```text
+执行 RES-03，依赖 W2-03、W2-02、TEST-02。专项阅读 docs/architecture/RESEARCH_ENGINE.md、docs/api/PROVIDERS.md、docs/data/EVIDENCE_SCHEMA.md、缓存规则。
+
+目标：实现 SearchProvider Adapter 的领域边界、Source 标准化、稳定去重 Key、缓存读取和可重试错误。
+
+允许修改：Worker Search Adapter、Source Normalizer、Cache Key、Mock 测试和相关契约文档。禁止调用真实网络、抓取内容写入 Vault、丢弃来源 URL 或把 Provider 类型暴露给 Domain。
+
+验收：相同 URL/规范化 URL/内容指纹的去重行为明确；来源保留标题、URL、类型、时间和质量待评估字段；Cache Hit 不重复消耗 Provider。
+```
+
+#### `RES-04`：Source Evaluation 与 Content Extraction
+
+```text
+执行 RES-04，依赖 RES-03 和 W2-04。专项阅读 docs/architecture/RESEARCH_ENGINE.md、docs/data/EVIDENCE_SCHEMA.md、docs/ai/PROMPT_ARCHITECTURE.md 和错误规范。
+
+目标：从标准 Source 获取可缓存的 SourceContent，提取正文/元数据并生成来源质量评估，不把质量评分当作事实真伪。
+
+允许修改：Worker Extraction/Source Evaluation、Mock Content Fixture、Prompt 和测试。禁止实现 PDF 专属复杂管线、直接创建 Knowledge Node 或覆盖原始 Source。
+
+验收：解析失败可重试/标记失败；内容和定位信息可追溯；质量维度可解释；重复执行使用 Cache；结构化输出经过解析和校验。
+```
+
+#### `RES-05`：Knowledge/Entity/Relation Normalization
+
+```text
+执行 RES-05，依赖 W2-01、W2-04、TEST-01。专项阅读 docs/data/KNOWLEDGE_SCHEMA.md、RELATION_SCHEMA.md、EVIDENCE_SCHEMA.md、docs/architecture/RESEARCH_ENGINE.md。
+
+目标：从已校验的 Extraction Result 标准化 KnowledgeNode、Entity、Relation、Alias、Confidence 和 Provenance。
+
+允许修改：Worker Normalization、Entity/Relation Prompt、Dedup 规则、Fixture 和测试。禁止把 Claim 当作 Knowledge、删除冲突结论、无 Evidence 创建重要结论或直接写 Markdown。
+
+验收：类型、ID、Alias、状态、Confidence、Source/Claim 引用稳定；重复实体可合并但保留 Provenance；冲突数据并存；LLM 输出不能直接持久化。
+```
+
+#### `RES-06`：Claim 与 Evidence 持久化
+
+```text
+执行 RES-06，依赖 RES-05 和 W2-01。专项阅读 docs/data/CLAIM_SCHEMA.md、EVIDENCE_SCHEMA.md、RELATION_SCHEMA.md、docs/PRD.md 和冲突规范。
+
+目标：实现 Source → Evidence → Claim → Knowledge 的结构化持久化，支持 support/contradict、Confidence 和 review 状态。
+
+允许修改：Claim/Evidence Domain、Repository、校验器、Mock Fixture 和测试。禁止用后来的 Claim 覆盖旧 Claim、把 Evidence 直接当 Source、没有定位信息就标记 Confirmed。
+
+验收：Claim 与 Evidence 可独立查询；每个重要 Claim 有 Evidence Metadata；相互矛盾 Claim 共存并可进入 NEEDS_REVIEW；幂等和外键测试通过。
+```
+
+#### `RES-07`：Markdown/Obsidian Vault Writer
+
+```text
+执行 RES-07，依赖 RES-05、RES-06、RUST-03。专项阅读 docs/data/VAULT_SCHEMA.md、docs/architecture/INCREMENTAL_RESEARCH.md、DO_NOT_BREAK.md 和文件写入边界。
+
+目标：把标准化 Knowledge/Claim/Evidence 生成 Obsidian-compatible Markdown Vault，使用 Frontmatter、wikilink、Source/Claim 引用和原子写入。
+
+允许修改：Rust Vault Service、Markdown Renderer、合并检测、Fixture 和测试。禁止让 AI 直接覆盖用户修改、把 SQLite 当作唯一知识资产或在 Writer 内调用 LLM。
+
+验收：目录、Slug、Node ID、Frontmatter、Links 稳定；临时文件+原子 Rename；用户修改触发 Merge Proposal/Conflict；Vault 删除应用后仍可被 Obsidian 使用。
+```
+
+#### `RES-08`：Graph Projection 与 D3 View
+
+```text
+执行 RES-08，依赖 RES-05、UI-03、UI-04。专项阅读 docs/frontend/DESIGN_SYSTEM.md、docs/frontend/PAGE_PATTERNS.md、docs/architecture/RESEARCH_ENGINE.md 和 Graph 规范。
+
+目标：把 KnowledgeNode/Relation 投影成 D3 2D Graph，提供搜索、过滤、选择、聚类和 Inspector。
+
+允许修改：Graph Feature、Graph Selector/Projection、D3 Renderer、注册业务组件和测试。禁止引入 3D、Vector Database、页面内硬编码 Token 或让 Graph 直接查询 SQLite。
+
+验收：100 Node Fixture 可交互；500 Node 有过滤/增量更新策略；大规模数据有聚合/列表降级说明；键盘、空、加载、错误和选择状态通过测试。
+```
+
+#### `RES-09`：第一条完整研究旅程
+
+```text
+执行 RES-09，依赖 RES-01 至 RES-08 全部完成。专项阅读 docs/PRD.md、docs/ARCHITECTURE.md、docs/TESTING.md、所有相关 Feature/Page/Data Spec 和已完成任务交接记录。
+
+目标：串联创建 Project → 配置 Research → 生成并批准 Plan → 执行 Mock Task DAG → 检查 Sources/Knowledge/Claims → 导出 Vault → 打开 Graph 的最小完整流程。
+
+允许修改：集成层、必要的 Adapter 连接、E2E Fixture、流程文档和集成测试。禁止在集成任务中新增领域架构、绕过契约、使用真实 Provider 或掩盖子任务失败。
+
+验收：离线环境完成完整流程；失败、暂停、恢复和取消可展示；关键 Claim 可追溯到 Evidence；Vault 不覆盖用户文件；Graph 与 Vault/SQLite 索引一致。
+```
+
+### W4 发布加固任务
+
+#### `REL-01`：离线端到端质量门禁
+
+```text
+执行 REL-01，依赖 RES-09 和 TEST-04。专项阅读 docs/TESTING.md、.github/workflows/ci.yml、各语言测试规范和 AI 开发规则。
+
+目标：运行并修正完整离线质量门禁：Format、Lint、Typecheck、Rust/Python/Frontend Unit、Schema Contract、Migration、Architecture、Playwright。
+
+允许修改：测试配置、测试 Harness、明确的阻塞修复和质量文档。禁止为了通过检查而删除测试、放宽安全规则或加入真实 Provider。
+
+验收：所有配置好的检查通过；失败有可复现命令；测试不需要 API Key/网络；报告覆盖未执行项目和已知限制。
+```
+
+#### `REL-02`：文档和示例同步
+
+```text
+执行 REL-02，依赖 REL-01。专项阅读 README.md、README.zh-CN.md、docs/PRD.md、docs/ARCHITECTURE.md、ROADMAP.md、CHANGELOG.md 和 docs/development/DOCUMENTATION_MAINTENANCE.md。
+
+目标：让公开文档准确描述当前已完成的用户流程、安装方式、限制、Fixture、截图/Demo 和下一步。
+
+允许修改：README、双语文档、Quick Start、示例说明、CHANGELOG、相关 Feature/Architecture 文档。禁止宣传尚未实现的功能或改变产品承诺。
+
+验收：中英文 README 章节同步；链接有效；Quick Start 与实际命令一致；版本、Status、已知问题和 Demo 与代码一致。
+```
+
+#### `REL-03`：隐私和公共边界审计
+
+```text
+执行 REL-03，依赖 REL-01 和 REL-02。专项阅读 AGENTS.md、DO_NOT_BREAK.md、private/LOCAL_AI_EXECUTION_RULES.md、SECURITY.md、.gitignore 和公共边界脚本。
+
+目标：审计暂存区、提交内容和公开文档，确认没有 Secret、private/ 本地规则、对话、个人研究内容、数据库、Cache、日志或未脱敏 Provider Response。
+
+允许修改：审计脚本、.gitignore、公开隐私文档和明确误纳入的公开文件。禁止把私有文件加入白名单或将个人内容复制到公共文档。
+
+验收：scripts/check-public-boundary.ps1 通过；git ls-files private 只包含允许的占位文件；git diff --cached --name-only 不含私有内容；Secret 扫描和人工抽查通过。
+```
+
+#### `REL-04`：人工发布审查
+
+```text
+执行 REL-04，依赖 REL-03。专项阅读 docs/development/RELEASE_STRATEGY.md、CHANGELOG.md、ROADMAP.md、README、完整质量报告和所有 W3 集成交接。
+
+目标：准备一个可审查的 Release Candidate，说明本次真实完成的能力、截图/Demo、已知问题、兼容性、限制和下一步。
+
+允许修改：Release Notes、CHANGELOG、版本元数据和发布审查记录。禁止自动发布、夸大能力、隐藏失败测试或改变未批准的版本策略。
+
+验收：维护者明确批准范围；版本来源一致；Release Notes 能说明用户为什么值得尝试；所有阻塞问题已处理或公开记录；发布动作由维护者最终执行。
+```
+
 ### 提示词 3：Python Worker 包（`PY-01`）
 
 ```text
