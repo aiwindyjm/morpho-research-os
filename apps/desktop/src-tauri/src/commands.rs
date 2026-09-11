@@ -20,6 +20,8 @@ pub struct CoreInfo {
     pub ipc_schema_version: String,
     pub event_envelope: String,
     pub worker_protocol_version: String,
+    /// The SQLite schema version this core migrates to.
+    pub database_schema_version: i64,
 }
 
 #[tauri::command]
@@ -32,6 +34,7 @@ pub fn core_info() -> IpcResponse<CoreInfo> {
             ipc_schema_version: IPC_SCHEMA_VERSION.to_string(),
             event_envelope: EVENT_ENVELOPE.to_string(),
             worker_protocol_version: WORKER_PROTOCOL_VERSION.to_string(),
+            database_schema_version: crate::db::LATEST_SCHEMA_VERSION,
         },
     )
 }
@@ -73,6 +76,10 @@ mod tests {
         assert_eq!(info.ipc_schema_version, IPC_SCHEMA_VERSION);
         assert_eq!(info.event_envelope, "research.event.v1");
         assert!(info.worker_protocol_version.starts_with("0.1."));
+        assert_eq!(
+            info.database_schema_version,
+            crate::db::LATEST_SCHEMA_VERSION
+        );
     }
 
     #[test]

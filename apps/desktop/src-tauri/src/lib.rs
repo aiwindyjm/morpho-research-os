@@ -7,7 +7,9 @@
 //! this crate exposes secret values across any boundary.
 
 pub mod commands;
+pub mod db;
 pub mod error;
+pub mod ids;
 pub mod ipc;
 pub mod redaction;
 pub mod versions;
