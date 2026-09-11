@@ -26,12 +26,12 @@
 | 任务 ID | 状态 | Commit / PR | 验收证据 | 备注 |
 |---|---|---|---|---|
 | **W0** |  |  |  |  |
-| `W0-01` | `Planned` | — | — | — |
-| `W0-02` | `Planned` | — | — | — |
-| `W0-03` | `Planned` | — | — | — |
-| `W0-04` | `Planned` | — | — | — |
-| `W0-05` | `Planned` | — | — | — |
-| `W0-06` | `Planned` | — | — | — |
+| `W0-01` | `Review` | — | 目录树与所有权表一致；UI→Rust→Worker 依赖方向、SQLite/Secrets/Filesystem/Vault 权限归属唯一；文档链接有效 | 实现在 workgroup-a 分支待维护者审查 |
+| `W0-02` | `Review` | — | `packages/schemas/README.md` 固定 canonical source、命名/$id、minor-enum 版本规则、破坏性变更流程与跨语言校验方式 | 同上；schema_version 为已发布 minor 枚举 |
+| `W0-03` | `Review` | — | `docs/development/VERSIONS.md` 固定六类版本唯一来源与兼容/拒绝/迁移矩阵 | 同上；协议版本随 worker-*.v1 冻结为 1.0 |
+| `W0-04` | `Review` | — | CI 含 docs/边界/任务状态检查与条件化 TS/Python/Rust 契约门禁；`docs/TESTING.md` 命令与 CI 一致 | 同上；无目标工具链显式跳过不虚过 |
+| `W0-05` | `Review` | — | `fixture-envelope.v1.json` + `examples/fixtures/README.md` 规范；最小合成 Fixture 通过 `scripts/validate-fixture.py --all` | 同上；TEST-01 需按此规范实现 Loader |
+| `W0-06` | `Review` | — | 根 pnpm/Cargo/uv 工作区与锁文件；`scripts/check-toolchain.ps1` 验证版本；桌面核心 crate 已并入 Cargo workspace 并通过 83 项测试 | 同上；uv/cargo members 随新包追加 |
 | **W1** |  |  |  |  |
 | `UI-01` | `Planned` | — | — | — |
 | `UI-02` | `Planned` | — | — | — |
@@ -53,12 +53,12 @@
 | `TEST-03` | `Planned` | — | — | — |
 | `TEST-04` | `Planned` | — | — | — |
 | **W2** |  |  |  |  |
-| `W2-01` | `Planned` | — | — | — |
-| `W2-02` | `Planned` | — | — | — |
-| `W2-03` | `Planned` | — | — | — |
-| `W2-04` | `Planned` | — | — | — |
+| `W2-01` | `Review` | — | Project/ResearchConfig/Plan/Section/Task/TaskDependency/Run v1.0 冻结；同一语料下 ajv+Zod（108 测试）、jsonschema+Pydantic（56 测试）、Serde（corpus 3 套件）接受/拒绝一致 | 实现在 workgroup-a 分支；语料修正了 4 处三端漂移（Pydantic 宽松强转、数值范围缺失等） |
+| `W2-02` | `Review` | — | worker-health/version/job-request/job-response/job-status/cancel/event/error v1.0 冻结（闭合信封）；`docs/api/WORKER_PROTOCOL.md` 定义会话令牌、协议兼容拒绝、SSE 序号/重连/脱敏/终止语义 | 同上；C 组 RUST-05 草案需对齐：protocol 1.0、`seq` 字段、事件枚举与闭合信封 |
+| `W2-03` | `Review` | — | provider-config/usage-record v1.0 冻结；Token/Duration/Estimated Cost/CacheHit/Retries 可记录；`docs/api/PROVIDERS.md` 固化 key 引用、错误映射与路由规则 | 同上；Key 值仅经 Rust 注入进程环境 |
+| `W2-04` | `Review` | — | prompt-metadata.v1 冻结：prompt_id/stage/SemVer、输入输出 schema 引用、模型能力提示、必填 golden cases；`packages/prompts/README.md` 固化版本纪律与 Cache Key 参与 | 同上；Prompt 资产由 D 组按规范落盘 |
 | `W2-05` | `Planned` | — | — | — |
-| `W2-06` | `Planned` | — | — | — |
+| `W2-06` | `Review` | — | source/source-content/knowledge-node/claim/evidence/relation/artifact v1.0 冻结；Source→Evidence→Claim→Knowledge 链与冲突共存语义写入 schema 及 `docs/data/*` | 同上；Claim≠Knowledge、Evidence 必须引用 Source+locator |
 | **W3** |  |  |  |  |
 | `RES-01` | `Planned` | — | — | — |
 | `RES-02` | `Planned` | — | — | — |

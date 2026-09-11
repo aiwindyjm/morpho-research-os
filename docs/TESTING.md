@@ -12,7 +12,7 @@ Gates are offline: no test may call a real provider, use an API key, or require 
 | Fixture envelope | `uv run --with jsonschema python scripts/validate-fixture.py --all` | Offline fixtures validate against `fixture-envelope` schema | Active with W0-05 |
 | Contract (TypeScript) | `pnpm -r run typecheck && pnpm -r run test` | Zod bindings + canonical JSON Schema on the shared corpus | Active with W2 freezes |
 | Contract (Python) | `uv run --package morpho-schemas pytest packages/schemas/py/tests -q` | Pydantic bindings + canonical JSON Schema on the shared corpus | Active with W2 freezes |
-| Contract (Rust) | `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --locked` | Serde bindings on the shared corpus | Active with W2 freezes |
+| Contract (Rust) | `cargo fmt --all --check && cargo clippy -p morpho-schemas --all-targets -- -D warnings && cargo test --workspace --locked` | Serde bindings on the shared corpus; workspace tests cover all member crates | Active with W2 freezes |
 | Whitespace hygiene | `git diff --check` | No trailing whitespace / conflict markers before commits | Active (local, per task) |
 
 Local commands match CI exactly; CI is the same invocation, not a stricter variant. Future gates (frontend Vitest, Playwright E2E, migration and architecture checks) are added by TEST-03/TEST-04/REL-01 under the same rules.

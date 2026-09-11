@@ -74,12 +74,14 @@ jobs:
       - run: uv run --package morpho-schemas pytest packages/schemas/py/tests -q
 
   schemas-rust:
-    # Serde bindings; activates with the root Cargo workspace.
+    # Serde bindings; activates with the root Cargo workspace. clippy gates the
+    # schemas package only: every workspace member owns its own lint gate when
+    # it joins (the desktop core crate carries its own review, see TASK_STATUS).
     if: hashFiles('Cargo.toml') != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p morpho-schemas --all-targets -- -D warnings
       - run: cargo test --workspace --locked
