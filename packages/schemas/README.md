@@ -20,7 +20,7 @@ packages/schemas/
 
 1. **JSON Schema draft 2020-12 is canonical.** A contract exists only when its `.json` file exists here. Bindings in `ts/`, `py/`, and `rust/` are maintained in lockstep and proven equivalent by the shared fixture corpus — never by copying semantics from a binding back into a schema.
 2. **Naming and identity.** One file per contract major version: `<name>.v<major>.json` (kebab-case names, e.g. `research-config.v1.json`). `$id` must be `https://morpho.dev/schemas/<name>.v<major>.json` and unique across the package.
-3. **`schema_version` is a required const.** Every schema requires a top-level `schema_version` string const `"<major>.<minor>"`. Additive changes bump the minor; the file name keeps the major.
+3. **`schema_version` is a required enum of released minors.** Every schema requires a top-level `schema_version` string enum listing every released minor of that major, starting as `["1.0"]`. The value records the contract minor the *writer* targeted; readers must accept every minor listed. Additive changes append the new minor to the enum and keep the file name's major; the file name keeps the major.
 4. **Compatibility.** Within a major: only additive changes (new optional properties, new enum values must be avoided unless all consumers are updated in the same change, relaxed constraints). Breaking changes require a new `<name>.v<major+1>.json` file, an ADR under `docs/architecture/adr/`, and a migration/read-policy note in `docs/development/VERSIONS.md`. Old majors remain readable during transition; writers always target the newest major.
 5. **Validation vocabulary (v1 restriction).** Schemas use only `type`, `required`, `properties`, `enum`, `const`, `items`, `minimum`, `maximum`, `minItems`, `maxItems`, `additionalProperties: false` where a record is closed, and `description`. No regex `pattern`, no `format` assertions, no `$ref`/`$defs` in v1. Rationale: Zod, Pydantic, and Serde must accept/reject the same instances, and v1 keeps that parity mechanical. Timestamps are RFC 3339 UTC strings and IDs are UUIDv7 strings **by convention** (documented in `docs/DATA_MODEL.md`), not by format assertion.
 6. **Nulls.** Optional means "absent", not `null`. Bindings use optional/`Option` fields. Normalizers must drop `null` values before validation (fixture and golden pipelines normalize `null` → omitted).
@@ -50,5 +50,11 @@ Run the contract tests (from the repository root):
 
 | Contract | File | Version | Frozen by | Purpose |
 |---|---|---|---|---|
-| ResearchConfig | `research-config.v1.json` | 1.x | W2-01 | Structured research configuration for a project. |
-| FixtureEnvelope | `fixture-envelope.v1.json` | 1.x | W0-05 | Envelope for offline fixtures and golden results (`examples/fixtures/README.md`). |
+| ResearchConfig | `research-config.v1.json` | 1.0 | W2-01 | Structured research configuration record for a project. |
+| Project | `project.v1.json` | 1.0 | W2-01 | Isolated research project root record. |
+| ResearchPlan | `research-plan.v1.json` | 1.0 | W2-01 | Reviewable plan; never executes before user approval. |
+| ResearchSection | `research-section.v1.json` | 1.0 | W2-01 | Plan section grouping tasks by dimension. |
+| ResearchTask | `research-task.v1.json` | 1.0 | W2-01 | Durable task with status machine, idempotency key, and checkpoint. |
+| TaskDependency | `task-dependency.v1.json` | 1.0 | W2-01 | DAG edge with wait condition. |
+| ResearchRun | `research-run.v1.json` | 1.0 | W2-01 | One execution of an approved plan with config/plan snapshots. |
+| FixtureEnvelope | `fixture-envelope.v1.json` | 1.0 | W0-05 | Envelope for offline fixtures and golden results (`examples/fixtures/README.md`). |

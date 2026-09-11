@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "fixture_id": "minimal.broken-envelope",
+  "description": "Envelope invalid case: contract block is closed and missing schema_version.",
+  "contract": {
+    "schema": "research-config"
+  },
+  "provenance": {
+    "kind": "synthetic"
+  },
+  "input": {
+    "schema_version": "1.0"
+  },
+  "stability": {
+    "stable_fields": ["schema_version"],
+    "volatile_fields": []
+  }
+}

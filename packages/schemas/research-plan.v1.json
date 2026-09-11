@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/research-plan.v1.json",
+  "title": "ResearchPlan",
+  "description": "A reviewable research plan proposed by the Planner. A plan never executes until the user approves it (PRD section 7); approval creates a runnable task DAG.",
+  "type": "object",
+  "required": ["schema_version", "plan_id", "project_id", "config_id", "status", "section_ids", "created_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "plan_id": { "type": "string" },
+    "project_id": { "type": "string" },
+    "config_id": { "type": "string", "description": "The ResearchConfig this plan was generated from." },
+    "title": { "type": "string" },
+    "status": {
+      "enum": ["draft", "pending-approval", "approved", "rejected", "superseded"],
+      "description": "Only the user moves a plan to approved/rejected; superseded is set when a newer plan replaces this one."
+    },
+    "section_ids": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "generated_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt_id", "prompt_version"],
+      "description": "Provenance: which prompt version produced this plan.",
+      "properties": {
+        "prompt_id": { "type": "string" },
+        "prompt_version": { "type": "string" }
+      }
+    },
+    "approved_at": { "type": "string" },
+    "rejected_at": { "type": "string" },
+    "superseded_by": { "type": "string", "description": "plan_id of the replacing plan." },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  }
+}

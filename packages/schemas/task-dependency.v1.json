@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/task-dependency.v1.json",
+  "title": "TaskDependency",
+  "description": "Edge in the task DAG. A dependent task waits until its predecessor satisfies the condition; dependencies form a DAG and cycles are rejected by the orchestrator before execution.",
+  "type": "object",
+  "required": ["schema_version", "task_id", "depends_on_task_id", "condition"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "task_id": { "type": "string", "description": "The waiting task." },
+    "depends_on_task_id": { "type": "string", "description": "The predecessor task." },
+    "condition": {
+      "enum": ["completed", "completed-or-skipped"],
+      "description": "'completed-or-skipped' lets a fan-out branch continue when a sibling is explicitly skipped during cancellation."
+    },
+    "created_at": { "type": "string" }
+  }
+}

@@ -16,8 +16,12 @@ function Test-Tool {
     $failures += ("{0} is required ({1}) but was not found on PATH" -f $Name, $Command)
     return
   }
-  $raw = & $Command --version 2>$null | Select-Object -First 1
-  $version = ($raw -replace '[^0-9.]', '').Trim()
+  $raw = (& $Command --version 2>$null | Select-Object -First 1)
+  $version = (($raw -replace '^v', '') -split '\s+' | Where-Object { $_ -match '^\d+(\.\d+)+$' } | Select-Object -First 1)
+  if (-not $version) {
+    $failures += ("{0} returned an unparseable version string: '{1}'" -f $Name, $raw)
+    return
+  }
   $parts = ($version -split '\.') | ForEach-Object { [int]$_ }
   $ok = $true
   for ($i = 0; $i -lt $MinimumVersion.Count -and $i -lt $parts.Count; $i++) {

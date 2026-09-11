@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "run_id": "018f6b40-5c88-7208-6f9a-2a5e0d8c4e75",
+  "project_id": "018f6b2e-a3d1-7c01-9e2a-5f8d3a1b7c02",
+  "plan_id": "018f6b35-9e33-7e03-1a4c-7b0f5e3d9f21",
+  "status": "running",
+  "config_snapshot": {
+    "schema_version": "1.0",
+    "config_id": "018f6b31-4c22-7d02-8f3b-6a9e4d2c8e11",
+    "project_id": "018f6b2e-a3d1-7c01-9e2a-5f8d3a1b7c02",
+    "domain": "physics",
+    "topic": "superconducting qubits",
+    "purpose": "learning",
+    "depth": 2,
+    "dimensions": ["concepts", "experiments", "people"],
+    "languages": ["en"],
+    "source_types": ["web", "paper"]
+  },
+  "plan_snapshot_ref": "snapshots/plans/018f6b35-9e33.json",
+  "stats": { "tasks_total": 12, "tasks_completed": 3 },
+  "started_at": "2026-01-15T09:05:00Z"
+}

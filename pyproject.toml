@@ -1,0 +1,9 @@
+[project]
+name = "morpho-workspace"
+version = "0.0.1"
+description = "Morpho Research OS Python workspace root (application-style, not distributed)"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["packages/schemas/py"]
