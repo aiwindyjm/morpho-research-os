@@ -15,6 +15,7 @@ pub mod redaction;
 pub mod repositories;
 pub mod secrets;
 pub mod versions;
+pub mod worker;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
