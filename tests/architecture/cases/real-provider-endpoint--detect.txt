@@ -1,0 +1,3 @@
+Detector test data (inert). Real provider endpoints must never appear in
+tests or examples; this fake call documents the pattern the detector catches:
+const response = await fetch("https://api.openai.com/v1/chat/completions");
