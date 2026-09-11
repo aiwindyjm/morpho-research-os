@@ -1,6 +1,6 @@
 # Project Setup Status
 
-The repository currently contains architecture, governance, documentation, contract drafts, GitHub templates, and an initial CI check. It intentionally contains no production frontend, Rust core, Python worker, Research Agent, search implementation, or knowledge extractor.
+The repository currently contains architecture, governance, documentation, contract drafts, GitHub templates, and an initial CI check. It intentionally contains no production frontend, Rust core, Python worker, Research Agent, search implementation, or knowledge extractor. Development is divided into small public slices; private batching and timing stay outside Git.
 
 ## Structural directories
 
