@@ -32,6 +32,8 @@ function switchView(view) {
 function selectProject(name) {
   state.currentProject = name;
   document.querySelector(".project-switcher-copy strong").textContent = name;
+  const assistantProject = document.querySelector("#assistant-project");
+  if (assistantProject) assistantProject.textContent = name;
   document.querySelector("#breadcrumb-label").textContent = name;
   const overviewTitle = document.querySelector("#view-overview h1");
   if (overviewTitle) overviewTitle.textContent = name;
@@ -81,13 +83,30 @@ document.addEventListener("click", event => {
   if (action === "create-gap-task") { showToast("已创建“产业与应用”补充任务"); switchView("tasks"); }
   if (action === "download-markdown") { download(`${today()}.md`, markdownJournal(), "text/markdown;charset=utf-8"); showToast("今日私有日志已下载"); }
   if (action === "download-json") { download(`${today()}.json`, JSON.stringify(state.journal.filter(entry => entry.date === today()), null, 2), "application/json"); showToast("今日日志 JSON 已下载"); }
-  if (action === "project-switch") { switchView("projects"); }
+  if (action === "toggle-project-menu") { toggleProjectMenu(); }
   if (action === "new-project") {
     document.querySelectorAll("[data-form]").forEach(input => { if (input.dataset.form !== "purpose") input.value = ""; });
     document.querySelector("[data-form=topic]").placeholder = "例如：量子计算、先进封装、气候政策…";
     switchView("setup"); showToast("请填写新研究的主题和范围");
   }
 });
+
+function toggleProjectMenu() {
+  const menu = document.querySelector("#project-menu");
+  const button = document.querySelector(".project-switcher");
+  const open = menu.hidden;
+  menu.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+}
+
+document.querySelectorAll("[data-project-switch]").forEach(item => item.addEventListener("click", () => {
+  selectProject(item.dataset.projectSwitch);
+  document.querySelectorAll("[data-project-switch]").forEach(option => option.classList.toggle("active", option === item));
+  document.querySelector("#project-menu").hidden = true;
+  document.querySelector(".project-switcher").setAttribute("aria-expanded", "false");
+  switchView("overview");
+  showToast(`已切换到研究项目：${item.dataset.projectSwitch}`);
+}));
 
 document.addEventListener("click", event => {
   const project = event.target.closest(".project-card");
@@ -96,6 +115,26 @@ document.addEventListener("click", event => {
   showToast(`已切换到研究项目：${project.dataset.project}`);
   switchView("overview");
 });
+
+function assistantReply(prompt) {
+  const normalized = prompt.toLowerCase();
+  if (normalized.includes("进度")) return `当前“${state.currentProject}”覆盖度为 ${PROJECT_META[state.currentProject]?.coverage || "0%"}，正在整理核心技术与实验。`;
+  if (normalized.includes("下一步")) return "建议先完成当前技术实验任务，再补充产业与应用方向的独立来源。";
+  if (normalized.includes("审核")) return "当前有 12 个待审核结论，其中 3 个存在冲突。我可以先按来源质量和证据密度排序。";
+  return `我会在“${state.currentProject}”项目上下文中处理这个问题。原型阶段可以继续拆分任务、查看来源或记录决定。`;
+}
+
+function addAssistantMessage(text, author = "Morpho") {
+  const list = document.querySelector("#assistant-messages");
+  const item = document.createElement("div"); item.className = `assistant-message ${author === "用户" ? "user" : ""}`;
+  item.innerHTML = `${author === "Morpho" ? '<span class="assistant-avatar">✦</span>' : ""}<p>${escapeHtml(text)}</p>`;
+  list.appendChild(item); list.scrollTop = list.scrollHeight;
+}
+
+document.querySelector("#assistant-launcher").addEventListener("click", toggleAssistant);
+function toggleAssistant() { const panel = document.querySelector("#assistant-panel"); panel.hidden = !panel.hidden; if (!panel.hidden) document.querySelector("#assistant-input").focus(); }
+document.querySelector("#assistant-form").addEventListener("submit", event => { event.preventDefault(); const input = document.querySelector("#assistant-input"); const text = input.value.trim(); if (!text) return; addAssistantMessage(text, "用户"); input.value = ""; window.setTimeout(() => addAssistantMessage(assistantReply(text)), 220); });
+document.querySelectorAll("[data-assistant-prompt]").forEach(button => button.addEventListener("click", () => { const prompt = button.dataset.assistantPrompt; addAssistantMessage(prompt, "用户"); window.setTimeout(() => addAssistantMessage(assistantReply(prompt)), 220); }));
 
 document.querySelector("#journal-form").addEventListener("submit", event => {
   event.preventDefault();

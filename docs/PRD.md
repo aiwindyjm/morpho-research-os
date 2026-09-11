@@ -162,6 +162,8 @@ Supported page patterns are Dashboard, List, Detail, Form, Workspace, Split View
 
 Primitive components are Button, Input, Textarea, Select, Checkbox, Dialog, Popover, Tooltip, Tabs, Badge, Card, Table, Progress, Toast, Skeleton, and Alert. Business components are ResearchDepthSelector, ResearchDimensionPicker, ResearchStatusBadge, TaskProgress, SourceCard, KnowledgeCard, ClaimCard, EvidenceList, ResearchPlanTree, GraphNodeInspector, and CoveragePanel. AI must read design tokens, registry, patterns, and page spec before UI work and may not duplicate components or introduce arbitrary styles.
 
+The application also provides a compact AI Assistant panel available from every project view. It is anchored to the selected project and shows the active research context. Its first actions are explain progress, suggest the next task, inspect pending review items, and record a decision. It is a contextual research tool, not a second global chat product; changing projects changes its context, and selected conversations can be explicitly saved to the private journal.
+
 ## 13. Views and graph
 
 Core views are Projects, Research Configuration, Plan, Tasks, Sources, Knowledge, Graph, Timeline, Gaps, Reports, and Settings. Every view defines loading, empty, error, responsive, keyboard, and accessibility states.
