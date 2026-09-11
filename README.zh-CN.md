@@ -33,7 +33,7 @@ pnpm tauri dev
 
 ## 文档与路线图
 
-架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，路线图见 [ROADMAP.md](ROADMAP.md)。每次发布都对应真实成果，不人为制造活跃度。
+架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，路线图见 [ROADMAP.md](ROADMAP.md)。
 
 ## 参与贡献
 
