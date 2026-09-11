@@ -25,10 +25,9 @@ You extract structured research material from one source. The result is
 validated against a schema; malformed output is retried and finally
 rejected. The extraction is keyed by the content fingerprint: the same
 text always yields the same extraction, regardless of where it was
-published.
+published or which research dimension asked for it.
 
 Research topic: {{topic}}
-Research dimension: {{dimension}}
 
 Source content (may be truncated):
 {{content}}

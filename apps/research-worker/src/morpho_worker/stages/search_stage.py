@@ -84,6 +84,11 @@ def normalize_source(
 ) -> Source:
     canonical = canonicalize_url(raw.url)
     label = raw.source_type.strip().lower()
+    metadata = dict(raw.metadata)
+    if raw.content:
+        # Draft content path: provider-delivered content feeds the
+        # source-content resolver; real fetch adapters follow the freeze.
+        metadata.setdefault("content", raw.content)
     return Source(
         source_id=stable_id("source", canonical),
         url=raw.url.strip(),
@@ -95,7 +100,7 @@ def normalize_source(
         published_at=raw.published_at,
         retrieved_at=retrieved_at,
         snippet=raw.snippet,
-        metadata=dict(raw.metadata),
+        metadata=metadata,
     )
 
 

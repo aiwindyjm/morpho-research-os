@@ -1,0 +1,44 @@
+{
+  "entities": [
+    {
+      "name": "John Bell",
+      "type": "person",
+      "aliases": ["J.S. Bell"],
+      "description": "Physicist at CERN who formulated the Bell inequalities."
+    },
+    {
+      "name": "CERN",
+      "type": "organization",
+      "aliases": [],
+      "description": "European physics laboratory where Bell worked."
+    }
+  ],
+  "relations": [
+    {
+      "subject": "John Bell",
+      "predicate": "worked at",
+      "object": "CERN",
+      "confidence": 0.95
+    }
+  ],
+  "claims": [
+    {
+      "subject": "John Bell",
+      "predicate": "published",
+      "object_value": "the 1964 Bell inequality paper",
+      "quote": "Bell published his inequality in 1964",
+      "section": "History",
+      "confidence": 0.85
+    },
+    {
+      "subject": "John Bell",
+      "predicate": "worked at",
+      "object_value": "CERN",
+      "quote": "while working at CERN",
+      "section": "History",
+      "confidence": 0.9
+    }
+  ],
+  "summary": "This source covers John Bell's career and his 1964 inequality paper. It anchors the history dimension of the research.",
+  "key_points": ["Bell derived the inequalities at CERN", "The paper appeared in 1964"]
+}

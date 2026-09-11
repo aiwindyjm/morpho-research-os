@@ -77,17 +77,17 @@ def test_prompt_asset_renders_with_expected_variables():
         "extraction.source-extraction",
         {
             "topic": "quantum entanglement",
-            "dimension": "history",
             "content": "content text",
         },
     )
     assert asset.version == 1
     assert "content text" in rendered
     assert "verbatim quote" in asset.metadata["safety_constraints"]
-    # Extraction is content-keyed: no title/url variables, so identical
-    # content always produces an identical prompt (and cache key).
+    # Extraction is content-keyed: no title/url/dimension variables, so
+    # identical content always produces an identical prompt (and cache key).
     assert "{{title}}" not in asset.template
     assert "{{url}}" not in asset.template
+    assert "{{dimension}}" not in asset.template
 
 
 def test_content_resolver_caches_by_source_key():

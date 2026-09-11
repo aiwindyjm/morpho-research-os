@@ -304,7 +304,6 @@ class ExtractionStage(ExtractionStagePort):
             )
         prompt_input = {
             "topic": str(context.params.get("topic", "")),
-            "dimension": context.dimension or "general",
             "content": content.content[:_MAX_PROMPT_CHARS],
         }
         result, _usage = self._pipeline.run(

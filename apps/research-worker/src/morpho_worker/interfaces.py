@@ -111,16 +111,19 @@ class InMemoryResultSink:
 
 
 _ID_FIELDS = (
-    "source_id",
     "node_id",
     "claim_id",
     "evidence_id",
     "relation_id",
+    # extraction_id before source_id: ExtractionResult carries both, and its
+    # identity is the content-derived extraction id.
     "extraction_id",
+    "source_id",
     "plan_id",
     "run_id",
     "usage_id",
     "conflict_id",
+    "record_ref",
 )
 
 
