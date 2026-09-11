@@ -50,6 +50,7 @@ class SearchStagePort(Protocol):
     def search(self, query: str, context: StageContext) -> list[Source]: ...
 
 
+@runtime_checkable
 class ExtractionStagePort(Protocol):
     def extract(
         self, source: Source, content: SourceContent, context: StageContext
