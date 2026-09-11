@@ -17,14 +17,14 @@ Directories that are still placeholders must not receive implementation until th
 
 ## Toolchain and commands
 
-The root workspace wires three toolchains; each owns a disjoint directory set. Commands run from the repository root unless noted.
+The root workspace wires three toolchains; each owns a disjoint directory set. Commands run from the repository root unless noted. Workspace membership is glob-based and activates when a package directory gains a manifest — no manual registry edits when a new app or package lands.
 
-| Toolchain | Workspace file | Members | Primary commands |
+| Toolchain | Workspace file | Member globs | Primary commands |
 |---|---|---|---|
-| pnpm | `pnpm-workspace.yaml`, root `package.json` | `apps/desktop`, `packages/*` (TypeScript packages) | `pnpm install`, `pnpm -r run test`, `pnpm -r run typecheck` |
-| Cargo | root `Cargo.toml` | Rust crates under `packages/*/rust` and later `apps/desktop/src-tauri` | `cargo fmt --check`, `cargo check --workspace`, `cargo test --workspace` |
-| uv (Python) | root `pyproject.toml` | Python packages under `packages/*/py` and later `apps/research-worker` | `uv sync --all-packages`, `uv run --package <name> pytest` |
+| pnpm | `pnpm-workspace.yaml`, root `package.json` | `apps/*`, `packages/*`, `packages/*/ts` | `pnpm install`, `pnpm -r run test`, `pnpm -r run typecheck` |
+| Cargo | root `Cargo.toml` | `packages/*/rust` and later `apps/desktop/src-tauri` (explicit members) | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace --locked` |
+| uv (Python) | root `pyproject.toml` | `packages/*/py` and later `apps/research-worker` (explicit members) | `uv sync --all-packages`, `uv run --package <name> pytest` |
 
-- `scripts/check-toolchain.ps1` verifies that the pinned tools are callable with the expected minimum versions.
-- CI (`.github/workflows/ci.yml`) invokes the same commands; no check exists only in CI.
-- Node.js is installed via the version pinned in root `package.json` (`packageManager` + `engines`); Rust uses stable; Python uses the version required by the root `pyproject.toml`.
+- `scripts/check-toolchain.ps1` verifies that every toolchain which currently has targets is callable with an acceptable minimum version; toolchains without targets are skipped explicitly, mirroring the `hashFiles` conditions in CI. Run it with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-toolchain.ps1` (the same invocation style applies to the other scripts under `scripts/`).
+- Lockfiles (`pnpm-lock.yaml`, `Cargo.lock`, `uv.lock`) are committed; CI installs with `--frozen-lockfile` / `--locked` / `--frozen`.
+- Node.js version policy comes from root `package.json` (`packageManager` pins pnpm; `engines` sets the minimum Node); Rust uses stable; Python is managed by uv per the root `pyproject.toml`.
