@@ -1,312 +1,324 @@
-# AI Parallel Development Plan
+# AI 并行开发计划
 
-This is the canonical execution plan for building Morpho Research OS with a maintainer and several AI coding agents. It turns the architecture phases into small, independently reviewable tasks that can be assigned in parallel. It does not contain private dates, personal batching, unpublished release order, or conversation content.
+这是 Morpho Research OS 的统一执行计划，面向项目维护者和多个 AI Coding Agent。它把架构阶段拆成可以并行分派、独立验收、逐步合并的小任务。本文件不包含个人日期、私有批次、未公开的发布顺序或对话内容。
 
-## How to use this plan
+## 使用方式
 
-The maintainer is the Product Owner and final reviewer. An AI agent may take a task only when its dependencies are complete and the governing documents are clear. The agent must read `AGENTS.md`, `DO_NOT_BREAK.md`, `docs/PRD.md`, `docs/ARCHITECTURE.md`, this plan, and the task's local specification before editing.
+维护者是产品负责人和最终审查者。AI 只有在依赖任务完成、规范明确时才能接取任务。修改前必须阅读 `AGENTS.md`、`DO_NOT_BREAK.md`、`docs/PRD.md`、`docs/ARCHITECTURE.md`、本计划和任务对应的局部规范。
 
-Each task produces one reviewable outcome. The agent reports the task ID, changed files, acceptance checks, known limitations, and follow-up tasks. A task is complete only when its tests pass, its documentation is updated, and its diff contains no unrelated work.
+每个任务只交付一个可审查结果。AI 必须报告任务 ID、变更文件、验收检查、已知限制和后续任务。测试通过、文档同步、没有无关修改，才算任务完成。
 
-Private execution order, batching, timing, and local notes belong under `private/` and are never copied into GitHub Issues, commits, pull requests, releases, prompts, or telemetry.
+开发顺序、批次、时间安排和个人笔记属于 `private/`，不得复制到 GitHub Issue、Commit、PR、Release、Prompt 或 Telemetry。
 
-## Parallel work rules
+## 并行开发规则
 
-1. One task owns one directory or an explicitly listed file set. Two agents must not edit the same file concurrently.
-2. Contracts are upstream of implementations. If a task needs a schema, IPC field, worker message, provider interface, migration, or token change, stop and propose the contract first.
-3. Every task uses a separate branch or worktree and one focused pull request. The maintainer merges completed tasks in dependency order.
-4. Parallel tasks may read completed contracts but may not invent competing versions.
-5. Integration tasks are serial. They resolve conflicts, run the full quality gate, and update the canonical documentation.
-6. No task adds a framework, state library, database, queue, agent framework, or provider without an ADR.
-7. Tests use mocks and fixtures. Real providers, API keys, private conversations, and personal research data never enter CI or public artifacts.
+1. 一个任务负责一个目录或明确列出的文件集合。两个 AI 不得同时修改同一文件。
+2. 契约先于实现。如果任务需要新增 Schema、IPC 字段、Worker 消息、Provider 接口、Migration 或 Design Token，必须先提出契约变更。
+3. 每个任务使用独立分支或 Worktree，并创建一个范围明确的 PR。维护者按依赖顺序合并。
+4. 并行任务可以读取已经完成的契约，但不得自行发明第二套契约。
+5. 集成任务必须串行执行，负责冲突处理、完整质量检查和规范更新。
+6. 未经 ADR，不得新增框架、状态库、数据库、队列、Agent Framework 或 Provider。
+7. 测试必须使用 Mock 和 Fixture。真实 Provider、API Key、私有对话和个人研究资料不得进入 CI 或公开产物。
 
-## Task packet for other AI agents
+## 给其他 AI 的任务包格式
 
-Copy this structure into an Issue or private handoff. Keep the acceptance criteria concrete.
+复制下面的结构到 Issue 或本地交接记录中，验收条件必须具体。
 
 ```text
-Task ID:
-Outcome:
-Scope:
-Allowed files/directories:
-Read first:
-Dependencies:
-Non-goals:
-Acceptance checks:
-Documentation to update:
-Handoff notes:
+任务 ID：
+目标结果：
+工作范围：
+允许修改的文件/目录：
+修改前必须阅读：
+依赖任务：
+明确不做的内容：
+验收检查：
+需要更新的文档：
+交接说明：
 ```
 
-The agent must not broaden scope when a dependency is missing. It should return a blocking question or a contract proposal instead.
+如果依赖没有完成，AI 不得扩大范围。它应该返回阻塞问题或契约提案，而不是自行补造架构。
 
-## Dependency graph
+## 依赖关系图
 
 ```text
-W0 Contract and repository baseline
- ├── W1-A Frontend foundation
- ├── W1-B Rust Core foundation
- ├── W1-C Python worker foundation
- └── W1-D Test, mock, and fixture foundation
+W0 契约与仓库基线
+ ├── W1-A 前端基础
+ ├── W1-B Rust Core 基础
+ ├── W1-C Python Worker 基础
+ └── W1-D 测试、Mock 与 Fixture 基础
           ↓
-W2 Cross-boundary contracts and adapters
+W2 跨边界契约与适配器
           ↓
-W3 Research vertical slices
+W3 研究流程垂直切片
  ├── Planner
  ├── Task DAG
- ├── Search and source evaluation
- ├── Knowledge normalization
- ├── Vault writer
- └── Graph projection
+ ├── Search 与 Source Evaluation
+ ├── Knowledge Normalization
+ ├── Vault Writer
+ └── Graph Projection
           ↓
-W4 Integrated local workflow and release hardening
+W4 完整本地流程集成与发布加固
 ```
 
-The four W1 lanes can run in parallel after W0. W3 work can overlap where the listed contract is already frozen: planner and DAG can proceed together; search and extraction can proceed after worker/provider contracts; Vault and graph can proceed after normalized knowledge fixtures exist. W4 remains serial because it validates the complete user journey.
+W0 完成后，四条 W1 泳道可以并行。契约冻结后，W3 也可以部分重叠：Planner 与 DAG 可以并行；Worker/Provider 契约完成后，Search 与 Extraction 可以并行；有标准 Knowledge Fixture 后，Vault 与 Graph 可以并行。W4 必须串行，因为它验证完整用户旅程。
 
-## Work packages and small tasks
+## 工作包与小任务
 
-### W0: Contract and repository baseline
+### W0：契约与仓库基线
 
-| ID | Outcome | Dependencies | Acceptance |
+| ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
-| `W0-01` | Confirm repository ownership map and module boundaries | None | Repository and boundary docs agree; no production feature code added |
-| `W0-02` | Establish canonical schema package layout | `W0-01` | `packages/schemas/` has versioned JSON Schema conventions and validation instructions |
-| `W0-03` | Establish version and compatibility metadata | `W0-01` | Root `VERSION`, schema version, worker protocol version, and Vault schema policy are documented |
-| `W0-04` | Establish quality gates and offline test harness | `W0-01` | CI runs configured formatting, lint/type checks, contract checks, and mock-only tests |
-| `W0-05` | Establish fixture naming and golden-result conventions | `W0-02`, `W0-04` | Fixture format is documented and one minimal offline fixture validates |
+| `W0-01` | 确认仓库所有权图和模块边界 | 无 | 仓库结构文档与边界文档一致；不添加业务代码 |
+| `W0-02` | 建立统一 Schema 包布局 | `W0-01` | `packages/schemas/` 有版本化 JSON Schema 约定和校验说明 |
+| `W0-03` | 建立版本与兼容性元数据 | `W0-01` | 根目录 `VERSION`、Schema、Worker Protocol、Vault Schema 策略有说明 |
+| `W0-04` | 建立质量门禁和离线测试框架 | `W0-01` | CI 能运行格式、Lint/Type、契约和 Mock 测试 |
+| `W0-05` | 建立 Fixture 命名和 Golden Result 约定 | `W0-02`, `W0-04` | Fixture 格式有文档，至少一个离线 Fixture 可校验 |
 
-### W1-A: Frontend foundation
+### W1-A：前端基础
 
-| ID | Outcome | Dependencies | Acceptance |
+负责 `apps/desktop` 前端和 `packages/ui`。前端不得访问 SQLite、文件、Secrets 或 Worker Process。
+
+| ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
-| `UI-01` | Create React/Vite/Tailwind shell | `W0-01`, `W0-04` | App starts locally with a typed entry point and no business workflow |
-| `UI-02` | Implement design tokens and registry primitives | `UI-01` | Registered primitives render in component tests; no page-local token literals |
-| `UI-03` | Implement application layout and navigation shell | `UI-02` | Core routes have specified loading, empty, error, responsive, and keyboard states |
-| `UI-04` | Add typed IPC/query service boundary | `UI-01`, `W0-02` | UI calls typed services only; architecture check prevents direct backend imports |
-| `UI-05` | Add compact contextual AI Assistant shell | `UI-02`, `UI-03` | Assistant is project-scoped, has explicit save action, and contains no provider/persistence logic |
+| `UI-01` | 创建 React/Vite/Tailwind 应用壳 | `W0-01`, `W0-04` | 应用可本地启动，有类型化入口，不包含业务流程 |
+| `UI-02` | 实现 Design Token 和注册组件原语 | `UI-01` | 组件测试通过；页面不硬编码 Token |
+| `UI-03` | 实现应用布局和导航壳 | `UI-02` | 核心路由具有 Loading、Empty、Error、Responsive、Keyboard 状态 |
+| `UI-04` | 建立类型化 IPC/Query 服务边界 | `UI-01`, `W0-02` | UI 只调用类型化服务；架构检查禁止直接后端导入 |
+| `UI-05` | 添加紧凑的上下文 AI Assistant 壳 | `UI-02`, `UI-03` | Assistant 绑定项目，有显式保存动作，不包含 Provider/持久化逻辑 |
 
-### W1-B: Rust Core foundation
+### W1-B：Rust Core 基础
 
-| ID | Outcome | Dependencies | Acceptance |
+负责 Tauri Rust Core 路径。
+
+| ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
-| `RUST-01` | Create Tauri command and structured error skeleton | `W0-02`, `W0-03` | Typed command result and stable error codes compile with unit tests |
-| `RUST-02` | Add SQLite connection and numbered migration runner | `RUST-01`, `W0-03` | Fresh database and upgrade path pass migration integration tests |
-| `RUST-03` | Add repository transaction boundary | `RUST-02`, `W0-02` | Tests prove transaction, foreign-key, and idempotency behavior |
-| `RUST-04` | Add OS keychain/configuration boundary | `RUST-01` | Secrets use key references; fake-keychain tests show no secret logging |
-| `RUST-05` | Add worker supervisor lifecycle skeleton | `RUST-01`, `W2-02` | Start, health, bounded restart, cancellation, and shutdown use a fake worker |
+| `RUST-01` | 创建 Tauri Command 和结构化 Error 骨架 | `W0-02`, `W0-03` | 类型化 Command Result 和稳定 Error Code 有单元测试 |
+| `RUST-02` | 增加 SQLite 连接和编号 Migration Runner | `RUST-01`, `W0-03` | 新数据库和升级路径通过集成测试 |
+| `RUST-03` | 增加 Repository Transaction 边界 | `RUST-02`, `W0-02` | 事务、外键和幂等行为有测试 |
+| `RUST-04` | 增加 OS Keychain/Configuration 边界 | `RUST-01` | 只保存 Secret 引用；Fake Keychain 测试证明不会记录密钥 |
+| `RUST-05` | 增加 Worker Supervisor 生命周期骨架 | `RUST-01`, `W2-02` | 使用 Fake Worker 测试启动、健康检查、重启、取消和关闭 |
 
-### W1-C: Python worker foundation
+### W1-C：Python Worker 基础
 
-| ID | Outcome | Dependencies | Acceptance |
+负责 `apps/research-worker`。Worker 不得直接写 Vault 或修改 UI 状态。
+
+| ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
-| `PY-01` | Create Python package and configuration boundary | `W0-02`, `W0-03` | `pytest` imports package; configuration contains no raw secrets |
-| `PY-02` | Implement versioned health/version endpoints | `PY-01`, `W2-02` | `/health` and `/version` return compatible responses |
-| `PY-03` | Implement JSONL/SSE event primitives | `PY-02`, `W2-02` | Events are ordered, append-only, reconnectable, and redacted |
-| `PY-04` | Add orchestrator and worker interface skeletons | `PY-01`, `W0-02` | Planner/search/extraction/validation/writer interfaces have mocks |
-| `PY-05` | Add provider interfaces and mock adapters | `PY-04`, `W2-03` | Mock LLM/search/embedding providers cover timeout, retry, and usage records |
+| `PY-01` | 创建 Python 包和配置边界 | `W0-02`, `W0-03` | `pytest` 可以导入；配置不包含原始密钥 |
+| `PY-02` | 实现版本化健康检查和版本接口 | `PY-01`, `W2-02` | `/health` 和 `/version` 返回兼容响应 |
+| `PY-03` | 实现 JSONL/SSE Event 原语 | `PY-02`, `W2-02` | Event 有序、追加式、可重连且经过脱敏 |
+| `PY-04` | 创建 Orchestrator 和 Worker 接口骨架 | `PY-01`, `W0-02` | Planner/Search/Extraction/Validation/Writer 接口有 Mock |
+| `PY-05` | 创建 Provider 接口和 Mock Adapter | `PY-04`, `W2-03` | Mock LLM/Search/Embedding 覆盖超时、重试和用量记录 |
 
-### W1-D: Test, mock, and fixture foundation
+### W1-D：测试、Mock 与 Fixture 基础
 
-| ID | Outcome | Dependencies | Acceptance |
+| ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
-| `TEST-01` | Define cross-language fixture envelope | `W0-02`, `W0-05` | Rust, Python, and TypeScript load the same fixture IDs and schema versions |
-| `TEST-02` | Add mock provider scenarios | `W0-04` | Success, invalid JSON, timeout, auth failure, and retry exhaustion are deterministic |
-| `TEST-03` | Add contract and architecture checks | `W0-02`, `W0-04` | CI detects schema drift, private-file tracking, and forbidden frontend imports |
-| `TEST-04` | Add Playwright mock application harness | `UI-01`, `TEST-02` | E2E starts without network providers or API keys |
+| `TEST-01` | 定义跨语言 Fixture Envelope | `W0-02`, `W0-05` | Rust、Python、TypeScript 能读取同一 Fixture ID 和 Schema Version |
+| `TEST-02` | 添加 Mock Provider 场景 | `W0-04` | 成功、非法 JSON、超时、认证失败、重试耗尽均可重复 |
+| `TEST-03` | 添加契约和架构检查 | `W0-02`, `W0-04` | CI 能发现 Schema Drift、私有文件跟踪和前端禁用导入 |
+| `TEST-04` | 添加 Playwright Mock 应用 Harness | `UI-01`, `TEST-02` | E2E 不需要网络 Provider 或 API Key 即可启动 |
 
-### W2: Cross-boundary contracts and adapters
+### W2：跨边界契约与适配器
 
-| ID | Outcome | Dependencies | Acceptance |
+这些任务可以分派给不同 AI，但 Adapter 必须在契约冻结后实现。
+
+| ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
-| `W2-01` | Freeze project/configuration/plan/task schemas | `W0-02`, `TEST-01` | JSON Schema, Zod, Pydantic, and Serde agree on fixtures |
-| `W2-02` | Freeze worker protocol and event envelope | `W0-03`, `PY-02`, `PY-03`, `RUST-05` | Health, job, event, cancellation, compatibility, and error examples validate |
-| `W2-03` | Freeze provider interfaces and usage record | `W0-02`, `PY-05` | Domain types cover base URL, key reference, model, timeout, retry, tokens, and cost |
-| `W2-04` | Freeze prompt metadata and structured-output contract | `W0-02`, `PY-04` | Prompt version, input/output schemas, and golden-case format are documented |
-| `W2-05` | Connect typed Tauri IPC to query/mutation services | `UI-04`, `RUST-01`, `W2-01`, `W2-02` | UI calls mocked project/job commands without direct backend access |
+| `W2-01` | 冻结 Project/Config/Plan/Task Schema | `W0-02`, `TEST-01` | JSON Schema、Zod、Pydantic、Serde 对 Fixture 的校验一致 |
+| `W2-02` | 冻结 Worker Protocol 和 Event Envelope | `W0-03`, `PY-02`, `PY-03`, `RUST-05` | Health、Job、Event、Cancel、Compatibility、Error 示例可校验 |
+| `W2-03` | 冻结 Provider 接口和 Usage Record | `W0-02`, `PY-05` | Domain Type 覆盖 Base URL、Key Reference、Model、Timeout、Retry、Token、Cost |
+| `W2-04` | 冻结 Prompt Metadata 和 Structured Output 契约 | `W0-02`, `PY-04` | Prompt Version、Input/Output Schema、Golden Case 格式有文档 |
+| `W2-05` | 将类型化 Tauri IPC 接入 Query/Mutation Service | `UI-04`, `RUST-01`, `W2-01`, `W2-02` | UI 能调用 Mock Project/Job Command，不能直接访问后端 |
 
-### W3: Research vertical slices
+### W3：研究流程垂直切片
 
-| ID | Outcome | Dependencies | Parallel notes | Acceptance |
+每一行都是独立的小实现任务，不要合并成一个大分支。
+
+| ID | 结果 | 依赖 | 并行说明 | 验收 |
 |---|---|---|---|---|
-| `RES-01` | Planner creates a reviewable plan | `W2-01`, `W2-04`, `PY-04` | Parallel with `RES-02` | Mock fixture produces a valid plan; UI supports approve/revise |
-| `RES-02` | Durable task DAG with pause/retry/resume | `W2-01`, `W2-02`, `RUST-02` | Parallel with `RES-01` | State transitions, dependencies, idempotency, and crash recovery pass |
-| `RES-03` | Search adapter and source deduplication | `W2-03`, `W2-02`, `TEST-02` | Parallel with `RES-04` | Mock search returns normalized sources, cache hits, and stable dedup keys |
-| `RES-04` | Source evaluation and content extraction | `RES-03`, `W2-04` | Parallel with `RES-05` | Invalid content is recoverable; quality metadata is preserved |
-| `RES-05` | Knowledge/entity/relation normalization | `W2-01`, `W2-04`, `TEST-01` | Parallel with `RES-04` after fixtures | Nodes/relations are typed, deduplicated, and provenance-aware |
-| `RES-06` | Claims and evidence persistence | `RES-05`, `W2-01` | After knowledge contract | Support/contradict direction and confidence validate |
-| `RES-07` | Markdown/Obsidian Vault writer | `RES-05`, `RES-06`, `RUST-03` | Parallel with `RES-08` | Frontmatter, links, atomic writes, and merge protection pass |
-| `RES-08` | Graph projection and basic D3 view | `RES-05`, `UI-03`, `UI-04` | Parallel with `RES-07` | 100-node fixture renders; selection/filter/inspector states pass |
-| `RES-09` | Integrated first research journey | `RES-01` through `RES-08` | Serial integration | Create project → approve plan → run mocks → inspect knowledge → export Vault → open graph |
+| `RES-01` | Planner 生成可审查 Plan | `W2-01`, `W2-04`, `PY-04` | 可与 `RES-02` 并行 | Mock Fixture 生成合法 Plan；UI 支持批准/修改 |
+| `RES-02` | 可暂停、重试、恢复的持久化 Task DAG | `W2-01`, `W2-02`, `RUST-02` | 可与 `RES-01` 并行 | 状态转移、依赖、幂等和崩溃恢复通过测试 |
+| `RES-03` | Search Adapter 和 Source 去重 | `W2-03`, `W2-02`, `TEST-02` | 可与 `RES-04` 并行 | Mock Search 返回标准 Source、Cache Hit 和稳定去重 Key |
+| `RES-04` | Source Evaluation 和 Content Extraction | `RES-03`, `W2-04` | 可与 `RES-05` 并行 | 非法内容可恢复；Source Quality Metadata 保留 |
+| `RES-05` | Knowledge/Entity/Relation Normalization | `W2-01`, `W2-04`, `TEST-01` | Fixture 就绪后可并行 | Node/Relation 有类型、可去重且保留 Provenance |
+| `RES-06` | Claims 和 Evidence 持久化 | `RES-05`, `W2-01` | 等 Knowledge 契约稳定后 | Support/Contradict 方向和 Confidence 可校验 |
+| `RES-07` | Markdown/Obsidian Vault Writer | `RES-05`, `RES-06`, `RUST-03` | 可与 `RES-08` 并行 | Frontmatter、Links、原子写入和用户修改保护通过测试 |
+| `RES-08` | Graph Projection 和基础 D3 View | `RES-05`, `UI-03`, `UI-04` | 可与 `RES-07` 并行 | 100 Node Fixture 可渲染；选择、过滤、Inspector 状态通过测试 |
+| `RES-09` | 第一条完整研究旅程 | `RES-01` 至 `RES-08` | 串行集成 | 创建项目 → 批准 Plan → 执行 Mock → 检查 Knowledge → 导出 Vault → 打开 Graph |
 
-### W4: Hardening and public slice release
+### W4：加固与公开版本发布
 
-| ID | Outcome | Dependencies | Acceptance |
+| ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
-| `REL-01` | Offline end-to-end quality gate | `RES-09`, `TEST-04` | Format, lint, typecheck, unit, contract, migration, and Playwright checks pass |
-| `REL-02` | Documentation and example update | `REL-01` | README, architecture links, Quick Start, fixture README, and changelog describe actual behavior |
-| `REL-03` | Privacy and public-boundary audit | `REL-01`, `REL-02` | No private files, secrets, local databases, caches, or journals are staged |
-| `REL-04` | Human release review | `REL-03` | Maintainer confirms scope, known issues, demo, version, and release notes |
+| `REL-01` | 离线端到端质量门禁 | `RES-09`, `TEST-04` | Format、Lint、Typecheck、Unit、Contract、Migration、Playwright 全部通过 |
+| `REL-02` | 文档和示例同步 | `REL-01` | README、架构链接、Quick Start、Fixture README、CHANGELOG 描述真实行为 |
+| `REL-03` | 隐私和公共边界审计 | `REL-01`, `REL-02` | 暂存区没有私有文件、密钥、本地数据库、Cache 或对话记录 |
+| `REL-04` | 人工发布审查 | `REL-03` | 维护者确认范围、已知问题、Demo、版本和 Release Notes |
 
-## Merge order
+## 合并顺序
 
-1. Merge W0 contract and quality tasks.
-2. Merge the four W1 lanes independently after their lane tests pass.
-3. Merge W2 contracts before adapters that consume them.
-4. Merge W3 slices in dependency order; use the integration task to resolve cross-lane conflicts.
-5. Run W4 as one serial release candidate review.
+1. 合并 W0 契约和质量任务。
+2. 四条 W1 泳道分别通过各自测试后合并。
+3. 先合并 W2 契约，再合并依赖它们的 Adapter。
+4. 按依赖顺序合并 W3；由集成任务处理跨泳道冲突。
+5. 将 W4 作为一个串行 Release Candidate 审查。
 
-If two branches touch the same contract or migration, pause, compare the governing specification, and create or update an ADR. Do not resolve a contract conflict by choosing the newer code.
+如果两个分支修改了同一个契约或 Migration，不要简单选择更新的代码。暂停实现，比较规范并创建或更新 ADR。
 
-## AI handoff protocol
+## AI 交接协议
 
-The task author supplies the task packet and exact acceptance checks. The implementing AI returns:
+任务发起者提供任务包和明确的验收命令。实现 AI 必须返回：
 
 ```text
-Completed task: <ID>
-Outcome: <one sentence>
-Files changed: <paths>
-Checks run: <commands and result>
-Contract/doc updates: <paths or none>
-Known limitations: <none or list>
-Suggested next task: <ID or none>
+完成任务：<任务 ID>
+结果：<一句话说明>
+修改文件：<路径>
+执行检查：<命令和结果>
+契约/文档更新：<路径或无>
+已知限制：<无或列表>
+建议的下一任务：<任务 ID 或无>
 ```
 
-Human review is mandatory for schemas, migrations, IPC, worker protocol, provider adapters, secrets, persistence semantics, navigation, global UI tokens, and releases. A bounded documentation, fixture, test, or reversible implementation slice may be prepared by AI for review, but it follows the same acceptance and privacy checks.
+Schema、Migration、IPC、Worker Protocol、Provider Adapter、Secrets、持久化语义、导航、全局 UI Token 和 Release 必须人工审查。文档、Fixture、测试或可逆的小实现可以由 AI 准备，但仍必须通过同样的验收和隐私检查。
 
-## Definition of done
+## 每个任务的完成标准
 
-- Governing documents and dependencies were read.
-- Scope stayed within the task packet.
-- Tests or explicit manual checks prove acceptance criteria.
-- Errors, retries, idempotency, and privacy were considered where relevant.
-- Documentation and registry entries match the implementation.
-- `git diff --check` and the private-boundary check pass.
-- Commit/PR message describes the real outcome and links the task.
+- 已阅读相关规范和依赖任务结果。
+- 修改范围没有超出任务包。
+- 测试或明确的人工检查证明验收条件。
+- 在适用时验证 Error、Retry、Idempotency 和 Privacy。
+- 文档和组件/Provider 注册信息与实现一致。
+- `git diff --check` 和公共边界检查通过。
+- Commit/PR 说明真实结果并关联任务。
 
-## Deferred
+## 明确延期内容
 
-Hosted collaboration, accounts, payments, enterprise IAM, cloud databases, Kubernetes, Redis/Kafka, vector databases, self-hosted search, custom model training, complex multi-agent autonomy, mobile, browser extensions, 3D graphs, and automatic academic paper authorship remain deferred until an approved architecture decision changes scope.
+Hosted Collaboration、账号、支付、企业 IAM、云数据库、Kubernetes、Redis/Kafka、Vector Database、自建 Search、模型训练、复杂 Multi-Agent、自带移动端、浏览器扩展、3D Graph 和自动代写学术论文，在新的架构决策批准前全部延期。
 
-## Project task count and parallel capacity
+## 任务总量与并行能力评估
 
-The current plan contains **42 bounded tasks**:
+当前计划共包含 **42 个有边界任务**：
 
-| Work package | Tasks | Role |
+| 工作包 | 任务数 | 作用 |
 |---|---:|---|
-| W0 baseline and contracts | 5 | Establish shared rules and quality gates |
-| W1 foundations | 19 | Four implementation lanes: UI, Rust, Python, tests |
-| W2 cross-boundary contracts | 5 | Freeze schemas, protocol, providers, prompts, and IPC |
-| W3 research vertical slices | 9 | Build the research workflow in dependency order |
-| W4 integration and release | 4 | Serial end-to-end validation and human release review |
+| W0 基线与契约 | 5 | 建立共享规则和质量门禁 |
+| W1 基础设施 | 19 | 前端、Rust、Python、测试四条泳道 |
+| W2 跨边界契约 | 5 | 冻结 Schema、Protocol、Provider、Prompt、IPC |
+| W3 研究垂直切片 | 9 | 按依赖构建研究流程 |
+| W4 集成与发布 | 4 | 串行端到端验证和人工发布审查 |
 
-The practical maximum is four independent foundation lanes after W0, not 42 agents. Within a lane, tasks remain serial. A safe operating range is four to eight active agents, with one maintainer or integration agent reserving time for contracts, migrations, conflict resolution, and the full quality gate. More agents increase merge conflicts without shortening the critical path.
+实际最多适合同时运行四条基础泳道，而不是启动 42 个 AI。建议同时运行 4 到 8 个 AI：维护者或一个集成 AI 保留给契约、Migration、冲突处理和完整质量门禁。继续增加 AI 数量通常只会增加合并冲突，不会缩短关键路径。
 
-The critical path is:
+关键路径是：
 
 ```text
-W0 → W2 contracts → RES-01/02 → RES-03/04/05 → RES-06/07/08 → RES-09 → W4
+W0 → W2 契约 → RES-01/02 → RES-03/04/05 → RES-06/07/08 → RES-09 → W4
 ```
 
-The UI, Rust, Python, and test foundation lanes can proceed in parallel after W0, but no agent may bypass an unfinished contract by creating a private or competing schema.
+W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。但任何 AI 都不能绕过未完成的契约，创建私有或竞争性的 Schema。
 
-## Five ready-to-copy parallel prompts
+## 5 个可直接复制的并行任务提示词
 
-Run these five prompts as separate tasks after W0 (`W0-01` through `W0-05`) is accepted. Give each AI its own branch or worktree. The prompts intentionally assign disjoint directories. If a dependency is missing, the AI must stop at a written proposal and must not invent a replacement contract.
+以下 5 个提示词应在 W0（`W0-01` 至 `W0-05`）完成后作为独立任务运行。每个 AI 使用自己的分支或 Worktree。提示词已经分配了互不重叠的目录。如果依赖未完成，AI 必须停止并提交书面提案，不得自行发明替代契约。
 
-### Prompt 1: Frontend shell (`UI-01`)
+### 提示词 1：前端应用壳（`UI-01`）
 
 ```text
-You are implementing Morpho Research OS task UI-01: create the minimal React + TypeScript + Vite + Tailwind desktop shell.
+你正在实现 Morpho Research OS 任务 UI-01：创建最小的 React + TypeScript + Vite + Tailwind 桌面应用壳。
 
-Read first: AGENTS.md, DO_NOT_BREAK.md, docs/PRD.md, docs/ARCHITECTURE.md, docs/frontend/DESIGN_SYSTEM.md, docs/frontend/DESIGN_TOKENS.md, docs/frontend/COMPONENT_REGISTRY.md, docs/frontend/PAGE_PATTERNS.md, and docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md.
+开始前必须阅读：AGENTS.md、DO_NOT_BREAK.md、docs/PRD.md、docs/ARCHITECTURE.md、docs/frontend/DESIGN_SYSTEM.md、docs/frontend/DESIGN_TOKENS.md、docs/frontend/COMPONENT_REGISTRY.md、docs/frontend/PAGE_PATTERNS.md，以及 docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md。
 
-Allowed scope: apps/desktop frontend files only. Do not edit apps/desktop/src-tauri, packages/schemas, packages/ui, the Python worker, root dependency files, navigation contracts, or research features.
+允许范围：只修改 apps/desktop 的前端文件。禁止修改 apps/desktop/src-tauri、packages/schemas、packages/ui、Python Worker、根依赖文件、导航契约和研究业务功能。
 
-Outcome: a typed desktop shell that starts locally, has a minimal app entry point, and contains no Research Agent, provider call, database access, filesystem access, secret access, or worker-process code.
+目标结果：创建可以本地启动的类型化桌面应用壳和最小入口。不实现 Research Agent、Provider 调用、数据库访问、文件访问、Secret 访问或 Worker Process 代码。
 
-Non-goals: no business pages, no new UI framework, no new state library, no design-token changes, and no direct Tauri command implementation.
+明确不做：业务页面、新 UI Framework、新状态库、Design Token 修改和 Tauri Command 实现。
 
-Acceptance checks: the documented frontend start command works; TypeScript/build checks pass; a focused smoke test proves the shell mounts; no forbidden backend imports exist; git diff --check passes.
+验收检查：文档中的前端启动命令成功；TypeScript/Build 检查通过；Shell 挂载 Smoke Test 通过；不存在禁止的后端导入；git diff --check 通过。
 
-Return exactly: completed task ID, outcome, files changed, checks and results, documentation updates, known limitations, and suggested next task. Do not broaden scope.
+如果依赖或契约缺失，停止实现并提出问题，不要自行扩大范围。
+
+最后必须按以下格式返回：完成任务、结果、修改文件、执行检查及结果、文档更新、已知限制、建议的下一任务。
 ```
 
-### Prompt 2: Rust command and error skeleton (`RUST-01`)
+### 提示词 2：Rust Command 和 Error 骨架（`RUST-01`）
 
 ```text
-You are implementing Morpho Research OS task RUST-01: create the minimal Tauri Rust Core command/result and structured error skeleton.
+你正在实现 Morpho Research OS 任务 RUST-01：创建最小的 Tauri Rust Core Command/Result 和结构化 Error 骨架。
 
-Read first: AGENTS.md, DO_NOT_BREAK.md, docs/PRD.md, docs/ARCHITECTURE.md, docs/API.md, docs/api/ERRORS.md, docs/architecture/MODULE_BOUNDARIES.md, docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md, and the approved schema conventions.
+开始前必须阅读：AGENTS.md、DO_NOT_BREAK.md、docs/PRD.md、docs/ARCHITECTURE.md、docs/API.md、docs/api/ERRORS.md、docs/architecture/MODULE_BOUNDARIES.md、docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md，以及已批准的 Schema 约定。
 
-Allowed scope: apps/desktop/src-tauri only. Do not edit frontend files, packages/schemas, database migrations, worker code, provider adapters, keychain implementation, or Vault writing.
+允许范围：只修改 apps/desktop/src-tauri。禁止修改前端、packages/schemas、数据库 Migration、Worker、Provider Adapter、Keychain 实现和 Vault Writer。
 
-Outcome: typed Tauri command results and stable error codes with unit tests. Errors must contain code, safe user message, developer detail, retryable flag, and correlation ID according to the existing contract.
+目标结果：创建类型化的 Tauri Command Result、稳定 Error Code 和单元测试。Error 必须包含 code、safe user message、developer detail、retryable 和 correlation ID。
 
-Non-goals: no SQLite connection, filesystem operation, process management, secret handling, or product command implementation.
+明确不做：SQLite 连接、Filesystem 操作、Process 管理、Secret 处理和产品业务 Command。
 
-Acceptance checks: Rust format/check/test pass; representative success and error values serialize as specified; no secrets are logged; module boundaries remain explicit; git diff --check passes.
+验收检查：Rust Format/Check/Test 通过；成功和错误结果能按契约序列化；不记录 Secret；模块边界清晰；git diff --check 通过。
 
-If the error or IPC contract is incomplete or contradictory, stop and write a contract proposal instead of guessing.
+如果 Error 或 IPC 契约不完整或互相矛盾，停止实现并提交契约提案，不要猜测。
 
-Return exactly: completed task ID, outcome, files changed, checks and results, contract/doc updates, known limitations, and suggested next task.
+最后必须按统一交接格式返回任务 ID、结果、文件、检查结果、契约/文档更新、限制和下一任务。
 ```
 
-### Prompt 3: Python worker package (`PY-01`)
+### 提示词 3：Python Worker 包（`PY-01`）
 
 ```text
-You are implementing Morpho Research OS task PY-01: create the minimal Python research-worker package and configuration boundary.
+你正在实现 Morpho Research OS 任务 PY-01：创建最小的 Python Research Worker 包和配置边界。
 
-Read first: AGENTS.md, DO_NOT_BREAK.md, docs/PRD.md, docs/ARCHITECTURE.md, docs/architecture/RESEARCH_ENGINE.md, docs/api/PROVIDERS.md, docs/ai/AI_DEVELOPMENT_RULES.md, docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md, and the schema conventions.
+开始前必须阅读：AGENTS.md、DO_NOT_BREAK.md、docs/PRD.md、docs/ARCHITECTURE.md、docs/architecture/RESEARCH_ENGINE.md、docs/api/PROVIDERS.md、docs/ai/AI_DEVELOPMENT_RULES.md、docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md，以及 Schema 约定。
 
-Allowed scope: apps/research-worker only. Do not edit Rust Core, frontend, packages/schemas, prompt assets, SQLite code, Vault code, or provider network adapters.
+允许范围：只修改 apps/research-worker。禁止修改 Rust Core、前端、packages/schemas、Prompt Asset、SQLite、Vault 和 Provider 网络 Adapter。
 
-Outcome: an importable Python package with explicit configuration objects and environment parsing that stores key references rather than raw API keys. The package must be ready for later health/protocol work but must not implement research behavior yet.
+目标结果：创建可导入的 Python 包、显式配置对象和环境变量解析。配置只能保存 Key Reference，不能保存原始 API Key。包只为后续健康检查和协议任务准备，不实现研究逻辑。
 
-Non-goals: no real provider calls, no Research Agent, no search, no LLM orchestration, no filesystem writes, and no direct UI communication.
+明确不做：真实 Provider 调用、Research Agent、Search、LLM Orchestration、Filesystem 写入和 UI 通信。
 
-Acceptance checks: pytest imports the package; configuration tests cover defaults and missing values; raw secrets are not printed or persisted; mypy or the configured type check passes; git diff --check passes.
+验收检查：pytest 可以导入包；默认值和缺失值测试通过；不打印或持久化原始 Secret；配置的类型检查通过；git diff --check 通过。
 
-Use dependency injection and mocks. If the worker protocol or configuration contract is missing, stop with a proposal.
+必须使用依赖注入和 Mock。如果 Worker Protocol 或配置契约缺失，停止并提出提案。
 
-Return exactly: completed task ID, outcome, files changed, checks and results, contract/doc updates, known limitations, and suggested next task.
+最后必须按统一交接格式返回任务 ID、结果、文件、检查结果、契约/文档更新、限制和下一任务。
 ```
 
-### Prompt 4: Cross-language fixture envelope (`TEST-01`)
+### 提示词 4：跨语言 Fixture Envelope（`TEST-01`）
 
 ```text
-You are implementing Morpho Research OS task TEST-01: define the deterministic cross-language fixture envelope used by Rust, Python, and TypeScript tests.
+你正在实现 Morpho Research OS 任务 TEST-01：定义 Rust、Python、TypeScript 测试共用的确定性 Fixture Envelope。
 
-Read first: AGENTS.md, DO_NOT_BREAK.md, docs/PRD.md, docs/ARCHITECTURE.md, docs/TESTING.md, docs/testing/MOCKS.md, packages/schemas/MIGRATIONS.md, docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md, and the existing fixture conventions.
+开始前必须阅读：AGENTS.md、DO_NOT_BREAK.md、docs/PRD.md、docs/ARCHITECTURE.md、docs/TESTING.md、docs/testing/MOCKS.md、packages/schemas/MIGRATIONS.md、docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md，以及现有 Fixture 约定。
 
-Allowed scope: tests/fixture support, examples/fixtures fixture metadata, and the narrowly required test documentation. Do not edit product code, provider implementations, migrations, prompts, frontend components, or worker protocol files.
+允许范围：只修改 tests/Fixture 支持、examples/fixtures 的 Fixture 元数据和必要测试文档。禁止修改产品代码、Provider、Migration、Prompt、前端组件和 Worker Protocol。
 
-Outcome: one versioned fixture envelope with fixture ID, schema version, input, expected outputs, and provenance metadata. Provide one minimal offline fixture that can be loaded by the configured language test runners without a network call.
+目标结果：创建包含 fixture ID、schema version、input、expected outputs、provenance metadata 的版本化 Fixture Envelope，并提供一个不需要网络请求的最小离线 Fixture。
 
-Non-goals: do not define new domain fields that conflict with packages/schemas; do not add a real research dataset; do not include private conversations, API keys, or personal data.
+明确不做：不得定义与 packages/schemas 冲突的新领域字段；不得加入真实个人研究数据；不得包含私有对话、API Key 或个人信息。
 
-Acceptance checks: fixture files validate against the canonical schema; malformed and version-mismatch cases fail clearly; at least one loader test passes; no real provider is called; git diff --check passes.
+验收检查：Fixture 通过统一 Schema 校验；非法格式和版本不匹配会明确失败；至少一个 Loader Test 通过；不调用真实 Provider；git diff --check 通过。
 
-If a shared schema field is missing, report the gap and propose it for W2 instead of embedding an ad hoc JSON shape.
+如果共享 Schema 缺字段，报告问题并把建议交给 W2，不要在 Fixture 内嵌一套临时 JSON 结构。
 
-Return exactly: completed task ID, outcome, files changed, checks and results, contract/doc updates, known limitations, and suggested next task.
+最后必须按统一交接格式返回任务 ID、结果、文件、检查结果、契约/文档更新、限制和下一任务。
 ```
 
-### Prompt 5: Mock provider scenarios (`TEST-02`)
+### 提示词 5：Mock Provider 场景（`TEST-02`）
 
 ```text
-You are implementing Morpho Research OS task TEST-02: add deterministic mock LLM, search, and embedding provider scenarios.
+你正在实现 Morpho Research OS 任务 TEST-02：添加确定性的 Mock LLM、Search 和 Embedding Provider 场景。
 
-Read first: AGENTS.md, DO_NOT_BREAK.md, docs/PRD.md, docs/ARCHITECTURE.md, docs/api/PROVIDERS.md, docs/ai/CACHE_AND_COST.md, docs/TESTING.md, docs/testing/MOCKS.md, and docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md.
+开始前必须阅读：AGENTS.md、DO_NOT_BREAK.md、docs/PRD.md、docs/ARCHITECTURE.md、docs/api/PROVIDERS.md、docs/ai/CACHE_AND_COST.md、docs/TESTING.md、docs/testing/MOCKS.md，以及 docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md。
 
-Allowed scope: tests/mocks and the corresponding test-only configuration. Do not edit production provider interfaces, Rust Core, frontend, worker orchestration, prompt assets, or secrets configuration.
+允许范围：只修改 tests/mocks 和测试专用配置。禁止修改生产 Provider 接口、Rust Core、前端、Worker Orchestration、Prompt Asset 和 Secret 配置。
 
-Outcome: reusable mocks for success, structured invalid JSON, timeout, authentication failure, retry exhaustion, cache hit, and usage accounting. Mocks must be injectable and deterministic.
+目标结果：提供可注入、可重复的 Mock，覆盖成功、结构化非法 JSON、超时、认证失败、重试耗尽、Cache Hit 和 Usage Accounting。
 
-Non-goals: no network access, no real API keys, no provider-specific production behavior, and no changes to the domain model.
+明确不做：不得访问网络；不得使用真实 API Key；不得实现 Provider 生产行为；不得修改 Domain Model。
 
-Acceptance checks: tests cover each scenario and retryability; token/duration/cost fields are deterministic; a test proves no network call is made; the configured test runners pass; git diff --check passes.
+验收检查：每个场景和 Retryable 行为都有测试；Token/Duration/Cost 字段确定；测试证明没有网络调用；配置的 Test Runner 通过；git diff --check 通过。
 
-If the provider contract is not frozen, stop and write a contract proposal rather than creating a second interface.
+如果 Provider 契约尚未冻结，停止并提交契约提案，不要创建第二套接口。
 
-Return exactly: completed task ID, outcome, files changed, checks and results, contract/doc updates, known limitations, and suggested next task.
+最后必须按统一交接格式返回任务 ID、结果、文件、检查结果、契约/文档更新、限制和下一任务。
 ```
