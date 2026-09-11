@@ -1,0 +1,4 @@
+# Research Engine
+ResearchConfig → Planner → Task DAG → Scheduler → Search → Source evaluation → Extraction → Entity/Relation/Claim extraction → Evidence → Validation/conflict detection → normalization → Vault writer → graph index. Each stage has typed input/output, checkpoint, cache key, retry policy, and idempotency key. Search and extraction fan out by task; validation and synthesis fan in. Failures are persisted, retryable when safe, and resumable from the last checkpoint. Orchestrator plus specialized workers is the V0.1 design; agent autonomy is deferred.
+
+Task state machine: PENDING → PLANNING/RUNNING → VALIDATING → NEEDS_REVIEW or COMPLETED; PAUSED, FAILED, CANCELLED are terminal/intermediate as applicable. Only orchestrator performs transitions; SQLite is authoritative and events are projections. DAG dependencies require all predecessors completed (or explicitly skipped); dependent failure is `TASK_DEPENDENCY_FAILED`.

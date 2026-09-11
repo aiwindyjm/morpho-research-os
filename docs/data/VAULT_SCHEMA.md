@@ -1,0 +1,2 @@
+# Vault Schema
+Markdown folders are Concepts, People, Organizations, Companies, Technologies, Papers, Books, Experiments, Events, Applications, Policies, Claims, Controversies, Sources, and Maps. Frontmatter includes schema_version, node_id, type, title, aliases, tags, confidence, status, source_ids, claim_ids, created_at, updated_at, and provenance. Writes use temp files plus atomic rename and detect user edits.

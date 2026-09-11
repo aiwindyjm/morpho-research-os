@@ -1,0 +1,6 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://morpho.dev/schemas/research-config.v1.json",
+  "type":"object","required":["schema_version","domain","topic","purpose","depth","dimensions","languages","source_types"],
+  "properties":{"schema_version":{"const":"1.0"},"domain":{"type":"string"},"topic":{"type":"string"},"purpose":{"type":"string"},"audience":{"type":"string"},"depth":{"type":"integer","minimum":1,"maximum":5},"dimensions":{"type":"array","items":{"type":"string"}},"time_range":{"type":"object"},"geographic_scope":{"type":"string"},"languages":{"type":"array","items":{"type":"string"}},"source_types":{"type":"array","items":{"type":"string"}}}
+}
