@@ -1,0 +1,30 @@
+[package]
+name = "morpho-desktop"
+version = "0.0.1"
+description = "Morpho Research OS desktop Rust core"
+edition = "2021"
+rust-version = "1.82"
+publish = false
+
+[lib]
+name = "morpho_desktop_lib"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.40", features = ["bundled"] }
+uuid = { version = "1", features = ["v4", "v7"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
