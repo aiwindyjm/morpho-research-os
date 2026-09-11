@@ -33,11 +33,11 @@
 | `W0-05` | `Planned` | — | — | — |
 | `W0-06` | `Planned` | — | — | — |
 | **W1** |  |  |  |  |
-| `UI-01` | `Planned` | — | — | — |
-| `UI-02` | `Planned` | — | — | — |
-| `UI-03` | `Planned` | — | — | — |
-| `UI-04` | `Planned` | — | — | — |
-| `UI-05` | `Planned` | — | — | — |
+| `UI-01` | `Review` | `8082dc7` | `pnpm dev` 可启动（HTTP 200 冒烟验证）；`tsc --noEmit` 与 Vite 构建通过；App 挂载冒烟测试通过 | React 19 + Vite + Tailwind 4；仅应用壳，无业务流程 |
+| `UI-02` | `Review` | `8082dc7` | `packages/ui` 语义 Token（对齐 docs/frontend/DESIGN_TOKENS.md）+ 16 个注册原语；19 个组件测试通过（键盘/焦点/禁用/加载） | Token 具体色值为 V0.1 提案，待维护者审查 |
+| `UI-03` | `Review` | `8082dc7` | 工作区布局 240px 侧栏/自适应画布/320px Inspector；<1024 折叠 Inspector、<768 抽屉侧栏（Escape 关闭）；跳转链接与焦点顺序有测试；每视图 Loading/Empty/Error | 导航为类型化视图注册表，未引入路由依赖 |
+| `UI-04` | `Review` | `8082dc7` | 类型化 Command Map + `{schema_version, request_id, data, error}` 信封（docs/API.md）+ docs/api/ERRORS.md 错误模型；查询键集中含 projectId；响应经 Zod 注册表校验；Mock Transport 覆盖成功/失败/取消/故障注入（6 测试） | 组件不直接调用传输层 |
+| `UI-05` | `Review` | `8082dc7` | 助手绑定当前项目并显示上下文；四类动作（解释进度/建议下一任务/查看待审核/记录决定）；决定仅显式保存；项目切换上下文隔离有测试 | 仅 Mock 服务，无 Provider 调用与持久化 |
 | `RUST-01` | `Review` | — | 21 unit tests: typed command results serialize per `docs/API.md` envelope; stable error codes with safe user message, redacted detail, retryable flag, UUIDv7 correlation id | IPC/事件字段名为草案，待 W2-02/W2-05 冻结后核对 |
 | `RUST-02` | `Review` | — | 空库迁移、逐步升级、幂等重跑、失败回滚不落版本、WAL+外键默认值均有测试（含文件级集成测试） | 001 列结构按 DATA_MODEL 推导，待 W2 契约核对；后续迁移只允许新编号文件 |
 | `RUST-03` | `Review` | — | 提交/回滚、外键失败、重复 Idempotency Key 整体拒绝、结构化 DATABASE_ERROR（busy/locked 可重试）均有测试 | 事务边界仅在 Service/Repository 层；RES-02 将补全状态机 |
@@ -57,7 +57,7 @@
 | `W2-02` | `Planned` | — | — | — |
 | `W2-03` | `Planned` | — | — | — |
 | `W2-04` | `Planned` | — | — | — |
-| `W2-05` | `Planned` | — | — | — |
+| `W2-05` | `Blocked` | — | 原因：正式 IPC 契约尚未合并入 main（W2-01/W2-02 冻结与 RUST-01 在工作组 A/C 分支）；按规则不得自行定义接口。解除条件：契约分支合并入 main 后，在 `apps/desktop/src/services/transportProvider.ts` 注册真实 Tauri Transport | 前端已预留类型化接入点与 Mock/真实一致的 Service 边界（`8082dc7`） |
 | `W2-06` | `Planned` | — | — | — |
 | **W3** |  |  |  |  |
 | `RES-01` | `Planned` | — | — | — |
@@ -67,9 +67,9 @@
 | `RES-05` | `Planned` | — | — | — |
 | `RES-06` | `Planned` | — | — | — |
 | `RES-07` | `Planned` | — | — | — |
-| `RES-08` | `Planned` | — | — | — |
+| `RES-08` | `Review` | `8082dc7` | 前端交付：D3 2D 力导向图谱（SVG）、搜索/类型/维度过滤、节点键盘选择与 GraphNodeInspector、无障碍列表降级；14 节点 Fixture 有测试（5 个 GraphPage 测试） | 图谱数据投影为 Mock 实现；接入真实 Knowledge/Relation 投影待 W2-06 与 RES-05 合并后完成 |
 | `RES-09` | `Planned` | — | — | — |
-| `RES-10` | `Planned` | — | — | — |
+| `RES-10` | `Review` | `8082dc7` | 前端交付：Timeline（倒序事件投影）、Coverage 面板逐维展示 PRD 公式分量/权重/原始输入/原因、Gap 卡（覆盖率<0.6 或独立高质量来源<2 的可解释判定）；建议批准前只读、批准后才创建任务（GapsPage 3 测试 + 后端投影测试） | 覆盖度/缺口投影当前由 Mock 服务按 PRD §14 公式实现；真实投影接入待 RES-02/RES-05/RES-06 与 W2-06 合并后完成 |
 | **W4** |  |  |  |  |
 | `REL-01` | `Planned` | — | — | — |
 | `REL-02` | `Planned` | — | — | — |
