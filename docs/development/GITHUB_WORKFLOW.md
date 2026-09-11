@@ -5,3 +5,5 @@ Issue/Discussion → triage → milestone → feature or page spec → implement
 Develop in small, independently reviewable increments. Public commits and releases describe real completed work. The maintainer may keep local batching, release timing, and personal execution notes in `private/`; those files are ignored and must never be referenced as public project history.
 
 AI may prepare commits and PRs for scoped, reversible changes. Human review is mandatory for architecture, schemas, security, secrets, migrations, provider adapters, and releases.
+
+Use `docs/development/TASK_STATUS.md` as the public task ledger. Update the row for a task when its public state changes, and link the real commit or PR after it exists. The ledger records capability progress only; daily batching, personal timing, and unpublished execution order stay under `private/` and must never be copied into GitHub history.
