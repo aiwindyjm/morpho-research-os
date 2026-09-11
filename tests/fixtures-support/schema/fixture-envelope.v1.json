@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/testing/fixture-envelope.v1.json",
+  "title": "Morpho fixture envelope",
+  "description": "Versioned wrapper for deterministic offline test fixtures shared by Rust, Python, and TypeScript tests. This is test infrastructure: it never defines domain fields and always defers payload validation to the canonical schemas in packages/schemas.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fixture_envelope_version", "fixture_id", "kind", "input", "provenance"],
+  "properties": {
+    "fixture_envelope_version": {
+      "const": "1.0",
+      "description": "Envelope format version. Bump only for breaking envelope changes, never for payload schema updates."
+    },
+    "fixture_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*$",
+      "maxLength": 120,
+      "description": "Stable kebab-case identifier, unique across the repository. Must equal the directory name that holds fixture.json."
+    },
+    "kind": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "maxLength": 60,
+      "description": "What the input payload is. Must equal the input schema $id last path segment with the .json extension and .vN version suffix removed, e.g. research-config for research-config.v1.json."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "payload"],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "description": "Canonical schema $id from packages/schemas. Never an inline second copy of a schema."
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    },
+    "expected_outputs": {
+      "type": "array",
+      "description": "Golden results compared against pipeline behavior. Entries are added only after the corresponding output schema is frozen in packages/schemas.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "schema", "payload"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "maxLength": 60
+          },
+          "schema": {
+            "type": "string",
+            "description": "Canonical schema $id from packages/schemas."
+          },
+          "payload": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "synthetic"],
+      "properties": {
+        "origin": {
+          "enum": ["synthetic", "curated-public", "user-contributed"]
+        },
+        "synthetic": {
+          "type": "boolean",
+          "description": "True means the fixture contains no captured provider output, no personal data, and no private research content."
+        },
+        "license": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "stability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "deterministic": {
+          "type": "boolean",
+          "description": "False means the fixture contains volatile fields (timestamps, generated IDs) that comparisons must normalize before asserting."
+        },
+        "ignored_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Field paths excluded from golden comparisons, e.g. created_at."
+        }
+      }
+    }
+  }
+}

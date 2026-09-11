@@ -1,0 +1,35 @@
+{
+  "fixture_envelope_version": "1.0",
+  "fixture_id": "brain-computer-interface",
+  "kind": "research-config",
+  "description": "Golden research configuration for the brain-computer interface learning journey.",
+  "input": {
+    "schema": "https://morpho.dev/schemas/research-config.v1.json",
+    "payload": {
+      "schema_version": "1.0",
+      "domain": "neuroscience and neural engineering",
+      "topic": "brain-computer interface",
+      "purpose": "learning",
+      "audience": "self-learners with a technical background",
+      "depth": 3,
+      "dimensions": ["concepts", "history", "technology", "experiments", "applications", "controversy", "risk"],
+      "time_range": { "from": null, "to": null },
+      "geographic_scope": "global",
+      "languages": ["en"],
+      "source_types": ["encyclopedia", "news", "paper", "course"],
+      "source_domains": [],
+      "update_frequency": "manual"
+    }
+  },
+  "expected_outputs": [],
+  "provenance": {
+    "origin": "synthetic",
+    "synthetic": true,
+    "license": "CC0-1.0",
+    "notes": "Synthetic configuration authored for offline testing. No real provider responses, personal data, or private research content."
+  },
+  "stability": {
+    "deterministic": true,
+    "ignored_fields": []
+  }
+}

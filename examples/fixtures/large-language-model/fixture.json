@@ -1,0 +1,35 @@
+{
+  "fixture_envelope_version": "1.0",
+  "fixture_id": "large-language-model",
+  "kind": "research-config",
+  "description": "Golden research configuration for the large language model industry research journey.",
+  "input": {
+    "schema": "https://morpho.dev/schemas/research-config.v1.json",
+    "payload": {
+      "schema_version": "1.0",
+      "domain": "computer science",
+      "topic": "large language model",
+      "purpose": "industry",
+      "audience": "product engineers evaluating language models",
+      "depth": 5,
+      "dimensions": ["concepts", "technology", "products", "companies", "market", "policy", "recent developments"],
+      "time_range": { "from": null, "to": null },
+      "geographic_scope": "global",
+      "languages": ["en"],
+      "source_types": ["documentation", "paper", "news", "blog"],
+      "source_domains": [],
+      "update_frequency": "manual"
+    }
+  },
+  "expected_outputs": [],
+  "provenance": {
+    "origin": "synthetic",
+    "synthetic": true,
+    "license": "CC0-1.0",
+    "notes": "Synthetic configuration authored for offline testing. No real provider responses, personal data, or private research content."
+  },
+  "stability": {
+    "deterministic": true,
+    "ignored_fields": []
+  }
+}
