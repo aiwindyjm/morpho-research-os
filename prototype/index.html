@@ -18,11 +18,18 @@
           </div>
         </div>
 
-        <button class="project-switcher" type="button" data-action="project-switch">
+        <button class="project-switcher" type="button" data-action="toggle-project-menu" aria-expanded="false">
           <span class="project-dot"></span>
           <span class="project-switcher-copy"><strong>脑机接口</strong><small>Research project</small></span>
           <span class="chevron">⌄</span>
         </button>
+        <div class="project-menu" id="project-menu" hidden>
+          <div class="project-menu-heading"><span>当前工作区</span><button class="menu-manage" data-view="projects">管理全部</button></div>
+          <button class="project-menu-item active" data-project-switch="脑机接口"><span class="project-dot"></span><span><strong>脑机接口</strong><small>进行中 · 67%</small></span><span class="menu-check">✓</span></button>
+          <button class="project-menu-item" data-project-switch="大语言模型"><span class="project-dot paused-dot"></span><span><strong>大语言模型</strong><small>已暂停 · 42%</small></span></button>
+          <button class="project-menu-item" data-project-switch="个人知识管理"><span class="project-dot draft-dot"></span><span><strong>个人知识管理</strong><small>草稿 · 尚未运行</small></span></button>
+          <button class="project-menu-new" data-action="new-project">＋ 新建研究项目</button>
+        </div>
 
         <nav class="nav-list" aria-label="主要导航">
           <button class="nav-item" data-view="projects"><span class="nav-icon">▦</span>我的研究</button>
@@ -122,6 +129,15 @@
         </section>
       </main>
     </div>
+    <button class="assistant-launcher" id="assistant-launcher" type="button" aria-label="打开 Morpho AI 助手" data-action="toggle-assistant"><span class="assistant-spark">✦</span><span>AI 助手</span></button>
+    <aside class="assistant-panel" id="assistant-panel" aria-label="Morpho AI 助手" hidden>
+      <div class="assistant-header"><div><p class="kicker">当前项目助手</p><h2>Morpho AI</h2></div><button class="icon-button" data-action="toggle-assistant" aria-label="关闭 AI 助手">×</button></div>
+      <div class="assistant-context"><span class="status-dot"></span><span>正在使用 <strong id="assistant-project">脑机接口</strong> 的研究上下文</span></div>
+      <div class="assistant-messages" id="assistant-messages"><div class="assistant-message"><span class="assistant-avatar">✦</span><p>我可以帮你理解当前研究、拆分任务、检查来源，或解释一个知识节点。你想先做什么？</p></div></div>
+      <div class="assistant-suggestions"><button data-assistant-prompt="总结当前研究进度">总结进度</button><button data-assistant-prompt="下一步应该研究什么？">建议下一步</button><button data-assistant-prompt="检查当前待审核结论">检查待审核</button></div>
+      <form class="assistant-form" id="assistant-form"><input id="assistant-input" placeholder="问 Morpho 一个问题…" autocomplete="off" /><button type="submit" aria-label="发送">↑</button></form>
+      <div class="assistant-footer"><span>AI 会基于当前项目工作区回答</span><button data-view="journal">记录对话</button></div>
+    </aside>
     <div class="toast" id="toast" role="status"></div>
     <script src="./app.js"></script>
   </body>
