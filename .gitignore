@@ -26,6 +26,7 @@ Thumbs.db
 # Generated media and local captures
 docs/assets/generated/
 *.log
+.playwright-cli/
 
 # Private conversation journal (never commit)
 private/conversations/*
