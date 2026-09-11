@@ -186,3 +186,127 @@ Human review is mandatory for schemas, migrations, IPC, worker protocol, provide
 ## Deferred
 
 Hosted collaboration, accounts, payments, enterprise IAM, cloud databases, Kubernetes, Redis/Kafka, vector databases, self-hosted search, custom model training, complex multi-agent autonomy, mobile, browser extensions, 3D graphs, and automatic academic paper authorship remain deferred until an approved architecture decision changes scope.
+
+## Project task count and parallel capacity
+
+The current plan contains **42 bounded tasks**:
+
+| Work package | Tasks | Role |
+|---|---:|---|
+| W0 baseline and contracts | 5 | Establish shared rules and quality gates |
+| W1 foundations | 19 | Four implementation lanes: UI, Rust, Python, tests |
+| W2 cross-boundary contracts | 5 | Freeze schemas, protocol, providers, prompts, and IPC |
+| W3 research vertical slices | 9 | Build the research workflow in dependency order |
+| W4 integration and release | 4 | Serial end-to-end validation and human release review |
+
+The practical maximum is four independent foundation lanes after W0, not 42 agents. Within a lane, tasks remain serial. A safe operating range is four to eight active agents, with one maintainer or integration agent reserving time for contracts, migrations, conflict resolution, and the full quality gate. More agents increase merge conflicts without shortening the critical path.
+
+The critical path is:
+
+```text
+W0 → W2 contracts → RES-01/02 → RES-03/04/05 → RES-06/07/08 → RES-09 → W4
+```
+
+The UI, Rust, Python, and test foundation lanes can proceed in parallel after W0, but no agent may bypass an unfinished contract by creating a private or competing schema.
+
+## Five ready-to-copy parallel prompts
+
+Run these five prompts as separate tasks after W0 (`W0-01` through `W0-05`) is accepted. Give each AI its own branch or worktree. The prompts intentionally assign disjoint directories. If a dependency is missing, the AI must stop at a written proposal and must not invent a replacement contract.
+
+### Prompt 1: Frontend shell (`UI-01`)
+
+```text
+You are implementing Morpho Research OS task UI-01: create the minimal React + TypeScript + Vite + Tailwind desktop shell.
+
+Read first: AGENTS.md, DO_NOT_BREAK.md, docs/PRD.md, docs/ARCHITECTURE.md, docs/frontend/DESIGN_SYSTEM.md, docs/frontend/DESIGN_TOKENS.md, docs/frontend/COMPONENT_REGISTRY.md, docs/frontend/PAGE_PATTERNS.md, and docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md.
+
+Allowed scope: apps/desktop frontend files only. Do not edit apps/desktop/src-tauri, packages/schemas, packages/ui, the Python worker, root dependency files, navigation contracts, or research features.
+
+Outcome: a typed desktop shell that starts locally, has a minimal app entry point, and contains no Research Agent, provider call, database access, filesystem access, secret access, or worker-process code.
+
+Non-goals: no business pages, no new UI framework, no new state library, no design-token changes, and no direct Tauri command implementation.
+
+Acceptance checks: the documented frontend start command works; TypeScript/build checks pass; a focused smoke test proves the shell mounts; no forbidden backend imports exist; git diff --check passes.
+
+Return exactly: completed task ID, outcome, files changed, checks and results, documentation updates, known limitations, and suggested next task. Do not broaden scope.
+```
+
+### Prompt 2: Rust command and error skeleton (`RUST-01`)
+
+```text
+You are implementing Morpho Research OS task RUST-01: create the minimal Tauri Rust Core command/result and structured error skeleton.
+
+Read first: AGENTS.md, DO_NOT_BREAK.md, docs/PRD.md, docs/ARCHITECTURE.md, docs/API.md, docs/api/ERRORS.md, docs/architecture/MODULE_BOUNDARIES.md, docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md, and the approved schema conventions.
+
+Allowed scope: apps/desktop/src-tauri only. Do not edit frontend files, packages/schemas, database migrations, worker code, provider adapters, keychain implementation, or Vault writing.
+
+Outcome: typed Tauri command results and stable error codes with unit tests. Errors must contain code, safe user message, developer detail, retryable flag, and correlation ID according to the existing contract.
+
+Non-goals: no SQLite connection, filesystem operation, process management, secret handling, or product command implementation.
+
+Acceptance checks: Rust format/check/test pass; representative success and error values serialize as specified; no secrets are logged; module boundaries remain explicit; git diff --check passes.
+
+If the error or IPC contract is incomplete or contradictory, stop and write a contract proposal instead of guessing.
+
+Return exactly: completed task ID, outcome, files changed, checks and results, contract/doc updates, known limitations, and suggested next task.
+```
+
+### Prompt 3: Python worker package (`PY-01`)
+
+```text
+You are implementing Morpho Research OS task PY-01: create the minimal Python research-worker package and configuration boundary.
+
+Read first: AGENTS.md, DO_NOT_BREAK.md, docs/PRD.md, docs/ARCHITECTURE.md, docs/architecture/RESEARCH_ENGINE.md, docs/api/PROVIDERS.md, docs/ai/AI_DEVELOPMENT_RULES.md, docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md, and the schema conventions.
+
+Allowed scope: apps/research-worker only. Do not edit Rust Core, frontend, packages/schemas, prompt assets, SQLite code, Vault code, or provider network adapters.
+
+Outcome: an importable Python package with explicit configuration objects and environment parsing that stores key references rather than raw API keys. The package must be ready for later health/protocol work but must not implement research behavior yet.
+
+Non-goals: no real provider calls, no Research Agent, no search, no LLM orchestration, no filesystem writes, and no direct UI communication.
+
+Acceptance checks: pytest imports the package; configuration tests cover defaults and missing values; raw secrets are not printed or persisted; mypy or the configured type check passes; git diff --check passes.
+
+Use dependency injection and mocks. If the worker protocol or configuration contract is missing, stop with a proposal.
+
+Return exactly: completed task ID, outcome, files changed, checks and results, contract/doc updates, known limitations, and suggested next task.
+```
+
+### Prompt 4: Cross-language fixture envelope (`TEST-01`)
+
+```text
+You are implementing Morpho Research OS task TEST-01: define the deterministic cross-language fixture envelope used by Rust, Python, and TypeScript tests.
+
+Read first: AGENTS.md, DO_NOT_BREAK.md, docs/PRD.md, docs/ARCHITECTURE.md, docs/TESTING.md, docs/testing/MOCKS.md, packages/schemas/MIGRATIONS.md, docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md, and the existing fixture conventions.
+
+Allowed scope: tests/fixture support, examples/fixtures fixture metadata, and the narrowly required test documentation. Do not edit product code, provider implementations, migrations, prompts, frontend components, or worker protocol files.
+
+Outcome: one versioned fixture envelope with fixture ID, schema version, input, expected outputs, and provenance metadata. Provide one minimal offline fixture that can be loaded by the configured language test runners without a network call.
+
+Non-goals: do not define new domain fields that conflict with packages/schemas; do not add a real research dataset; do not include private conversations, API keys, or personal data.
+
+Acceptance checks: fixture files validate against the canonical schema; malformed and version-mismatch cases fail clearly; at least one loader test passes; no real provider is called; git diff --check passes.
+
+If a shared schema field is missing, report the gap and propose it for W2 instead of embedding an ad hoc JSON shape.
+
+Return exactly: completed task ID, outcome, files changed, checks and results, contract/doc updates, known limitations, and suggested next task.
+```
+
+### Prompt 5: Mock provider scenarios (`TEST-02`)
+
+```text
+You are implementing Morpho Research OS task TEST-02: add deterministic mock LLM, search, and embedding provider scenarios.
+
+Read first: AGENTS.md, DO_NOT_BREAK.md, docs/PRD.md, docs/ARCHITECTURE.md, docs/api/PROVIDERS.md, docs/ai/CACHE_AND_COST.md, docs/TESTING.md, docs/testing/MOCKS.md, and docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md.
+
+Allowed scope: tests/mocks and the corresponding test-only configuration. Do not edit production provider interfaces, Rust Core, frontend, worker orchestration, prompt assets, or secrets configuration.
+
+Outcome: reusable mocks for success, structured invalid JSON, timeout, authentication failure, retry exhaustion, cache hit, and usage accounting. Mocks must be injectable and deterministic.
+
+Non-goals: no network access, no real API keys, no provider-specific production behavior, and no changes to the domain model.
+
+Acceptance checks: tests cover each scenario and retryability; token/duration/cost fields are deterministic; a test proves no network call is made; the configured test runners pass; git diff --check passes.
+
+If the provider contract is not frozen, stop and write a contract proposal rather than creating a second interface.
+
+Return exactly: completed task ID, outcome, files changed, checks and results, contract/doc updates, known limitations, and suggested next task.
+```
