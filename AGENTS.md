@@ -10,3 +10,5 @@ Implement approved specifications, fix bugs, refactor within boundaries, add tes
 - Durable schema changes require a numbered migration and contract update.
 - User-modified Markdown is never silently overwritten.
 - Use mocks and fixtures; tests never call real providers.
+- Local conversation journals are private user data. Store them under `private/conversations/`, keep them out of Git, and never paste them into issues, PRs, logs, prompts, or telemetry without explicit user action.
+- The prototype may use browser-local storage and explicit export. Only the Rust Core may later write daily conversation files to disk.

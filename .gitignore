@@ -26,3 +26,7 @@ Thumbs.db
 # Generated media and local captures
 docs/assets/generated/
 *.log
+
+# Private conversation journal (never commit)
+private/conversations/*
+!private/conversations/.gitkeep

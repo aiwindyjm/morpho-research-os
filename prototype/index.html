@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Morpho Research OS Prototype</title>
+    <meta name="description" content="Morpho Research OS product prototype" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="项目导航">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">M</div>
+          <div>
+            <div class="eyebrow">RESEARCH OS</div>
+            <div class="brand-name">Morpho</div>
+          </div>
+        </div>
+
+        <button class="project-switcher" type="button" data-action="project-switch">
+          <span class="project-dot"></span>
+          <span class="project-switcher-copy"><strong>脑机接口</strong><small>Research project</small></span>
+          <span class="chevron">⌄</span>
+        </button>
+
+        <nav class="nav-list" aria-label="主要导航">
+          <button class="nav-item" data-view="projects"><span class="nav-icon">▦</span>我的研究</button>
+          <button class="nav-item active" data-view="overview"><span class="nav-icon">⌂</span>概览</button>
+          <button class="nav-item" data-view="setup"><span class="nav-icon">＋</span>研究配置</button>
+          <button class="nav-item" data-view="plan"><span class="nav-icon">☷</span>研究计划</button>
+          <button class="nav-item" data-view="tasks"><span class="nav-icon">✓</span>任务</button>
+          <button class="nav-item" data-view="sources"><span class="nav-icon">◌</span>来源</button>
+          <button class="nav-item" data-view="knowledge"><span class="nav-icon">◇</span>知识</button>
+          <button class="nav-item" data-view="graph"><span class="nav-icon">⌘</span>图谱</button>
+          <button class="nav-item" data-view="journal"><span class="nav-icon">▤</span>对话日志</button>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="storage-state"><span class="status-dot"></span><span><strong>本地工作区</strong><small>数据保存在本机</small></span></div>
+          <button class="nav-item quiet" data-view="settings"><span class="nav-icon">⚙</span>设置</button>
+        </div>
+      </aside>
+
+      <main class="main-column">
+        <header class="topbar">
+          <div class="breadcrumbs"><span>Morpho</span><span>/</span><strong id="breadcrumb-label">脑机接口</strong></div>
+          <div class="topbar-actions"><span class="sync-label"><span class="status-dot"></span>已保存</span><button class="icon-button" title="帮助" aria-label="帮助">?</button><button class="avatar" title="本地用户" aria-label="本地用户">A</button></div>
+        </header>
+
+        <section class="view-stack">
+          <section class="view" id="view-projects">
+            <div class="page-heading"><div><p class="kicker">我的研究</p><h1>所有研究项目</h1><p class="lede">每个主题都是一个独立的研究空间。你可以随时切换、继续或新建研究。</p></div><div class="heading-actions"><button class="button primary" data-action="new-project">＋ 新建研究</button></div></div>
+            <div class="project-toolbar"><div class="search-box">⌕ <input placeholder="搜索我的研究" /></div><span class="muted">3 个项目</span></div>
+            <div class="project-grid">
+              <article class="project-card selected-project" data-project="脑机接口"><div class="project-card-top"><span class="project-status active-status">进行中</span><button class="row-action">⋯</button></div><h2>脑机接口</h2><p>为大学课程建立神经科学与人工智能的研究知识库。</p><div class="project-card-meta"><span>67% 覆盖</span><span>126 来源</span><span>刚刚更新</span></div><div class="progress"><span style="width:67%"></span></div></article>
+              <article class="project-card" data-project="大语言模型"><div class="project-card-top"><span class="project-status paused-status">已暂停</span><button class="row-action">⋯</button></div><h2>大语言模型</h2><p>梳理模型训练、对齐方法、应用和开放生态。</p><div class="project-card-meta"><span>42% 覆盖</span><span>58 来源</span><span>昨天更新</span></div><div class="progress"><span style="width:42%"></span></div></article>
+              <article class="project-card" data-project="个人知识管理"><div class="project-card-top"><span class="project-status draft-status">草稿</span><button class="row-action">⋯</button></div><h2>个人知识管理</h2><p>比较笔记工具、知识图谱和长期信息管理方法。</p><div class="project-card-meta"><span>未开始</span><span>0 来源</span><span>尚未运行</span></div><div class="progress"><span style="width:0%"></span></div></article>
+              <button class="new-project-card" data-action="new-project"><span>＋</span><strong>新建一个研究</strong><small>从一个问题开始</small></button>
+            </div>
+          </section>
+          <section class="view active" id="view-overview" data-view-panel="overview">
+            <div class="page-heading">
+              <div><p class="kicker">研究项目 / 进行中</p><h1>脑机接口</h1><p class="lede">为大学课程建立一份可追溯、可持续更新的研究知识库。</p></div>
+              <div class="heading-actions"><button class="button secondary" data-view="setup">编辑配置</button><button class="button primary" data-action="run-research">继续研究 <span>→</span></button></div>
+            </div>
+
+            <div class="metric-grid">
+              <article class="metric-card accent"><span class="metric-label">研究覆盖度</span><strong>67%</strong><span class="metric-meta">核心维度已完成 4 / 6</span><div class="progress"><span style="width: 67%"></span></div></article>
+              <article class="metric-card"><span class="metric-label">来源</span><strong>126</strong><span class="metric-meta">42 个高质量来源</span></article>
+              <article class="metric-card"><span class="metric-label">知识节点</span><strong>348</strong><span class="metric-meta">15 种类型</span></article>
+              <article class="metric-card"><span class="metric-label">待审核结论</span><strong>12</strong><span class="metric-meta warning-text">3 个存在冲突</span></article>
+            </div>
+
+            <div class="content-grid overview-grid">
+              <article class="panel progress-panel">
+                <div class="panel-heading"><div><p class="kicker">研究进度</p><h2>当前研究路径</h2></div><button class="text-button" data-view="tasks">查看全部 <span>→</span></button></div>
+                <div class="timeline-list">
+                  <div class="timeline-row done"><span class="timeline-marker">✓</span><div><strong>基础定义与分类</strong><small>已完成 · 18 个来源 · 42 个知识节点</small></div><span class="row-status">完成</span></div>
+                  <div class="timeline-row done"><span class="timeline-marker">✓</span><div><strong>历史与技术演进</strong><small>已完成 · 24 个来源 · 61 个知识节点</small></div><span class="row-status">完成</span></div>
+                  <div class="timeline-row current"><span class="timeline-marker pulse">→</span><div><strong>核心技术与实验</strong><small>正在执行 · 正在整理 EEG 与侵入式 BCI</small><div class="mini-progress"><span style="width: 58%"></span></div></div><span class="row-status current-text">58%</span></div>
+                  <div class="timeline-row"><span class="timeline-marker">○</span><div><strong>企业与应用</strong><small>等待前置任务完成</small></div><span class="row-status muted">等待</span></div>
+                  <div class="timeline-row"><span class="timeline-marker">○</span><div><strong>争议与最新进展</strong><small>等待前置任务完成</small></div><span class="row-status muted">等待</span></div>
+                </div>
+              </article>
+
+              <article class="panel activity-panel">
+                <div class="panel-heading"><div><p class="kicker">研究活动</p><h2>刚刚发生</h2></div><span class="live-label"><span class="status-dot"></span>实时</span></div>
+                <div class="activity-list">
+                  <div class="activity-item"><span class="activity-icon blue">⌕</span><div><strong>发现 8 个新来源</strong><small>核心技术与实验 · 2 分钟前</small></div></div>
+                  <div class="activity-item"><span class="activity-icon purple">◇</span><div><strong>提取 14 个知识节点</strong><small>来自 5 个已验证来源 · 8 分钟前</small></div></div>
+                  <div class="activity-item"><span class="activity-icon orange">!</span><div><strong>发现 2 组相互矛盾的结论</strong><small>需要人工审核 · 12 分钟前</small></div></div>
+                  <div class="activity-item"><span class="activity-icon green">↗</span><div><strong>Vault 已同步</strong><small>最后写入 18 分钟前</small></div></div>
+                </div>
+              </article>
+            </div>
+
+            <div class="content-grid lower-grid">
+              <article class="panel dimension-panel"><div class="panel-heading"><div><p class="kicker">覆盖度</p><h2>研究维度</h2></div><button class="text-button" data-view="knowledge">查看知识 <span>→</span></button></div><div class="dimension-list"><div><span>基础概念</span><strong>100%</strong><i><b style="width:100%"></b></i></div><div><span>历史发展</span><strong>100%</strong><i><b style="width:100%"></b></i></div><div><span>核心技术</span><strong>76%</strong><i><b style="width:76%"></b></i></div><div><span>实验方法</span><strong>58%</strong><i><b style="width:58%"></b></i></div><div><span>产业与应用</span><strong>34%</strong><i><b style="width:34%"></b></i></div></div></article>
+              <article class="panel next-panel"><div class="panel-heading"><div><p class="kicker">下一步</p><h2>建议继续研究</h2></div><span class="tag orange-tag">低覆盖</span></div><p class="next-copy">产业与应用目前只有 3 个独立来源，建议补充企业、临床和消费应用资料。</p><button class="button secondary full" data-action="create-gap-task">创建研究任务 <span>→</span></button></article>
+            </div>
+          </section>
+
+          <section class="view" id="view-setup" data-view-panel="setup">
+            <div class="page-heading"><div><p class="kicker">研究配置</p><h1>定义你的研究问题</h1><p class="lede">这些信息会决定研究计划的范围、深度和来源选择。</p></div><div class="heading-actions"><button class="button secondary" data-view="overview">取消</button><button class="button primary" data-action="save-setup">保存配置</button></div></div>
+            <article class="panel form-panel"><div class="form-section"><div class="section-number">01</div><div class="form-section-body"><h2>研究主题</h2><p class="section-help">先明确你要理解的对象和最终用途。</p><div class="form-grid"><label>研究领域<input value="神经科学 / 人工智能" data-form="domain" /></label><label>研究主题<input value="脑机接口" data-form="topic" /></label><label class="wide">研究目的<select data-form="purpose"><option>大学课程</option><option>建立个人知识体系</option><option>行业研究</option><option>写作与报告</option></select></label><label class="wide">使用对象 / 受众<input value="对人工智能有基础了解的大学生" data-form="audience" /></label></div></div></div><div class="form-section"><div class="section-number">02</div><div class="form-section-body"><h2>研究范围</h2><p class="section-help">范围越清晰，计划越容易执行和复核。</p><div class="form-grid"><label>研究深度<div class="segmented"><button class="selected">1</button><button class="selected">2</button><button class="selected">3</button><button class="selected">4</button><button>5</button></div><small>4 · 专业研究级</small></label><label>时间范围<div class="range-input"><input value="2015" /><span>至</span><input value="2026" /></div></label><label>语言<div class="choice-row"><label class="check"><input type="checkbox" checked /> 中文</label><label class="check"><input type="checkbox" checked /> English</label></div></label><label>地域范围<input value="全球，重点关注中国、美国、欧洲" /></label></div></div></div><div class="form-section"><div class="section-number">03</div><div class="form-section-body"><h2>研究维度</h2><p class="section-help">选择计划必须覆盖的角度，可在生成计划后继续调整。</p><div class="dimension-chips"><button class="selected">基础概念</button><button class="selected">历史发展</button><button class="selected">核心技术</button><button class="selected">实验方法</button><button class="selected">关键论文</button><button>人物</button><button class="selected">企业与机构</button><button class="selected">应用</button><button>政策</button><button class="selected">最新进展</button><button>争议</button><button class="add-chip">＋ 自定义维度</button></div></div></div><div class="form-section"><div class="section-number">04</div><div class="form-section-body"><h2>来源偏好</h2><p class="section-help">Morpho 会优先搜索这些来源，并保留每个结论的出处。</p><div class="source-preferences"><label class="preference selected"><input type="checkbox" checked /><span class="preference-icon">◈</span><span><strong>学术论文</strong><small>论文、预印本、会议资料</small></span></label><label class="preference selected"><input type="checkbox" checked /><span class="preference-icon">⌘</span><span><strong>官方资料</strong><small>政府、大学、机构、公司</small></span></label><label class="preference selected"><input type="checkbox" checked /><span class="preference-icon">◌</span><span><strong>专业媒体</strong><small>行业报道和访谈</small></span></label><label class="preference"><input type="checkbox" /><span class="preference-icon">◫</span><span><strong>GitHub / 数据集</strong><small>代码、数据和实验资料</small></span></label></div></div></div></article>
+          </section>
+
+          <section class="view" id="view-plan" data-view-panel="plan"><div class="page-heading"><div><p class="kicker">研究计划 / 待确认</p><h1>脑机接口研究计划</h1><p class="lede">计划由研究配置生成。确认后，Morpho 才会开始执行任务。</p></div><div class="heading-actions"><button class="button secondary">重新生成</button><button class="button primary" data-action="approve-plan">确认并开始</button></div></div><article class="panel plan-panel"><div class="plan-summary"><div><span class="metric-label">预计任务</span><strong>18</strong></div><div><span class="metric-label">预计来源</span><strong>80–120</strong></div><div><span class="metric-label">研究维度</span><strong>8</strong></div><div><span class="metric-label">需要审核</span><strong>6–12</strong></div></div><div class="plan-tree"><div class="plan-group open"><div class="plan-group-head"><span class="drag">⋮⋮</span><span class="plan-number">01</span><div><strong>基础与历史</strong><small>建立共同语境，回答“它是什么、如何发展”</small></div><span class="plan-count">3 tasks</span><button class="collapse">⌃</button></div><div class="plan-task"><span>01.1</span><strong>脑机接口定义与分类</strong><span class="task-source">官方 / 学术</span></div><div class="plan-task"><span>01.2</span><strong>关键历史节点与技术演进</strong><span class="task-source">学术 / 媒体</span></div><div class="plan-task"><span>01.3</span><strong>核心概念词汇表</strong><span class="task-source">综合</span></div></div><div class="plan-group open"><div class="plan-group-head"><span class="drag">⋮⋮</span><span class="plan-number">02</span><div><strong>核心技术与实验</strong><small>比较信号、设备、实验方法和局限</small></div><span class="plan-count">5 tasks</span><button class="collapse">⌃</button></div><div class="plan-task"><span>02.1</span><strong>神经信号与 EEG 基础</strong><span class="task-source">学术 / 官方</span></div><div class="plan-task"><span>02.2</span><strong>侵入式与非侵入式路线比较</strong><span class="task-source">学术</span></div><div class="plan-task"><span>02.3</span><strong>代表性实验与临床证据</strong><span class="task-source">论文 / 数据集</span></div></div><div class="plan-group"><div class="plan-group-head"><span class="drag">⋮⋮</span><span class="plan-number">03</span><div><strong>企业、应用与政策</strong><small>在前置资料完成后展开</small></div><span class="plan-count">6 tasks</span><button class="collapse">⌄</button></div></div><div class="plan-group"><div class="plan-group-head"><span class="drag">⋮⋮</span><span class="plan-number">04</span><div><strong>争议与最新进展</strong><small>保留相互矛盾的证据，不强行合并</small></div><span class="plan-count">4 tasks</span><button class="collapse">⌄</button></div></div></div></article></section>
+
+          <section class="view" id="view-tasks" data-view-panel="tasks"><div class="page-heading"><div><p class="kicker">研究任务</p><h1>执行中的工作</h1><p class="lede">每个任务都可以暂停、重试，并回到具体来源和结果。</p></div><div class="heading-actions"><button class="button secondary">筛选</button><button class="button primary" data-action="run-research">继续运行</button></div></div><article class="panel table-panel"><div class="table-toolbar"><div class="table-tabs"><button class="active">全部 <span>18</span></button><button>执行中 <span>2</span></button><button>待审核 <span>3</span></button><button>已完成 <span>9</span></button></div><span class="muted">最后更新 2 分钟前</span></div><div class="task-table"><div class="task-row header"><span>任务</span><span>阶段</span><span>来源</span><span>状态</span><span></span></div><div class="task-row"><div><strong>整理 EEG BCI 基础资料</strong><small>核心技术与实验</small></div><span>提取知识</span><span>18</span><span class="status-pill running">执行中</span><button class="row-action">⋯</button></div><div class="task-row"><div><strong>侵入式 BCI 关键论文</strong><small>核心技术与实验</small></div><span>来源验证</span><span>26</span><span class="status-pill review">待审核</span><button class="row-action">⋯</button></div><div class="task-row"><div><strong>脑机接口定义和分类</strong><small>基础与历史</small></div><span>完成</span><span>18</span><span class="status-pill done-pill">已完成</span><button class="row-action">⋯</button></div><div class="task-row"><div><strong>主要研究机构</strong><small>企业、应用与政策</small></div><span>等待前置任务</span><span>—</span><span class="status-pill waiting">等待</span><button class="row-action">⋯</button></div></div></article></section>
+
+          <section class="view" id="view-sources" data-view-panel="sources"><div class="page-heading"><div><p class="kicker">来源库</p><h1>已发现的来源</h1><p class="lede">每个来源都会保留规范化地址、来源类型、质量信息和贡献的结论。</p></div><div class="heading-actions"><button class="button secondary">导入链接</button><button class="button primary">按质量筛选</button></div></div><div class="source-summary"><div><strong>126</strong><span>全部来源</span></div><div><strong class="green-text">42</strong><span>高质量</span></div><div><strong class="orange-text">63</strong><span>中等质量</span></div><div><strong class="muted">21</strong><span>待审核</span></div></div><article class="panel source-list-panel"><div class="source-list-toolbar"><div class="search-box">⌕ <input placeholder="搜索来源、作者或关键词" /></div><div class="filter-buttons"><button class="filter active">全部类型</button><button class="filter">近三年</button><button class="filter">有冲突</button></div></div><div class="source-list"><div class="source-row"><span class="source-type paper">PAPER</span><div><strong>Brain–computer interfaces: A review</strong><small>Nature Reviews Neuroscience · 2023 · 已贡献 12 个知识节点</small></div><span class="quality high">高质量</span><span class="source-score">0.94</span><button class="row-action">↗</button></div><div class="source-row"><span class="source-type official">OFFICIAL</span><div><strong>Brain-Computer Interfaces</strong><small>NIH BRAIN Initiative · 2024 · 已贡献 8 个知识节点</small></div><span class="quality high">高质量</span><span class="source-score">0.91</span><button class="row-action">↗</button></div><div class="source-row"><span class="source-type paper">PAPER</span><div><strong>Clinical translation of neural interfaces</strong><small>Journal of Neural Engineering · 2022 · 2 个相关结论</small></div><span class="quality medium">中等</span><span class="source-score">0.78</span><button class="row-action">↗</button></div></div></article></section>
+
+          <section class="view" id="view-knowledge"><div class="page-heading"><div><p class="kicker">知识库</p><h1>已提取的知识</h1><p class="lede">节点是实体和概念，结论与证据单独保存。</p></div><div class="heading-actions"><button class="button secondary">筛选类型</button><button class="button primary">导出 Vault</button></div></div><div class="knowledge-grid"><article class="knowledge-card"><div class="knowledge-card-top"><span class="node-type concept">CONCEPT</span><span class="confidence high">高可信</span></div><h2>脑机接口</h2><p>连接神经系统与外部设备，用于读取、解码或调节神经信号。</p><div class="knowledge-links"><span>↗ 18 来源</span><span>◇ 24 关系</span></div></article><article class="knowledge-card"><div class="knowledge-card-top"><span class="node-type technology">TECHNOLOGY</span><span class="confidence medium">中可信</span></div><h2>EEG</h2><p>通过头皮电极记录脑电活动，是非侵入式 BCI 的主要信号来源。</p><div class="knowledge-links"><span>↗ 12 来源</span><span>◇ 17 关系</span></div></article><article class="knowledge-card"><div class="knowledge-card-top"><span class="node-type company">COMPANY</span><span class="confidence review">待审核</span></div><h2>Neuralink</h2><p>开发植入式神经接口设备的公司，相关实验结论存在需要进一步核验的来源。</p><div class="knowledge-links"><span>↗ 9 来源</span><span>◇ 11 关系</span></div></article><article class="knowledge-card conflict-card"><div class="knowledge-card-top"><span class="node-type claim">CLAIM</span><span class="confidence conflict">有冲突</span></div><h2>临床应用时间线</h2><p>不同来源对商业化和临床成熟度的判断不一致，保留两组证据供审核。</p><div class="knowledge-links"><span>↗ 6 证据</span><span>! 需要审核</span></div></article></div></section>
+
+          <section class="view" id="view-graph"><div class="page-heading"><div><p class="kicker">知识图谱</p><h1>研究关系地图</h1><p class="lede">从节点关系回到来源和证据，而不是只看一张漂亮的图。</p></div><div class="heading-actions"><button class="button secondary">筛选</button><button class="button primary">导出图片</button></div></div><article class="panel graph-panel"><div class="graph-toolbar"><div class="graph-filters"><button class="filter active">全部节点</button><button class="filter">概念</button><button class="filter">技术</button><button class="filter">企业</button><button class="filter">论文</button></div><span class="muted">348 节点 · 512 关系</span></div><div class="graph-canvas"><svg viewBox="0 0 900 440" role="img" aria-label="脑机接口知识关系图"><g class="edges"><line x1="410" y1="210" x2="210" y2="110"/><line x1="410" y1="210" x2="165" y2="300"/><line x1="410" y1="210" x2="650" y2="105"/><line x1="410" y1="210" x2="680" y2="310"/><line x1="210" y1="110" x2="650" y2="105"/><line x1="165" y1="300" x2="680" y2="310"/><line x1="650" y1="105" x2="780" y2="210"/><line x1="680" y1="310" x2="780" y2="210"/></g><g class="nodes"><g class="node selected-node" transform="translate(410 210)"><circle r="55"/><text y="5">脑机接口</text><text y="24" class="node-sub">CONCEPT</text></g><g class="node" transform="translate(210 110)"><circle r="42"/><text y="4">EEG</text><text y="22" class="node-sub">TECHNOLOGY</text></g><g class="node" transform="translate(165 300)"><circle r="45"/><text y="4">神经信号</text><text y="22" class="node-sub">CONCEPT</text></g><g class="node" transform="translate(650 105)"><circle r="48"/><text y="4">Neuralink</text><text y="22" class="node-sub">COMPANY</text></g><g class="node" transform="translate(680 310)"><circle r="42"/><text y="4">BrainGate</text><text y="22" class="node-sub">EXPERIMENT</text></g><g class="node" transform="translate(780 210)"><circle r="36"/><text y="4">临床应用</text><text y="22" class="node-sub">APPLICATION</text></g></g></svg><div class="graph-inspector"><p class="kicker">当前选择</p><h3>脑机接口</h3><span class="node-type concept">CONCEPT</span><p>连接神经系统与外部设备的技术集合。</p><div class="inspector-stats"><span><strong>18</strong>来源</span><span><strong>24</strong>关系</span></div><button class="button secondary full">打开 Markdown</button></div></div></article></section>
+
+          <section class="view" id="view-journal"><div class="page-heading"><div><p class="kicker">私有工作日志</p><h1>对话日志</h1><p class="lede">今天的架构和产品讨论只保存在本机，不会进入 Git 或研究 Vault。</p></div><div class="heading-actions"><button class="button secondary" data-action="download-json">下载 JSON</button><button class="button primary" data-action="download-markdown">下载今日 Markdown</button></div></div><div class="journal-layout"><article class="panel journal-panel"><div class="journal-meta"><span class="tag blue-tag">2026-09-11</span><span id="journal-count">2 条记录</span><span class="local-only"><span class="status-dot"></span>仅本机</span></div><div class="journal-list" id="journal-list"><div class="journal-entry"><span class="journal-time">10:18</span><div><strong>用户</strong><p>把产品与技术合并成一份唯一 PRD，不要维护多个版本。</p></div></div><div class="journal-entry assistant"><span class="journal-time">10:21</span><div><strong>Morpho</strong><p>已将产品目标、数据模型、进程架构、前端系统和治理规则合并到 docs/PRD.md。</p></div></div></div><form class="journal-form" id="journal-form"><textarea id="journal-input" placeholder="记录今天的产品决定、问题或下一步…" rows="3"></textarea><div class="journal-form-actions"><span>保存到浏览器本地存储</span><button class="button primary" type="submit">保存记录</button></div></form></article><aside class="panel journal-info"><p class="kicker">保存规则</p><h2>只属于你的开发记录</h2><ul><li>按本地日期分组</li><li>不上传、不进入 Git</li><li>需要时显式下载 Markdown</li><li>可以手动放入 <code>private/conversations/</code></li></ul><div class="privacy-note"><strong>当前原型限制</strong><p>浏览器无法直接写入工作区。正式 Tauri 版本会由 Rust Core 按日追加本地文件。</p></div></aside></div></section>
+
+          <section class="view" id="view-settings"><div class="page-heading"><div><p class="kicker">设置</p><h1>本地工作区设置</h1><p class="lede">保持最少配置，只设置研究真正需要的内容。</p></div></div><div class="settings-grid"><article class="panel setting-card"><div class="setting-icon">⌂</div><div><h2>知识库位置</h2><p>用于保存 SQLite 索引、缓存和 Obsidian Vault。</p><button class="text-button">选择文件夹 <span>→</span></button></div><span class="setting-value">尚未连接</span></article><article class="panel setting-card"><div class="setting-icon">✦</div><div><h2>AI Provider</h2><p>配置 OpenAI-compatible API 或本地 Ollama。</p><button class="text-button">配置 Provider <span>→</span></button></div><span class="setting-value">未配置</span></article><article class="panel setting-card"><div class="setting-icon">▤</div><div><h2>私有对话日志</h2><p>日志默认只在本机保存，不参与研究任务。</p><button class="text-button" data-view="journal">打开日志 <span>→</span></button></div><span class="setting-value green-text">已启用</span></article></div></section>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

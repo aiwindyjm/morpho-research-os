@@ -25,6 +25,10 @@ Morpho is infrastructure for persistent research knowledge, not only a chat inte
 
 Knowledge workers, developers, product managers, teachers, students, independent researchers, writers, consultants, and analysts use Morpho to build a structured understanding of an unfamiliar field, prepare research-based work, track topics over time, and keep evidence in a standard Markdown/Obsidian Vault.
 
+Morpho is a workspace for many independent research projects. One person may maintain separate projects for brain-computer interfaces, large language models, personal knowledge management, or any other topic. A project is selected from the Projects view; its configuration, plan, tasks, sources, knowledge, conversation context, and Vault remain isolated from other projects.
+
+Morpho is a workspace for many independent research projects. One person may maintain separate projects for brain-computer interfaces, large language models, personal knowledge management, or any other topic. A project is selected from the Projects view; its configuration, plan, tasks, sources, knowledge, and Vault remain isolated from other projects.
+
 ## 4. Core workflow
 
 ```text

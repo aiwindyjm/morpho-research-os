@@ -10,3 +10,5 @@
 8. Structured contracts precede implementation.
 9. SQLite is runtime/index state, not the sole knowledge store.
 10. V0.1 stays single-user, local, and simple.
+11. Conversation journals are local private data and are never committed to Git.
+12. Conversation capture is explicit and must not silently upload chat content.
