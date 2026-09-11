@@ -1,0 +1,2 @@
+# Module Boundaries
+React handles presentation and typed query state (Zustand for local UI, TanStack Query for async). Tauri Rust Core exposes commands/events and owns SQLite repositories, filesystem/vault service, OS keychain, config, and worker supervisor. Python Worker owns orchestration and provider/search adapters; it returns validated results and events. Knowledge and vault engines are domain services, never UI concerns. Frontend cannot read DB, keys, files, or processes; worker cannot write UI or bypass Rust persistence.

@@ -1,0 +1,2 @@
+# Incremental Research
+Each ResearchRun snapshots config and plan. New runs fingerprint canonical sources and normalized claims to detect new, changed, and conflicting records. Versioned Markdown uses frontmatter provenance and three-way merge awareness; AI updates create proposals when user edits are detected. Existing Obsidian vault indexing is a future adapter that parses frontmatter and wikilinks into the same normalized model.

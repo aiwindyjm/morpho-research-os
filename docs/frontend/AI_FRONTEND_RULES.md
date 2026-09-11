@@ -1,0 +1,2 @@
+# AI Frontend Rules
+Read DESIGN_SYSTEM, DESIGN_TOKENS, COMPONENT_REGISTRY, PAGE_PATTERNS, and the page spec first. Reuse registered components and tokens. Do not add UI frameworks, state libraries, arbitrary colors/spacing, page-specific navigation, or inline business logic. New reusable components require registry and documentation updates. Loading, empty, error, keyboard, and responsive states are mandatory.

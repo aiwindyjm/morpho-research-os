@@ -1,0 +1,23 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required project files
+        shell: bash
+        run: |
+          test -f README.md
+          test -f README.zh-CN.md
+          test -f AGENTS.md
+          test -f DO_NOT_BREAK.md
+          test -f VERSION
+      - name: Check bilingual README structure
+        shell: bash
+        run: |
+          en=$(grep -c '^## ' README.md)
+          zh=$(grep -c '^## ' README.zh-CN.md)
+          test "$en" -eq "$zh" || { echo "README heading counts differ: $en vs $zh"; exit 1; }

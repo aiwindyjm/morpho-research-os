@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.md linguist-documentation
+*.json linguist-language=JSON
+*.yml linguist-language=YAML

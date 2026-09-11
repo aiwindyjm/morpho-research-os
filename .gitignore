@@ -1,0 +1,28 @@
+# Dependencies and build output
+node_modules/
+dist/
+target/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local application data and secrets
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+.cache/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Generated media and local captures
+docs/assets/generated/
+*.log

@@ -1,0 +1,2 @@
+# Coverage and Gaps
+V0.1 coverage per dimension = 0.4 task completion + 0.3 knowledge breadth + 0.2 evidence density + 0.1 source diversity, weighted by configured priority; quality additionally factors freshness and confidence. A gap is a dimension below 0.6 or with fewer than two independent quality sources. UI shows dimension bars, reasons, and a one-click proposed task; creation requires user acceptance. Conflict preserves both claims, evidence, and a review status.

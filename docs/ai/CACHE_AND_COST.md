@@ -1,0 +1,2 @@
+# Cache and Usage
+Cache namespaces are search, source-content, llm, and embeddings. Keys include schema/prompt version, provider/model, normalized input, and relevant source fingerprint. Cache is replaceable under the app data directory with bounded size and TTL; invalidation follows version changes or explicit refresh. LLMUsage records input/output tokens, provider, model, duration, estimated cost, task/run IDs.

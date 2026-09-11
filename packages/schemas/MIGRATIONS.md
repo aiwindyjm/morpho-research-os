@@ -1,0 +1,2 @@
+# V0.1 SQLite Migration Plan
+`migrations/001_initial.sql` creates projects, research_configs, plans, sections, runs, tasks, task_dependencies, sources, source_contents, knowledge_nodes, claims, evidence, relations, artifacts, events, llm_usage, and schema_meta. All tables have UUIDv7 primary keys, created_at/updated_at where mutable, foreign keys, and indexes required by docs/DATA_MODEL.md. Future changes are new numbered files only.

@@ -1,0 +1,2 @@
+# Provider Contracts
+LLMProvider: `complete(request, schema) -> structured response`, `stream`, and usage metadata. SearchProvider: `search(query, options) -> canonical sources`. EmbeddingProvider: `embed(texts)`. Adapters implement timeout, bounded retry, redaction, and token/cost tracking. Supported adapters are GLM, OpenAI, Claude, Gemini, DeepSeek, and Ollama; provider names/models are configuration, never domain enums.
