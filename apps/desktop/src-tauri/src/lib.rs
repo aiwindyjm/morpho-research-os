@@ -14,6 +14,7 @@ pub mod ipc;
 pub mod redaction;
 pub mod repositories;
 pub mod secrets;
+pub mod vault;
 pub mod versions;
 pub mod worker;
 
