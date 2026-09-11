@@ -2,6 +2,8 @@
 
 这是 Morpho Research OS 的统一执行计划，面向项目维护者和多个 AI Coding Agent。它把架构阶段拆成可以并行分派、独立验收、逐步合并的小任务。本文件不包含个人日期、私有批次、未公开的发布顺序或对话内容。
 
+如果目标是直接启动首轮构建，请优先使用 [`FIVE_PARALLEL_BUILD_PROMPTS.md`](FIVE_PARALLEL_BUILD_PROMPTS.md) 中的五组工作组提示词。本文件是任务、依赖和验收的详细索引；五组提示词已经把这些依赖包装起来，不要求维护者手工排序 45 个任务。
+
 ## 使用方式
 
 维护者是产品负责人和最终审查者。AI 只有在依赖任务完成、规范明确时才能接取任务。修改前必须阅读 `AGENTS.md`、`DO_NOT_BREAK.md`、`docs/PRD.md`、`docs/ARCHITECTURE.md`、本计划和任务对应的局部规范。
