@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/worker-health.v1.json",
+  "title": "WorkerHealthResponse",
+  "description": "GET /health response. Closed envelope: Rust and the worker both dispatch on these fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "worker_version", "protocol_version"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "status": { "enum": ["ok", "degraded"] },
+    "worker_version": { "type": "string", "minLength": 1 },
+    "protocol_version": { "enum": ["1.0"], "description": "Matches the frozen worker protocol schemas' major.minor." },
+    "detail": { "type": "string", "description": "Safe human-readable detail, e.g. the degraded reason." }
+  }
+}

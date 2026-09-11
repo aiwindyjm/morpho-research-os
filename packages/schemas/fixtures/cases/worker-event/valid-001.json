@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f6c02-2b22-7402-5c6d-9e7f8a9b0c12",
+  "seq": 4,
+  "job_id": "018f6c01-1a11-7301-4b5c-8d6e7f8a9b01",
+  "run_id": "018f6b40-5c88-7208-6f9a-2a5e0d8c4e75",
+  "task_id": "018f6b38-3a66-7106-4d7e-0e3c8b6a2c53",
+  "timestamp": "2026-01-15T09:06:30Z",
+  "type": "job.progress",
+  "payload": { "percent": 40, "stage": "fetching page 2" }
+}

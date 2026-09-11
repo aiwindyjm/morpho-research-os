@@ -9,10 +9,21 @@ import {
   ResearchTaskSchema,
   TaskDependencySchema,
 } from "./project";
+import {
+  WorkerCancelResponseSchema,
+  WorkerErrorEnvelopeSchema,
+  WorkerEventSchema,
+  WorkerHealthResponseSchema,
+  WorkerJobRequestSchema,
+  WorkerJobResponseSchema,
+  WorkerJobStatusSchema,
+  WorkerVersionResponseSchema,
+} from "./worker";
 
 export * from "./envelope";
 export * from "./project";
 export * from "./schema-version";
+export * from "./worker";
 
 /**
  * Registry mapping canonical schema names (file stem without `.v<major>.json`)
@@ -28,4 +39,12 @@ export const BINDINGS: Record<string, z.ZodTypeAny> = {
   "research-section": ResearchSectionSchema,
   "research-task": ResearchTaskSchema,
   "task-dependency": TaskDependencySchema,
+  "worker-cancel-response": WorkerCancelResponseSchema,
+  "worker-error": WorkerErrorEnvelopeSchema,
+  "worker-event": WorkerEventSchema,
+  "worker-health": WorkerHealthResponseSchema,
+  "worker-job-request": WorkerJobRequestSchema,
+  "worker-job-response": WorkerJobResponseSchema,
+  "worker-job-status": WorkerJobStatusSchema,
+  "worker-version": WorkerVersionResponseSchema,
 };

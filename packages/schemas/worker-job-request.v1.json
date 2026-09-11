@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/worker-job-request.v1.json",
+  "title": "WorkerJobRequest",
+  "description": "POST /jobs body. Commands are request/response; the durable job_id is minted by the Rust Core.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "job_id", "task_id", "type", "idempotency_key"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "job_id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": "string", "minLength": 1, "description": "The ResearchTask this job executes." },
+    "run_id": { "type": "string", "description": "Present once a run context exists." },
+    "type": {
+      "enum": ["search", "source-evaluation", "extraction", "entity", "relation", "validation", "writer", "synthesis"]
+    },
+    "payload": { "type": "object", "description": "Validated task parameters; never contains secrets or raw user content." },
+    "idempotency_key": { "type": "string", "minLength": 1, "description": "Duplicate submissions with the same key return the existing job instead of re-executing." },
+    "checkpoint": { "type": "object", "description": "Resume point for a retried or recovered job." }
+  }
+}

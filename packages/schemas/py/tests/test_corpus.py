@@ -101,7 +101,8 @@ def test_canonical_and_binding_agree(
 
     binding: type[BaseModel] = BINDINGS[schema_name]
     try:
-        binding.model_validate(instance)
+        # Strict mode: canonical JSON Schema semantics never coerce parsed JSON values.
+        binding.model_validate(instance, strict=True)
         binding_valid = True
     except ValidationError:
         binding_valid = False

@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "job_id": "018f6c01-1a11-7301-4b5c-8d6e7f8a9b01",
+  "task_id": "018f6b38-3a66-7106-4d7e-0e3c8b6a2c53",
+  "run_id": "018f6b40-5c88-7208-6f9a-2a5e0d8c4e75",
+  "type": "search",
+  "payload": { "query": "superconducting qubit review", "max_results": 10 },
+  "idempotency_key": "plan:018f6b35:section:018f6b36:search:concepts"
+}

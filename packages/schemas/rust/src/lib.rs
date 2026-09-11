@@ -7,6 +7,7 @@
 pub mod envelope;
 pub mod project;
 pub mod schema_version;
+pub mod worker;
 
 use serde::de::DeserializeOwned;
 
@@ -20,6 +21,12 @@ pub use project::{
     ResearchTaskType, TaskDependency, TaskDependencyCondition, TimeRange,
 };
 pub use schema_version::SchemaVersionV1;
+pub use worker::{
+    ProtocolVersion, WorkerCancelResponse, WorkerCancelStatus, WorkerErrorBlock, WorkerErrorCode,
+    WorkerErrorEnvelope, WorkerEvent, WorkerEventType, WorkerExecutionStatus, WorkerHealthResponse,
+    WorkerHealthStatus, WorkerJobProgress, WorkerJobRequest, WorkerJobResponse, WorkerJobStatus,
+    WorkerJobType, WorkerVersionResponse,
+};
 
 /// Post-deserialization constraints from the canonical JSON Schemas that serde
 /// derive cannot express mechanically (numeric ranges, minItems, minLength).
@@ -42,6 +49,14 @@ pub const BINDING_NAMES: &[&str] = &[
     "research-section",
     "research-task",
     "task-dependency",
+    "worker-cancel-response",
+    "worker-error",
+    "worker-event",
+    "worker-health",
+    "worker-job-request",
+    "worker-job-response",
+    "worker-job-status",
+    "worker-version",
 ];
 
 /// Validates `value` against the binding registered for `name`.
@@ -59,6 +74,14 @@ pub fn validate_binding(name: &str, value: &serde_json::Value) -> Result<(), Str
         "research-section" => check::<ResearchSection>(value),
         "research-task" => check::<ResearchTask>(value),
         "task-dependency" => check::<TaskDependency>(value),
+        "worker-cancel-response" => check::<WorkerCancelResponse>(value),
+        "worker-error" => check::<WorkerErrorEnvelope>(value),
+        "worker-event" => check::<WorkerEvent>(value),
+        "worker-health" => check::<WorkerHealthResponse>(value),
+        "worker-job-request" => check::<WorkerJobRequest>(value),
+        "worker-job-response" => check::<WorkerJobResponse>(value),
+        "worker-job-status" => check::<WorkerJobStatus>(value),
+        "worker-version" => check::<WorkerVersionResponse>(value),
         other => Err(format!("unknown schema name '{other}'")),
     }
 }

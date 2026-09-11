@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/worker-job-status.v1.json",
+  "title": "WorkerJobStatus",
+  "description": "GET /jobs/{id} response. Worker job status is transport-level; domain task status lives in ResearchTask records.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "job_id", "task_id", "type", "status", "created_at", "updated_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "job_id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": "string", "minLength": 1 },
+    "type": {
+      "enum": ["search", "source-evaluation", "extraction", "entity", "relation", "validation", "writer", "synthesis"]
+    },
+    "status": { "enum": ["queued", "running", "succeeded", "failed", "cancelled"] },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "percent": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "stage": { "type": "string" }
+      }
+    },
+    "checkpoint": { "type": "object" },
+    "error": { "$comment": "Inline structured error; same shape as the worker error envelope's error block.", "type": "object" },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  }
+}

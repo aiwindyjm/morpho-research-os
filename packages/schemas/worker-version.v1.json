@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/worker-version.v1.json",
+  "title": "WorkerVersionResponse",
+  "description": "GET /version response used by the Rust supervisor for the compatibility handshake.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_version", "protocol_version", "capabilities"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "worker_version": { "type": "string", "minLength": 1 },
+    "protocol_version": { "enum": ["1.0"] },
+    "capabilities": {
+      "type": "array",
+      "description": "Job types this worker build can execute; matches the research task type vocabulary.",
+      "items": { "enum": ["search", "source-evaluation", "extraction", "entity", "relation", "validation", "writer", "synthesis"] }
+    }
+  }
+}

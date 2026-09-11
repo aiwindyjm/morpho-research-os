@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/worker-job-response.v1.json",
+  "title": "WorkerJobResponse",
+  "description": "POST /jobs response (synchronous acknowledgement; execution happens via the event stream).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "job_id", "status", "accepted"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "job_id": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["queued", "running"] },
+    "accepted": { "type": "boolean" },
+    "duplicate": { "type": "boolean", "description": "True when the idempotency key mapped to an existing job." },
+    "accepted_at": { "type": "string" }
+  }
+}

@@ -36,6 +36,22 @@ from .project import (
     TimeRange,
 )
 from .schema_version import SchemaVersionV1
+from .worker import (
+    ProtocolVersion,
+    WorkerCancelResponse,
+    WorkerErrorBlock,
+    WorkerErrorCode,
+    WorkerErrorEnvelope,
+    WorkerEvent,
+    WorkerEventType,
+    WorkerHealthResponse,
+    WorkerJobProgress,
+    WorkerJobRequest,
+    WorkerJobResponse,
+    WorkerJobStatus,
+    WorkerJobType,
+    WorkerVersionResponse,
+)
 
 __all__ = [
     "BINDINGS",
@@ -47,6 +63,7 @@ __all__ = [
     "FixtureStability",
     "PlanGeneratedBy",
     "Project",
+    "ProtocolVersion",
     "ResearchConfig",
     "ResearchPlan",
     "ResearchPlanStatus",
@@ -61,6 +78,19 @@ __all__ = [
     "TaskDependency",
     "TaskDependencyCondition",
     "TimeRange",
+    "WorkerCancelResponse",
+    "WorkerErrorBlock",
+    "WorkerErrorCode",
+    "WorkerErrorEnvelope",
+    "WorkerEvent",
+    "WorkerEventType",
+    "WorkerHealthResponse",
+    "WorkerJobProgress",
+    "WorkerJobRequest",
+    "WorkerJobResponse",
+    "WorkerJobStatus",
+    "WorkerJobType",
+    "WorkerVersionResponse",
 ]
 
 # Registry mapping canonical schema names (file stem without `.v<major>.json`)
@@ -74,12 +104,24 @@ BINDINGS: dict[str, type[BaseModel]] = {
     "research-section": ResearchSection,
     "research-task": ResearchTask,
     "task-dependency": TaskDependency,
+    "worker-cancel-response": WorkerCancelResponse,
+    "worker-error": WorkerErrorEnvelope,
+    "worker-event": WorkerEvent,
+    "worker-health": WorkerHealthResponse,
+    "worker-job-request": WorkerJobRequest,
+    "worker-job-response": WorkerJobResponse,
+    "worker-job-status": WorkerJobStatus,
+    "worker-version": WorkerVersionResponse,
 }
 
 
 def validate_binding(name: str, instance: Any) -> None:
     """Validate ``instance`` against the binding registered for ``name``.
 
+    Uses pydantic strict mode so validation matches canonical JSON Schema
+    semantics exactly: inputs are parsed JSON values and are never coerced
+    (e.g. the string ``"yes"`` is not accepted for a boolean field).
+
     Raises ``pydantic.ValidationError`` (or ``KeyError`` for an unknown name).
     """
-    BINDINGS[name].model_validate(instance)
+    BINDINGS[name].model_validate(instance, strict=True)

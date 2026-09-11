@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/worker-error.v1.json",
+  "title": "WorkerErrorEnvelope",
+  "description": "Error envelope for every non-2xx worker response (docs/api/ERRORS.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "error"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "user_message", "developer_detail", "retryable", "correlation_id"],
+      "properties": {
+        "code": {
+          "enum": [
+            "WORKER_NOT_AVAILABLE",
+            "PROVIDER_AUTH_FAILED",
+            "PROVIDER_TIMEOUT",
+            "SEARCH_FAILED",
+            "SOURCE_PARSE_FAILED",
+            "LLM_INVALID_JSON",
+            "TASK_DEPENDENCY_FAILED",
+            "VAULT_WRITE_FAILED",
+            "VAULT_SCHEMA_MISMATCH",
+            "DATABASE_ERROR"
+          ]
+        },
+        "user_message": { "type": "string", "minLength": 1, "description": "Safe to show to the user; never contains keys or raw payloads." },
+        "developer_detail": { "type": "string", "description": "Redacted technical detail for Developer Mode." },
+        "retryable": { "type": "boolean" },
+        "correlation_id": { "type": "string", "minLength": 1 },
+        "cause": { "type": "string" }
+      }
+    }
+  }
+}

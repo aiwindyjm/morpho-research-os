@@ -57,4 +57,12 @@ Run the contract tests (from the repository root):
 | ResearchTask | `research-task.v1.json` | 1.0 | W2-01 | Durable task with status machine, idempotency key, and checkpoint. |
 | TaskDependency | `task-dependency.v1.json` | 1.0 | W2-01 | DAG edge with wait condition. |
 | ResearchRun | `research-run.v1.json` | 1.0 | W2-01 | One execution of an approved plan with config/plan snapshots. |
+| WorkerHealthResponse | `worker-health.v1.json` | 1.0 | W2-02 | `GET /health` closed envelope. |
+| WorkerVersionResponse | `worker-version.v1.json` | 1.0 | W2-02 | `GET /version` compatibility handshake. |
+| WorkerJobRequest | `worker-job-request.v1.json` | 1.0 | W2-02 | `POST /jobs` body with durable job ID and idempotency key. |
+| WorkerJobResponse | `worker-job-response.v1.json` | 1.0 | W2-02 | Job acknowledgement with duplicate detection. |
+| WorkerJobStatus | `worker-job-status.v1.json` | 1.0 | W2-02 | Transport-level job status. |
+| WorkerCancelResponse | `worker-cancel-response.v1.json` | 1.0 | W2-02 | Cooperative cancellation result. |
+| WorkerEvent | `worker-event.v1.json` | 1.0 | W2-02 | Ordered, append-only, reconnectable, redacted SSE event. |
+| WorkerErrorEnvelope | `worker-error.v1.json` | 1.0 | W2-02 | Structured error envelope with frozen code list. |
 | FixtureEnvelope | `fixture-envelope.v1.json` | 1.0 | W0-05 | Envelope for offline fixtures and golden results (`examples/fixtures/README.md`). |
