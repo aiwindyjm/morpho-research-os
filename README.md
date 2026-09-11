@@ -23,7 +23,7 @@ Morpho is a local-first, AI-driven research workspace that turns a research ques
 
 ## Quick start
 
-Architecture documentation is available now. Product runtime is not yet released. Follow [Open Development](docs/development/OPEN_DEVELOPMENT.md) for the current build path. Once the foundation lands:
+Architecture documentation is available now. Product runtime is not yet released. Read the [Product and Technical Specification](docs/PRD.md) and follow [Open Development](docs/development/OPEN_DEVELOPMENT.md) for the current build path. Once the foundation lands:
 
 ```bash
 pnpm install

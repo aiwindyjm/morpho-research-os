@@ -23,7 +23,7 @@ Morpho 是一个 Local-first、AI 驱动、兼容 Obsidian 的研究工作台。
 
 ## 快速开始
 
-当前先提供架构文档，运行时尚未发布。请阅读 [公开开发计划](docs/development/OPEN_DEVELOPMENT.md)。基础设施完成后：
+当前先提供统一的产品与技术规格，运行时尚未发布。请阅读 [产品与技术总纲](docs/PRD.md) 和 [公开开发计划](docs/development/OPEN_DEVELOPMENT.md)。基础设施完成后：
 
 ```bash
 pnpm install
@@ -31,11 +31,19 @@ pnpm test
 pnpm tauri dev
 ```
 
-## 文档与路线图
+## 架构
+
+React/Vite → Tauri IPC → Rust Core → Python Research Worker → SQLite 索引 + Markdown Vault。详见 [架构说明](docs/ARCHITECTURE.md) 和 [产品与技术总纲](docs/PRD.md)。
+
+## 示例
+
+首个可复现 Fixture 计划放在 `examples/fixtures/brain-computer-interface/`，会从研究配置逐步扩展到计划、来源、知识和图谱快照。
+
+## 路线图
 
 架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，路线图见 [ROADMAP.md](ROADMAP.md)。每次发布都对应真实成果，不人为制造活跃度。
 
-## 参与贡献
+## 参与贡献与社区
 
 请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，然后通过 Issue 或 Discussion 参与。
 
