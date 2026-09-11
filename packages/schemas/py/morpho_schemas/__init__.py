@@ -36,6 +36,14 @@ from .project import (
     TimeRange,
 )
 from .schema_version import SchemaVersionV1
+from .prompt import (
+    GoldenCase,
+    ModelCapability,
+    ModelHint,
+    PromptMetadata,
+    PromptStage,
+    SchemaRef,
+)
 from .provider import (
     EstimatedCost,
     ProviderConfig,
@@ -69,8 +77,13 @@ __all__ = [
     "FixtureProvenance",
     "FixtureProvenanceKind",
     "FixtureStability",
+    "GoldenCase",
+    "ModelCapability",
+    "ModelHint",
     "PlanGeneratedBy",
     "Project",
+    "PromptMetadata",
+    "PromptStage",
     "ProtocolVersion",
     "ProviderConfig",
     "ProviderKind",
@@ -85,6 +98,7 @@ __all__ = [
     "ResearchTask",
     "ResearchTaskStatus",
     "ResearchTaskType",
+    "SchemaRef",
     "SchemaVersionV1",
     "TaskDependency",
     "TaskDependencyCondition",
@@ -110,6 +124,7 @@ __all__ = [
 BINDINGS: dict[str, type[BaseModel]] = {
     "fixture-envelope": FixtureEnvelope,
     "project": Project,
+    "prompt-metadata": PromptMetadata,
     "provider-config": ProviderConfig,
     "research-config": ResearchConfig,
     "research-plan": ResearchPlan,

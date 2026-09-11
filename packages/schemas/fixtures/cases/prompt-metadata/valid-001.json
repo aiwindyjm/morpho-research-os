@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "prompt_id": "planner.plan-draft",
+  "version": "1.0.0",
+  "stage": "planner",
+  "purpose": "Draft a reviewable research plan (sections and tasks) from an approved research configuration.",
+  "input_schema": { "schema": "research-config", "schema_version": "1.0" },
+  "output_schema": { "schema": "research-plan", "schema_version": "1.0" },
+  "model_hint": { "capability": "strong" },
+  "safety": [
+    "Never fabricate sources or claims; sections must derive from the configuration dimensions.",
+    "Emit strictly valid JSON conforming to the output schema."
+  ],
+  "golden_cases": [
+    { "case_id": "basic", "fixture_ref": "minimal.research-config-basic" }
+  ]
+}

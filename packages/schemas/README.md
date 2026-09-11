@@ -67,4 +67,5 @@ Run the contract tests (from the repository root):
 | WorkerErrorEnvelope | `worker-error.v1.json` | 1.0 | W2-02 | Structured error envelope with frozen code list. |
 | ProviderConfig | `provider-config.v1.json` | 1.0 | W2-03 | One provider instance with key reference, model, timeout, retry. |
 | UsageRecord | `usage-record.v1.json` | 1.0 | W2-03 | Per-call token/duration/cost accounting with cache and retry facts. |
+| PromptMetadata | `prompt-metadata.v1.json` | 1.0 | W2-04 | Versioned prompt metadata with schema refs and golden cases (`packages/prompts/README.md`). |
 | FixtureEnvelope | `fixture-envelope.v1.json` | 1.0 | W0-05 | Envelope for offline fixtures and golden results (`examples/fixtures/README.md`). |

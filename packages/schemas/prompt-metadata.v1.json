@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/prompt-metadata.v1.json",
+  "title": "PromptMetadata",
+  "description": "Metadata for one versioned prompt asset in packages/prompts (docs/ai/PROMPT_ARCHITECTURE.md). The prompt version participates in cache keys and golden case selection.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "prompt_id", "version", "stage", "purpose", "input_schema", "output_schema", "golden_cases"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "prompt_id": {
+      "type": "string",
+      "minLength": 5,
+      "description": "Globally unique, '<stage>.<name>' kebab-case, e.g. 'planner.plan-draft'."
+    },
+    "version": { "type": "string", "minLength": 5, "description": "SemVer of this prompt; any content change must bump it." },
+    "stage": {
+      "enum": ["planner", "search", "extraction", "entity", "relation", "validation", "writing", "synthesis"]
+    },
+    "purpose": { "type": "string", "minLength": 1 },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "schema_version"],
+      "description": "Canonical contract the prompt input must satisfy.",
+      "properties": {
+        "schema": { "type": "string", "minLength": 3 },
+        "schema_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "schema_version"],
+      "description": "Canonical contract the parsed LLM output must satisfy before normalization (LLM → parse → validate → normalize → persist).",
+      "properties": {
+        "schema": { "type": "string", "minLength": 3 },
+        "schema_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "model_hint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability"],
+      "description": "Routing hint only; never a vendor or model name.",
+      "properties": {
+        "capability": { "enum": ["strong", "medium", "cheap"] }
+      }
+    },
+    "safety": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Constraints the prompt template enforces (e.g. no fabrication, cite evidence locators)."
+    },
+    "golden_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case_id", "fixture_ref"],
+        "properties": {
+          "case_id": { "type": "string", "minLength": 3 },
+          "fixture_ref": { "type": "string", "minLength": 3, "description": "fixture_id in examples/fixtures carrying input and expected output." }
+        }
+      }
+    }
+  }
+}

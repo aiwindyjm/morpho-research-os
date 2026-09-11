@@ -6,6 +6,7 @@
 
 pub mod envelope;
 pub mod project;
+pub mod prompt;
 pub mod provider;
 pub mod schema_version;
 pub mod worker;
@@ -21,6 +22,7 @@ pub use project::{
     ResearchRun, ResearchRunStatus, ResearchSection, ResearchTask, ResearchTaskStatus,
     ResearchTaskType, TaskDependency, TaskDependencyCondition, TimeRange,
 };
+pub use prompt::{GoldenCase, ModelCapability, ModelHint, PromptMetadata, PromptStage, SchemaRef};
 pub use provider::{EstimatedCost, ProviderConfig, ProviderKind, ProviderRetry, UsageRecord};
 pub use schema_version::SchemaVersionV1;
 pub use worker::{
@@ -45,6 +47,7 @@ pub trait ContractValid {
 pub const BINDING_NAMES: &[&str] = &[
     "fixture-envelope",
     "project",
+    "prompt-metadata",
     "provider-config",
     "research-config",
     "research-plan",
@@ -72,6 +75,7 @@ pub fn validate_binding(name: &str, value: &serde_json::Value) -> Result<(), Str
     match name {
         "fixture-envelope" => check::<FixtureEnvelope>(value),
         "project" => check::<Project>(value),
+        "prompt-metadata" => check::<PromptMetadata>(value),
         "provider-config" => check::<ProviderConfig>(value),
         "research-config" => check::<ResearchConfig>(value),
         "research-plan" => check::<ResearchPlan>(value),

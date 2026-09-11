@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { FixtureEnvelopeSchema } from "./envelope";
 import { ProviderConfigSchema, UsageRecordSchema } from "./provider";
+import { PromptMetadataSchema } from "./prompt";
 import {
   ProjectSchema,
   ResearchConfigSchema,
@@ -23,6 +24,7 @@ import {
 
 export * from "./envelope";
 export * from "./project";
+export * from "./prompt";
 export * from "./provider";
 export * from "./schema-version";
 export * from "./worker";
@@ -35,6 +37,7 @@ export * from "./worker";
 export const BINDINGS: Record<string, z.ZodTypeAny> = {
     "fixture-envelope": FixtureEnvelopeSchema,
     project: ProjectSchema,
+    "prompt-metadata": PromptMetadataSchema,
     "provider-config": ProviderConfigSchema,
     "research-config": ResearchConfigSchema,
   "research-plan": ResearchPlanSchema,

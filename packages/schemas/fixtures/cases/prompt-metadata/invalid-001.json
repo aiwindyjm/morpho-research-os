@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "prompt_id": "planner.plan-draft",
+  "version": "1.0.0",
+  "stage": "brainstorming",
+  "purpose": "Draft a plan.",
+  "input_schema": { "schema": "research-config", "schema_version": "1.0" },
+  "output_schema": { "schema": "research-plan", "schema_version": "1.0" },
+  "golden_cases": []
+}
