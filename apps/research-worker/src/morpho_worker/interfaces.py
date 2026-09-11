@@ -45,6 +45,7 @@ class PlannerPort(Protocol):
     def draft_plan(self, config: ResearchConfig, *, project_id: str = "") -> ResearchPlan: ...
 
 
+@runtime_checkable
 class SearchStagePort(Protocol):
     def search(self, query: str, context: StageContext) -> list[Source]: ...
 
