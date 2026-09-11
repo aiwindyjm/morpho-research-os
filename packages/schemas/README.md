@@ -51,3 +51,4 @@ Run the contract tests (from the repository root):
 | Contract | File | Version | Frozen by | Purpose |
 |---|---|---|---|---|
 | ResearchConfig | `research-config.v1.json` | 1.x | W2-01 | Structured research configuration for a project. |
+| FixtureEnvelope | `fixture-envelope.v1.json` | 1.x | W0-05 | Envelope for offline fixtures and golden results (`examples/fixtures/README.md`). |
