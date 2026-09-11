@@ -68,4 +68,11 @@ Run the contract tests (from the repository root):
 | ProviderConfig | `provider-config.v1.json` | 1.0 | W2-03 | One provider instance with key reference, model, timeout, retry. |
 | UsageRecord | `usage-record.v1.json` | 1.0 | W2-03 | Per-call token/duration/cost accounting with cache and retry facts. |
 | PromptMetadata | `prompt-metadata.v1.json` | 1.0 | W2-04 | Versioned prompt metadata with schema refs and golden cases (`packages/prompts/README.md`). |
+| Source | `source.v1.json` | 1.0 | W2-06 | Discovered external source with dedup key and quality metadata. |
+| SourceContent | `source-content.v1.json` | 1.0 | W2-06 | Cacheable extracted content identity and integrity facts. |
+| KnowledgeNode | `knowledge-node.v1.json` | 1.0 | W2-06 | Graph node with type, aliases, confidence, and bounded metadata. |
+| Claim | `claim.v1.json` | 1.0 | W2-06 | Subject/predicate/object claim with status and provenance; never an entity. |
+| Evidence | `evidence.v1.json` | 1.0 | W2-06 | Claim↔source link with locator and support/contradict direction. |
+| Relation | `relation.v1.json` | 1.0 | W2-06 | Typed node-to-node edge with confidence and lifecycle. |
+| Artifact | `artifact.v1.json` | 1.0 | W2-06 | Durable produced asset (vault export, report, snapshot). |
 | FixtureEnvelope | `fixture-envelope.v1.json` | 1.0 | W0-05 | Envelope for offline fixtures and golden results (`examples/fixtures/README.md`). |

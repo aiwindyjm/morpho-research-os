@@ -1,5 +1,14 @@
 import type { z } from "zod";
 import { FixtureEnvelopeSchema } from "./envelope";
+import {
+  ArtifactSchema,
+  ClaimSchema,
+  EvidenceSchema,
+  KnowledgeNodeSchema,
+  RelationSchema,
+  SourceContentSchema,
+  SourceSchema,
+} from "./knowledge";
 import { ProviderConfigSchema, UsageRecordSchema } from "./provider";
 import { PromptMetadataSchema } from "./prompt";
 import {
@@ -23,6 +32,7 @@ import {
 } from "./worker";
 
 export * from "./envelope";
+export * from "./knowledge";
 export * from "./project";
 export * from "./prompt";
 export * from "./provider";
@@ -36,14 +46,21 @@ export * from "./worker";
  */
 export const BINDINGS: Record<string, z.ZodTypeAny> = {
     "fixture-envelope": FixtureEnvelopeSchema,
+    artifact: ArtifactSchema,
+    claim: ClaimSchema,
+    evidence: EvidenceSchema,
+    "knowledge-node": KnowledgeNodeSchema,
     project: ProjectSchema,
     "prompt-metadata": PromptMetadataSchema,
     "provider-config": ProviderConfigSchema,
+    relation: RelationSchema,
     "research-config": ResearchConfigSchema,
   "research-plan": ResearchPlanSchema,
   "research-run": ResearchRunSchema,
   "research-section": ResearchSectionSchema,
-  "research-task": ResearchTaskSchema,
+    "research-task": ResearchTaskSchema,
+    source: SourceSchema,
+    "source-content": SourceContentSchema,
     "task-dependency": TaskDependencySchema,
     "usage-record": UsageRecordSchema,
     "worker-cancel-response": WorkerCancelResponseSchema,

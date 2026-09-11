@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "relation_id": "018f6c60-0daa-7c04-3e4f-7a5b6c7d8e01",
+  "from_node_id": "018f6c30-7a77-7901-0b1c-4d2e3f4a5b78",
+  "to_node_id": "018f6c31-8b88-7902-1c2d-5e3f4a5b6c79",
+  "predicate": "used-in",
+  "confidence": "conflicting",
+  "created_at": "2026-01-15T09:17:00Z"
+}

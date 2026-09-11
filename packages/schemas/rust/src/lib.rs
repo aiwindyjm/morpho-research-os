@@ -5,6 +5,7 @@
 //! (see `tests/corpus.rs`).
 
 pub mod envelope;
+pub mod knowledge;
 pub mod project;
 pub mod prompt;
 pub mod provider;
@@ -16,6 +17,12 @@ use serde::de::DeserializeOwned;
 pub use envelope::{
     FixtureContract, FixtureEnvelope, FixturePrompt, FixtureProvenance, FixtureProvenanceKind,
     FixtureStability,
+};
+pub use knowledge::{
+    Artifact, ArtifactFormat, ArtifactKind, Claim, ClaimProvenance, Confidence, ContentFormat,
+    CreatedBy, Evidence, EvidenceDirection, EvidenceLocator, KnowledgeNode, KnowledgeNodeType,
+    NodeStatus, QualityRating, Relation, RelationConfidence, RelationDirection, ReviewState,
+    Source, SourceContent, SourceKind, SourceQuality,
 };
 pub use project::{
     PlanGeneratedBy, Project, ResearchConfig, ResearchPlan, ResearchPlanStatus, ResearchPurpose,
@@ -45,15 +52,22 @@ pub trait ContractValid {
 /// Canonical schema names that have a Serde binding. Keep in sync with the
 /// schema files in `packages/schemas`; `tests/corpus.rs` enforces completeness.
 pub const BINDING_NAMES: &[&str] = &[
+    "artifact",
+    "claim",
+    "evidence",
     "fixture-envelope",
+    "knowledge-node",
     "project",
     "prompt-metadata",
     "provider-config",
+    "relation",
     "research-config",
     "research-plan",
     "research-run",
     "research-section",
     "research-task",
+    "source",
+    "source-content",
     "task-dependency",
     "usage-record",
     "worker-cancel-response",
@@ -73,15 +87,22 @@ pub const BINDING_NAMES: &[&str] = &[
 /// schema files in `packages/schemas`; `tests/corpus.rs` enforces completeness.
 pub fn validate_binding(name: &str, value: &serde_json::Value) -> Result<(), String> {
     match name {
+        "artifact" => check::<Artifact>(value),
+        "claim" => check::<Claim>(value),
+        "evidence" => check::<Evidence>(value),
         "fixture-envelope" => check::<FixtureEnvelope>(value),
+        "knowledge-node" => check::<KnowledgeNode>(value),
         "project" => check::<Project>(value),
         "prompt-metadata" => check::<PromptMetadata>(value),
         "provider-config" => check::<ProviderConfig>(value),
+        "relation" => check::<Relation>(value),
         "research-config" => check::<ResearchConfig>(value),
         "research-plan" => check::<ResearchPlan>(value),
         "research-run" => check::<ResearchRun>(value),
         "research-section" => check::<ResearchSection>(value),
         "research-task" => check::<ResearchTask>(value),
+        "source" => check::<Source>(value),
+        "source-content" => check::<SourceContent>(value),
         "task-dependency" => check::<TaskDependency>(value),
         "usage-record" => check::<UsageRecord>(value),
         "worker-cancel-response" => check::<WorkerCancelResponse>(value),
