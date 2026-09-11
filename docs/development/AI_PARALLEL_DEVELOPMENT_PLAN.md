@@ -74,6 +74,7 @@ W0 完成后，四条 W1 泳道可以并行。契约冻结后，W3 也可以部�
 | `W0-03` | 建立版本与兼容性元数据 | `W0-01` | 根目录 `VERSION`、Schema、Worker Protocol、Vault Schema 策略有说明 |
 | `W0-04` | 建立质量门禁和离线测试框架 | `W0-01` | CI 能运行格式、Lint/Type、契约和 Mock 测试 |
 | `W0-05` | 建立 Fixture 命名和 Golden Result 约定 | `W0-02`, `W0-04` | Fixture 格式有文档，至少一个离线 Fixture 可校验 |
+| `W0-06` | 建立 Monorepo 工具链和启动契约 | `W0-01` | 明确 pnpm/Cargo/uv 的入口、目录清单、格式化和最小启动检查；不实现业务功能 |
 
 ### W1-A：前端基础
 
@@ -81,7 +82,7 @@ W0 完成后，四条 W1 泳道可以并行。契约冻结后，W3 也可以部�
 
 | ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
-| `UI-01` | 创建 React/Vite/Tailwind 应用壳 | `W0-01`, `W0-04` | 应用可本地启动，有类型化入口，不包含业务流程 |
+| `UI-01` | 创建 React/Vite/Tailwind 应用壳 | `W0-04`, `W0-06` | 应用可本地启动，有类型化入口，不包含业务流程 |
 | `UI-02` | 实现 Design Token 和注册组件原语 | `UI-01` | 组件测试通过；页面不硬编码 Token |
 | `UI-03` | 实现应用布局和导航壳 | `UI-02` | 核心路由具有 Loading、Empty、Error、Responsive、Keyboard 状态 |
 | `UI-04` | 建立类型化 IPC/Query 服务边界 | `UI-01`, `W0-02` | UI 只调用类型化服务；架构检查禁止直接后端导入 |
@@ -97,7 +98,7 @@ W0 完成后，四条 W1 泳道可以并行。契约冻结后，W3 也可以部�
 | `RUST-02` | 增加 SQLite 连接和编号 Migration Runner | `RUST-01`, `W0-03` | 新数据库和升级路径通过集成测试 |
 | `RUST-03` | 增加 Repository Transaction 边界 | `RUST-02`, `W0-02` | 事务、外键和幂等行为有测试 |
 | `RUST-04` | 增加 OS Keychain/Configuration 边界 | `RUST-01` | 只保存 Secret 引用；Fake Keychain 测试证明不会记录密钥 |
-| `RUST-05` | 增加 Worker Supervisor 生命周期骨架 | `RUST-01`, `W2-02` | 使用 Fake Worker 测试启动、健康检查、重启、取消和关闭 |
+| `RUST-05` | 增加 Worker Supervisor 生命周期骨架 | `RUST-01`, `W0-03` | 使用临时协议草案和 Fake Worker 测试启动、健康检查、重启、取消和关闭；正式契约由 `W2-02` 冻结 |
 
 ### W1-C：Python Worker 基础
 
@@ -106,10 +107,10 @@ W0 完成后，四条 W1 泳道可以并行。契约冻结后，W3 也可以部�
 | ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
 | `PY-01` | 创建 Python 包和配置边界 | `W0-02`, `W0-03` | `pytest` 可以导入；配置不包含原始密钥 |
-| `PY-02` | 实现版本化健康检查和版本接口 | `PY-01`, `W2-02` | `/health` 和 `/version` 返回兼容响应 |
-| `PY-03` | 实现 JSONL/SSE Event 原语 | `PY-02`, `W2-02` | Event 有序、追加式、可重连且经过脱敏 |
+| `PY-02` | 实现版本化健康检查和版本接口 | `PY-01`, `W0-03` | `/health` 和 `/version` 返回符合协议草案的响应；正式契约由 `W2-02` 冻结 |
+| `PY-03` | 实现 JSONL/SSE Event 原语 | `PY-02`, `W0-03` | Event 有序、追加式、可重连且经过脱敏；正式契约由 `W2-02` 冻结 |
 | `PY-04` | 创建 Orchestrator 和 Worker 接口骨架 | `PY-01`, `W0-02` | Planner/Search/Extraction/Validation/Writer 接口有 Mock |
-| `PY-05` | 创建 Provider 接口和 Mock Adapter | `PY-04`, `W2-03` | Mock LLM/Search/Embedding 覆盖超时、重试和用量记录 |
+| `PY-05` | 创建 Provider 接口和 Mock Adapter | `PY-04`, `W0-02` | 按 Provider 契约草案创建 Mock；正式接口和用量记录由 `W2-03` 冻结 |
 
 ### W1-D：测试、Mock 与 Fixture 基础
 
@@ -127,10 +128,11 @@ W0 完成后，四条 W1 泳道可以并行。契约冻结后，W3 也可以部�
 | ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
 | `W2-01` | 冻结 Project/Config/Plan/Task Schema | `W0-02`, `TEST-01` | JSON Schema、Zod、Pydantic、Serde 对 Fixture 的校验一致 |
-| `W2-02` | 冻结 Worker Protocol 和 Event Envelope | `W0-03`, `PY-02`, `PY-03`, `RUST-05` | Health、Job、Event、Cancel、Compatibility、Error 示例可校验 |
+| `W2-02` | 冻结 Worker Protocol 和 Event Envelope | `W0-03`, `PY-02`, `PY-03`, `RUST-01` | Health、Job、Event、Cancel、Compatibility、Error 示例可校验 |
 | `W2-03` | 冻结 Provider 接口和 Usage Record | `W0-02`, `PY-05` | Domain Type 覆盖 Base URL、Key Reference、Model、Timeout、Retry、Token、Cost |
 | `W2-04` | 冻结 Prompt Metadata 和 Structured Output 契约 | `W0-02`, `PY-04` | Prompt Version、Input/Output Schema、Golden Case 格式有文档 |
 | `W2-05` | 将类型化 Tauri IPC 接入 Query/Mutation Service | `UI-04`, `RUST-01`, `W2-01`, `W2-02` | UI 能调用 Mock Project/Job Command，不能直接访问后端 |
+| `W2-06` | 冻结 Knowledge/Claim/Evidence/Relation/Artifact 契约 | `W0-02`, `TEST-01` | JSON Schema 与领域文档明确 Source/Evidence/Claim/Knowledge 关系；三端校验一致 |
 
 ### W3：研究流程垂直切片
 
@@ -142,10 +144,10 @@ W0 完成后，四条 W1 泳道可以并行。契约冻结后，W3 也可以部�
 | `RES-02` | 可暂停、重试、恢复的持久化 Task DAG | `W2-01`, `W2-02`, `RUST-02` | 可与 `RES-01` 并行 | 状态转移、依赖、幂等和崩溃恢复通过测试 |
 | `RES-03` | Search Adapter 和 Source 去重 | `W2-03`, `W2-02`, `TEST-02` | 可与 `RES-04` 并行 | Mock Search 返回标准 Source、Cache Hit 和稳定去重 Key |
 | `RES-04` | Source Evaluation 和 Content Extraction | `RES-03`, `W2-04` | 可与 `RES-05` 并行 | 非法内容可恢复；Source Quality Metadata 保留 |
-| `RES-05` | Knowledge/Entity/Relation Normalization | `W2-01`, `W2-04`, `TEST-01` | Fixture 就绪后可并行 | Node/Relation 有类型、可去重且保留 Provenance |
-| `RES-06` | Claims 和 Evidence 持久化 | `RES-05`, `W2-01` | 等 Knowledge 契约稳定后 | Support/Contradict 方向和 Confidence 可校验 |
-| `RES-07` | Markdown/Obsidian Vault Writer | `RES-05`, `RES-06`, `RUST-03` | 可与 `RES-08` 并行 | Frontmatter、Links、原子写入和用户修改保护通过测试 |
-| `RES-08` | Graph Projection 和基础 D3 View | `RES-05`, `UI-03`, `UI-04` | 可与 `RES-07` 并行 | 100 Node Fixture 可渲染；选择、过滤、Inspector 状态通过测试 |
+| `RES-05` | Knowledge/Entity/Relation Normalization | `W2-01`, `W2-04`, `W2-06`, `TEST-01` | Fixture 就绪后可并行 | Node/Relation 有类型、可去重且保留 Provenance |
+| `RES-06` | Claims 和 Evidence 持久化 | `RES-05`, `W2-01`, `W2-06` | 等 Knowledge 契约稳定后 | Support/Contradict 方向和 Confidence 可校验 |
+| `RES-07` | Markdown/Obsidian Vault Writer | `RES-05`, `RES-06`, `W2-06`, `RUST-03` | 可与 `RES-08` 并行 | Frontmatter、Links、原子写入和用户修改保护通过测试 |
+| `RES-08` | Graph Projection 和基础 D3 View | `RES-05`, `W2-06`, `UI-03`, `UI-04` | 可与 `RES-07` 并行 | 100 Node Fixture 可渲染；选择、过滤、Inspector 状态通过测试 |
 | `RES-09` | 第一条完整研究旅程 | `RES-01` 至 `RES-08` | 串行集成 | 创建项目 → 批准 Plan → 执行 Mock → 检查 Knowledge → 导出 Vault → 打开 Graph |
 
 ### W4：加固与公开版本发布
@@ -193,35 +195,54 @@ Schema、Migration、IPC、Worker Protocol、Provider Adapter、Secrets、持久
 - `git diff --check` 和公共边界检查通过。
 - Commit/PR 说明真实结果并关联任务。
 
+## PRD 一致性审计结论
+
+本计划按 `docs/PRD.md` 的产品流程、数据模型、进程边界、隐私原则和 V0.1 范围逐项核对，采用以下约束防止 AI 误解：
+
+| 审计项 | 计划中的强制约束 |
+|---|---|
+| 多项目模型 | Project 是隔离边界；配置、Run、Task、Source、Knowledge、Assistant 上下文和 Vault 均必须带 Project 归属 |
+| 研究流程 | Planner 只生成待审查 Plan；用户批准后才创建可运行 DAG；后续阶段不得跳过 Source、Evidence、Validation 和 Normalization |
+| 数据分层 | SQLite 保存 Runtime/Index/State；Markdown 保存用户知识资产；Cache 可删除；Logs 不作为知识来源 |
+| 知识关系 | Source、Evidence、Claim、Knowledge、Relation 是不同实体；冲突 Claim 共存，不覆盖历史 |
+| 进程边界 | React 只能使用类型化 IPC/Query；Rust 管理 SQLite、文件、Secrets、Worker；Python 执行研究和 Provider 适配 |
+| AI 输出 | LLM 输出必须 Parse → Validate → Normalize → Persist；禁止直接写数据库或覆盖 Vault |
+| 可恢复性 | Task 必须有状态、依赖、Idempotency Key、Checkpoint、Retry、Cancel 和崩溃恢复行为 |
+| 用户资产 | Vault 使用稳定 Node ID、Frontmatter、wikilink、原子写入和用户修改检测；不得静默覆盖 |
+| 本地优先 | 默认离线测试和本地存储；外部 Provider 是显式配置；API Key 不进入 Git、SQLite 普通表、日志或 Prompt |
+| V0.1 范围 | 单用户、本地、轻量 Orchestrator、SQLite、Markdown、D3 2D；云协作、复杂 Multi-Agent、Vector DB 等继续延期 |
+
+审计修正了两类结构问题：第一，移除了 `RUST-05/PY-02/PY-03 → W2-02 →` 自身以及 `PY-05 → W2-03 →` 自身的循环依赖，基础实现现在依赖协议草案，W2 再冻结正式契约；第二，新增 `W0-06` 工具链启动契约和 `W2-06` Knowledge/Claim/Evidence/Relation/Artifact 契约，避免 AI 自行修改根配置或发明知识数据结构。
+
 ## 明确延期内容
 
 Hosted Collaboration、账号、支付、企业 IAM、云数据库、Kubernetes、Redis/Kafka、Vector Database、自建 Search、模型训练、复杂 Multi-Agent、自带移动端、浏览器扩展、3D Graph 和自动代写学术论文，在新的架构决策批准前全部延期。
 
 ## 任务总量与并行能力评估
 
-当前计划共包含 **42 个有边界任务**：
+当前计划共包含 **44 个有边界任务**：
 
 | 工作包 | 任务数 | 作用 |
 |---|---:|---|
-| W0 基线与契约 | 5 | 建立共享规则和质量门禁 |
+| W0 基线与契约 | 6 | 建立共享规则、工具链和质量门禁 |
 | W1 基础设施 | 19 | 前端、Rust、Python、测试四条泳道 |
-| W2 跨边界契约 | 5 | 冻结 Schema、Protocol、Provider、Prompt、IPC |
+| W2 跨边界契约 | 6 | 冻结运行时、知识、Provider、Prompt、IPC Schema |
 | W3 研究垂直切片 | 9 | 按依赖构建研究流程 |
 | W4 集成与发布 | 4 | 串行端到端验证和人工发布审查 |
 
-实际最多适合同时运行四条基础泳道，而不是启动 42 个 AI。建议同时运行 4 到 8 个 AI：维护者或一个集成 AI 保留给契约、Migration、冲突处理和完整质量门禁。继续增加 AI 数量通常只会增加合并冲突，不会缩短关键路径。
+实际最多适合同时运行四条基础泳道，而不是为 44 个任务启动 44 个 AI。建议同时运行 4 到 8 个 AI：维护者或一个集成 AI 保留给契约、Migration、冲突处理和完整质量门禁。继续增加 AI 数量通常只会增加合并冲突，不会缩短关键路径。
 
 关键路径是：
 
 ```text
-W0 → W2 契约 → RES-01/02 → RES-03/04/05 → RES-06/07/08 → RES-09 → W4
+W0 → W2-01/02/03/04/06 → W2-05 → RES-01/02 → RES-03/04/05 → RES-06/07/08 → RES-09 → W4
 ```
 
-W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。但任何 AI 都不能绕过未完成的契约，创建私有或竞争性的 Schema。
+W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。W2-06 必须在 RES-05 之前完成，W2-05 必须在完整 UI/后端集成之前完成。但任何 AI 都不能绕过未完成的契约，创建私有或竞争性的 Schema。
 
 ## 5 个可直接复制的并行任务提示词
 
-以下 5 个提示词应在 W0（`W0-01` 至 `W0-05`）完成后作为独立任务运行。每个 AI 使用自己的分支或 Worktree。提示词已经分配了互不重叠的目录。如果依赖未完成，AI 必须停止并提交书面提案，不得自行发明替代契约。
+以下 5 个提示词应在 W0（`W0-01` 至 `W0-06`）完成后作为独立任务运行。每个 AI 使用自己的分支或 Worktree。提示词已经分配了互不重叠的目录。如果依赖未完成，AI 必须停止并提交书面提案，不得自行发明替代契约。
 
 ### 提示词 1：前端应用壳（`UI-01`）
 
@@ -263,7 +284,7 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。但�
 最后必须按统一交接格式返回任务 ID、结果、文件、检查结果、契约/文档更新、限制和下一任务。
 ```
 
-## 其余 37 个任务的中文提示词
+## 其余任务的中文提示词
 
 使用下面任一任务提示词时，先复制“通用执行前缀”，再复制对应任务块。前缀是全部任务共同的强制规则，任务块定义具体范围。两部分合在一起才是一份完整提示词。
 
@@ -350,6 +371,18 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。但�
 允许修改：examples/fixtures 的规范、最小合成 Fixture 和相关测试文档。禁止加入大体积抓取数据、版权不明内容、个人数据或真实 Provider Response。
 
 验收：一个最小离线 Fixture 能通过 Schema 校验；Golden Result 的更新审核规则明确；时间戳、随机 ID 等非确定字段有规范化策略。
+```
+
+#### `W0-06`：Monorepo 工具链和启动契约
+
+```text
+执行 W0-06，依赖 W0-01。专项阅读 docs/architecture/REPOSITORY.md、docs/DEVELOPMENT.md、docs/development/PROJECT_SETUP.md、docs/TESTING.md 和现有版本文件。
+
+目标：明确 pnpm、Cargo、uv/pytest 的工作区入口、目录清单、格式化/类型检查命令、最小启动命令和 CI 调用方式。
+
+允许修改：根目录工具配置、启动说明、CI 命令映射和必要的空目录占位文件。禁止实现 React、Rust、Python 业务代码；禁止引入新的构建系统或包管理器。
+
+验收：每个命令都有实际存在的目标或明确的后续任务；Windows/CI 使用方式不互相矛盾；根目录依赖边界明确；文档能指导 AI 选择正确工作目录。
 ```
 
 ### W1-A 前端基础后续任务
@@ -443,9 +476,9 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。但�
 #### `RUST-05`：Worker Supervisor 生命周期
 
 ```text
-执行 RUST-05，依赖 RUST-01 和 W2-02。专项阅读 docs/ARCHITECTURE.md、docs/api/ERRORS.md、docs/architecture/MODULE_BOUNDARIES.md 和 Worker Protocol 契约。
+执行 RUST-05，依赖 RUST-01 和 W0-03。专项阅读 docs/ARCHITECTURE.md、docs/api/ERRORS.md、docs/architecture/MODULE_BOUNDARIES.md 和 Worker Protocol 草案。
 
-目标：实现 Worker Process 启动、健康检查、版本兼容、有限重启、关闭、取消和 WORKER_NOT_AVAILABLE 错误的 Supervisor 骨架。
+目标：根据 Worker Protocol 草案实现 Worker Process 启动、健康检查、版本兼容、有限重启、关闭、取消和 WORKER_NOT_AVAILABLE 错误的 Supervisor 骨架。正式协议字段必须在 W2-02 冻结后核对。
 
 允许修改：Rust Worker Supervisor、协议 Client 和 Fake Worker 测试。禁止实现 Python 研究逻辑、Provider、Task DAG 或绕过协议直接调用脚本。
 
@@ -457,9 +490,9 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。但�
 #### `PY-02`：健康检查与版本接口
 
 ```text
-执行 PY-02，依赖 PY-01 和 W2-02。专项阅读 docs/ARCHITECTURE.md、docs/API.md、docs/api/ERRORS.md 和 Worker Protocol 契约。
+执行 PY-02，依赖 PY-01 和 W0-03。专项阅读 docs/ARCHITECTURE.md、docs/API.md、docs/api/ERRORS.md 和 Worker Protocol 草案。
 
-目标：实现 /health、/version 和协议兼容性响应，提供本地测试 Server/Client。
+目标：实现 /health、/version 和基础协议兼容性响应，提供本地测试 Server/Client。字段以 W2-02 最终契约为准，不能自行扩展业务字段。
 
 允许修改：apps/research-worker 的 transport/health 模块和测试。禁止执行研究任务、连接真实 Provider、写 Vault 或处理 API Key Value。
 
@@ -469,9 +502,9 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。但�
 #### `PY-03`：JSONL/SSE Event 原语
 
 ```text
-执行 PY-03，依赖 PY-02 和 W2-02。专项阅读 docs/ARCHITECTURE.md、docs/api/ERRORS.md、Worker Event Envelope 契约和隐私规则。
+执行 PY-03，依赖 PY-02 和 W0-03。专项阅读 docs/ARCHITECTURE.md、docs/api/ERRORS.md、Worker Event Envelope 草案和隐私规则。
 
-目标：实现有序、追加式、可重连、可脱敏的 Job Event 编码、游标和 SSE 输出原语。
+目标：实现有序、追加式、可重连、可脱敏的 Job Event 编码、游标和 SSE 输出原语。最终字段和错误语义在 W2-02 冻结后做合同测试。
 
 允许修改：Worker transport/events 模块和测试。禁止创建领域状态机、写 SQLite、把原始 LLM Response 或 Secret 放入 Event。
 
@@ -493,9 +526,9 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。但�
 #### `PY-05`：Provider 接口与 Mock Adapter
 
 ```text
-执行 PY-05，依赖 PY-04 和 W2-03。专项阅读 docs/api/PROVIDERS.md、docs/ai/MODEL_ROUTING.md、docs/ai/CACHE_AND_COST.md 和 Mock 规范。
+执行 PY-05，依赖 PY-04 和 W0-02。专项阅读 docs/api/PROVIDERS.md、docs/ai/MODEL_ROUTING.md、docs/ai/CACHE_AND_COST.md 和 Mock 规范。
 
-目标：实现 Provider-neutral 的 LLMProvider、SearchProvider、EmbeddingProvider 接口及本地 Mock Adapter。
+目标：根据 Provider 契约草案实现 Provider-neutral 的 LLMProvider、SearchProvider、EmbeddingProvider 接口及本地 Mock Adapter。W2-03 冻结后必须执行兼容性核对。
 
 允许修改：Worker provider ports、Mock Adapter、Usage 类型和测试。禁止实现具体厂商生产 SDK、保存 API Key、把 Provider 类型泄漏到 Domain 或进行真实网络调用。
 
@@ -588,6 +621,18 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。但�
 允许修改：前端 Service、Rust IPC Adapter、契约测试和必要文档。禁止让 React 直接访问 SQLite、Filesystem、Secrets 或 Worker Process；禁止新增临时 JSON。
 
 验收：请求、响应、Error、取消和 Event 类型一致；前端不依赖 Rust 内部类型；IPC 错误可展示；集成 Mock 测试通过。
+```
+
+#### `W2-06`：Knowledge/Claim/Evidence/Relation/Artifact 契约
+
+```text
+执行 W2-06，依赖 W0-02 和 TEST-01。专项阅读 docs/DATA_MODEL.md、docs/data/KNOWLEDGE_SCHEMA.md、CLAIM_SCHEMA.md、EVIDENCE_SCHEMA.md、RELATION_SCHEMA.md、VAULT_SCHEMA.md 和 docs/PRD.md。
+
+目标：冻结 KnowledgeNode、Claim、Evidence、Relation、Artifact 的 JSON Schema、关系约束、Provenance、Confidence、Conflict、状态和 Vault 引用。
+
+允许修改：packages/schemas、docs/data/、契约示例和跨语言校验测试。禁止实现 Normalization、Repository、Vault Writer 或 Graph UI；禁止把所有类型压成无边界 JSON。
+
+验收：明确 Source → Evidence → Claim → Knowledge 关系；Claim 不等于 Knowledge；Evidence 必须引用 Source 和定位信息；Conflict 可共存；JSON Schema、Zod、Pydantic、Serde 的校验一致。
 ```
 
 ### W3 研究流程任务
