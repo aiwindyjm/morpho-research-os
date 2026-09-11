@@ -36,6 +36,13 @@ from .project import (
     TimeRange,
 )
 from .schema_version import SchemaVersionV1
+from .provider import (
+    EstimatedCost,
+    ProviderConfig,
+    ProviderKind,
+    ProviderRetry,
+    UsageRecord,
+)
 from .worker import (
     ProtocolVersion,
     WorkerCancelResponse,
@@ -55,6 +62,7 @@ from .worker import (
 
 __all__ = [
     "BINDINGS",
+    "EstimatedCost",
     "FixtureContract",
     "FixtureEnvelope",
     "FixturePrompt",
@@ -64,6 +72,9 @@ __all__ = [
     "PlanGeneratedBy",
     "Project",
     "ProtocolVersion",
+    "ProviderConfig",
+    "ProviderKind",
+    "ProviderRetry",
     "ResearchConfig",
     "ResearchPlan",
     "ResearchPlanStatus",
@@ -78,6 +89,7 @@ __all__ = [
     "TaskDependency",
     "TaskDependencyCondition",
     "TimeRange",
+    "UsageRecord",
     "WorkerCancelResponse",
     "WorkerErrorBlock",
     "WorkerErrorCode",
@@ -98,12 +110,14 @@ __all__ = [
 BINDINGS: dict[str, type[BaseModel]] = {
     "fixture-envelope": FixtureEnvelope,
     "project": Project,
+    "provider-config": ProviderConfig,
     "research-config": ResearchConfig,
     "research-plan": ResearchPlan,
     "research-run": ResearchRun,
     "research-section": ResearchSection,
     "research-task": ResearchTask,
     "task-dependency": TaskDependency,
+    "usage-record": UsageRecord,
     "worker-cancel-response": WorkerCancelResponse,
     "worker-error": WorkerErrorEnvelope,
     "worker-event": WorkerEvent,

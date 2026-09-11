@@ -6,6 +6,7 @@
 
 pub mod envelope;
 pub mod project;
+pub mod provider;
 pub mod schema_version;
 pub mod worker;
 
@@ -20,6 +21,7 @@ pub use project::{
     ResearchRun, ResearchRunStatus, ResearchSection, ResearchTask, ResearchTaskStatus,
     ResearchTaskType, TaskDependency, TaskDependencyCondition, TimeRange,
 };
+pub use provider::{EstimatedCost, ProviderConfig, ProviderKind, ProviderRetry, UsageRecord};
 pub use schema_version::SchemaVersionV1;
 pub use worker::{
     ProtocolVersion, WorkerCancelResponse, WorkerCancelStatus, WorkerErrorBlock, WorkerErrorCode,
@@ -43,12 +45,14 @@ pub trait ContractValid {
 pub const BINDING_NAMES: &[&str] = &[
     "fixture-envelope",
     "project",
+    "provider-config",
     "research-config",
     "research-plan",
     "research-run",
     "research-section",
     "research-task",
     "task-dependency",
+    "usage-record",
     "worker-cancel-response",
     "worker-error",
     "worker-event",
@@ -68,12 +72,14 @@ pub fn validate_binding(name: &str, value: &serde_json::Value) -> Result<(), Str
     match name {
         "fixture-envelope" => check::<FixtureEnvelope>(value),
         "project" => check::<Project>(value),
+        "provider-config" => check::<ProviderConfig>(value),
         "research-config" => check::<ResearchConfig>(value),
         "research-plan" => check::<ResearchPlan>(value),
         "research-run" => check::<ResearchRun>(value),
         "research-section" => check::<ResearchSection>(value),
         "research-task" => check::<ResearchTask>(value),
         "task-dependency" => check::<TaskDependency>(value),
+        "usage-record" => check::<UsageRecord>(value),
         "worker-cancel-response" => check::<WorkerCancelResponse>(value),
         "worker-error" => check::<WorkerErrorEnvelope>(value),
         "worker-event" => check::<WorkerEvent>(value),

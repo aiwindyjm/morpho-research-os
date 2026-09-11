@@ -65,4 +65,6 @@ Run the contract tests (from the repository root):
 | WorkerCancelResponse | `worker-cancel-response.v1.json` | 1.0 | W2-02 | Cooperative cancellation result. |
 | WorkerEvent | `worker-event.v1.json` | 1.0 | W2-02 | Ordered, append-only, reconnectable, redacted SSE event. |
 | WorkerErrorEnvelope | `worker-error.v1.json` | 1.0 | W2-02 | Structured error envelope with frozen code list. |
+| ProviderConfig | `provider-config.v1.json` | 1.0 | W2-03 | One provider instance with key reference, model, timeout, retry. |
+| UsageRecord | `usage-record.v1.json` | 1.0 | W2-03 | Per-call token/duration/cost accounting with cache and retry facts. |
 | FixtureEnvelope | `fixture-envelope.v1.json` | 1.0 | W0-05 | Envelope for offline fixtures and golden results (`examples/fixtures/README.md`). |

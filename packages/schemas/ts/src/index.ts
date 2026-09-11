@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { FixtureEnvelopeSchema } from "./envelope";
+import { ProviderConfigSchema, UsageRecordSchema } from "./provider";
 import {
   ProjectSchema,
   ResearchConfigSchema,
@@ -22,6 +23,7 @@ import {
 
 export * from "./envelope";
 export * from "./project";
+export * from "./provider";
 export * from "./schema-version";
 export * from "./worker";
 
@@ -31,15 +33,17 @@ export * from "./worker";
  * here; the corpus test enforces it.
  */
 export const BINDINGS: Record<string, z.ZodTypeAny> = {
-  "fixture-envelope": FixtureEnvelopeSchema,
-  project: ProjectSchema,
-  "research-config": ResearchConfigSchema,
+    "fixture-envelope": FixtureEnvelopeSchema,
+    project: ProjectSchema,
+    "provider-config": ProviderConfigSchema,
+    "research-config": ResearchConfigSchema,
   "research-plan": ResearchPlanSchema,
   "research-run": ResearchRunSchema,
   "research-section": ResearchSectionSchema,
   "research-task": ResearchTaskSchema,
-  "task-dependency": TaskDependencySchema,
-  "worker-cancel-response": WorkerCancelResponseSchema,
+    "task-dependency": TaskDependencySchema,
+    "usage-record": UsageRecordSchema,
+    "worker-cancel-response": WorkerCancelResponseSchema,
   "worker-error": WorkerErrorEnvelopeSchema,
   "worker-event": WorkerEventSchema,
   "worker-health": WorkerHealthResponseSchema,

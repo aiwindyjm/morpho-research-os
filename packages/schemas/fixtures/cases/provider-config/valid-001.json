@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "provider_id": "glm-main",
+  "kind": "llm",
+  "base_url": "https://api.example.com/v1",
+  "key_reference": "keychain:glm-main",
+  "model": "glm-4.7",
+  "timeout_ms": 60000,
+  "retry": { "max_attempts": 3, "backoff_ms": 2000 }
+}

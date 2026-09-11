@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/provider-config.v1.json",
+  "title": "ProviderConfig",
+  "description": "Configuration for one LLM, search, or embedding provider instance. Provider names, adapters, and models are configuration values, never domain enums (docs/api/PROVIDERS.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "provider_id", "kind", "base_url", "model", "timeout_ms", "retry"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "provider_id": { "type": "string", "minLength": 1, "description": "User-visible instance name, e.g. 'glm-main' or 'ollama-local'." },
+    "kind": { "enum": ["llm", "search", "embedding"] },
+    "base_url": { "type": "string", "minLength": 1, "description": "Endpoint root, e.g. https://api.example.com/v1 or http://127.0.0.1:11434." },
+    "key_reference": { "type": "string", "description": "OS keychain reference; the key VALUE never appears in any persisted record, log, event, or prompt. Local providers may omit it." },
+    "model": { "type": "string", "minLength": 1, "description": "Model identifier, e.g. 'glm-4.7' or 'qwen3:8b'. Configuration, not a domain enum." },
+    "timeout_ms": { "type": "integer", "minimum": 100 },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_attempts", "backoff_ms"],
+      "properties": {
+        "max_attempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "backoff_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "extra_headers": {
+      "type": "object",
+      "description": "Additional headers; values must be non-secret. Redacted in logs."
+    }
+  }
+}

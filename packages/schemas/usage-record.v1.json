@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/usage-record.v1.json",
+  "title": "UsageRecord",
+  "description": "One provider usage accounting record (PRD section 11): tokens, duration, estimated cost, cache hits, retries, and task/run provenance.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "usage_id", "task_id", "provider_id", "model", "input_tokens", "output_tokens", "duration_ms", "created_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "usage_id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string" },
+    "provider_id": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["llm", "search", "embedding"] },
+    "model": { "type": "string", "minLength": 1 },
+    "input_tokens": { "type": "integer", "minimum": 0 },
+    "output_tokens": { "type": "integer", "minimum": 0 },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "estimated_cost_usd": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "currency"],
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "currency": { "enum": ["USD"] }
+      }
+    },
+    "cache_hit": { "type": "boolean", "description": "True when the result came from cache and consumed no provider quota." },
+    "retries": { "type": "integer", "minimum": 0 },
+    "created_at": { "type": "string", "description": "RFC 3339 UTC timestamp." }
+  }
+}
