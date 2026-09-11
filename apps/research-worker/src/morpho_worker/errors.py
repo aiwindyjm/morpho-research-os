@@ -69,14 +69,20 @@ class MorphoError(Exception):
         self.code = code
         self.user_message = user_message
         self.developer_detail = developer_detail
-        self.retryable = _DEFAULT_RETRYABLE[code] if retryable is None else retryable
+        if retryable is None:
+            retryable = _DEFAULT_RETRYABLE.get(code, False)
+        self.retryable = retryable
         self.correlation_id = correlation_id
         self.details = dict(details or {})
         self.cause = cause
 
     def to_dict(self) -> dict[str, Any]:
+        # Domain errors use ErrorCode members; the draft HTTP transport may
+        # raise placeholder string codes until W2-02 freezes the protocol.
+        # Both serialize to the same envelope.
+        code = self.code.value if isinstance(self.code, ErrorCode) else str(self.code)
         payload: dict[str, Any] = {
-            "code": self.code.value,
+            "code": code,
             "user_message": self.user_message,
             "developer_detail": self.developer_detail,
             "retryable": self.retryable,
@@ -89,7 +95,8 @@ class MorphoError(Exception):
         return payload
 
     def __repr__(self) -> str:  # pragma: no cover - debugging helper
+        code = self.code.value if isinstance(self.code, ErrorCode) else str(self.code)
         return (
-            f"MorphoError(code={self.code.value!r}, retryable={self.retryable!r}, "
+            f"MorphoError(code={code!r}, retryable={self.retryable!r}, "
             f"user_message={self.user_message!r})"
         )
