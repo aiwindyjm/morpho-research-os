@@ -12,6 +12,7 @@ pub mod error;
 pub mod ids;
 pub mod ipc;
 pub mod redaction;
+pub mod repositories;
 pub mod versions;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
