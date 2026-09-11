@@ -7,6 +7,7 @@
 //!   repositories never commit or roll back on their own;
 //! * every error surfaces as the unified [`CoreError`] model.
 
+pub mod artifacts;
 pub mod configs;
 pub mod knowledge;
 pub mod plans;
