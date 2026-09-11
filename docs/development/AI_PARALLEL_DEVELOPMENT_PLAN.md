@@ -61,7 +61,7 @@ W3 研究流程垂直切片
 W4 完整本地流程集成与发布加固
 ```
 
-W0 完成后，四条 W1 泳道可以并行。契约冻结后，W3 也可以部分重叠：Planner 与 DAG 可以并行；Worker/Provider 契约完成后，Search 与 Extraction 可以并行；有标准 Knowledge Fixture 后，Vault 与 Graph 可以并行。W4 必须串行，因为它验证完整用户旅程。
+W0 完成后，四条 W1 泳道可以并行。契约冻结后，W3 也可以部分重叠：Planner 与 DAG 可以并行；Worker/Provider 契约完成后，Search 与 Extraction 可以并行；有标准 Knowledge Fixture 后，Vault、Graph 与 Timeline/Coverage/Gap 可以并行。W4 必须串行，因为它验证完整用户旅程。
 
 ## 工作包与小任务
 
@@ -148,14 +148,15 @@ W0 完成后，四条 W1 泳道可以并行。契约冻结后，W3 也可以部�
 | `RES-06` | Claims 和 Evidence 持久化 | `RES-05`, `W2-01`, `W2-06` | 等 Knowledge 契约稳定后 | Support/Contradict 方向和 Confidence 可校验 |
 | `RES-07` | Markdown/Obsidian Vault Writer | `RES-05`, `RES-06`, `W2-06`, `RUST-03` | 可与 `RES-08` 并行 | Frontmatter、Links、原子写入和用户修改保护通过测试 |
 | `RES-08` | Graph Projection 和基础 D3 View | `RES-05`, `W2-06`, `UI-03`, `UI-04` | 可与 `RES-07` 并行 | 100 Node Fixture 可渲染；选择、过滤、Inspector 状态通过测试 |
-| `RES-09` | 第一条完整研究旅程 | `RES-01` 至 `RES-08` | 串行集成 | 创建项目 → 批准 Plan → 执行 Mock → 检查 Knowledge → 导出 Vault → 打开 Graph |
+| `RES-09` | 第一条完整研究旅程 | `RES-01` 至 `RES-08`, `RES-10` | 串行集成 | 创建项目 → 批准 Plan → 执行 Mock → 检查 Knowledge → 导出 Vault → 打开 Graph/Timeline/Coverage/Gap |
+| `RES-10` | Timeline、Coverage 与 Gap 视图 | `RES-02`, `RES-05`, `RES-06`, `W2-06`, `UI-03`, `UI-04` | 可与 `RES-07`、`RES-08` 并行 | 按 PRD 公式计算可解释覆盖度，展示时间线和缺口，并可由用户批准生成后续任务 |
 
 ### W4：加固与公开版本发布
 
 | ID | 结果 | 依赖 | 验收 |
 |---|---|---|---|
 | `REL-01` | 离线端到端质量门禁 | `RES-09`, `TEST-04` | Format、Lint、Typecheck、Unit、Contract、Migration、Playwright 全部通过 |
-| `REL-02` | 文档和示例同步 | `REL-01` | README、架构链接、Quick Start、Fixture README、CHANGELOG 描述真实行为 |
+| `REL-02` | 文档和示例同步 | `REL-01` | README、架构链接、Quick Start、Fixture README、CHANGELOG 描述真实行为，并确认 quantum-entanglement、brain-computer-interface、large-language-model 三组 Golden Fixture 的状态 |
 | `REL-03` | 隐私和公共边界审计 | `REL-01`, `REL-02` | 暂存区没有私有文件、密钥、本地数据库、Cache 或对话记录 |
 | `REL-04` | 人工发布审查 | `REL-03` | 维护者确认范围、已知问题、Demo、版本和 Release Notes |
 
@@ -220,22 +221,22 @@ Hosted Collaboration、账号、支付、企业 IAM、云数据库、Kubernetes�
 
 ## 任务总量与并行能力评估
 
-当前计划共包含 **44 个有边界任务**：
+当前计划共包含 **45 个有边界任务**：
 
 | 工作包 | 任务数 | 作用 |
 |---|---:|---|
 | W0 基线与契约 | 6 | 建立共享规则、工具链和质量门禁 |
 | W1 基础设施 | 19 | 前端、Rust、Python、测试四条泳道 |
 | W2 跨边界契约 | 6 | 冻结运行时、知识、Provider、Prompt、IPC Schema |
-| W3 研究垂直切片 | 9 | 按依赖构建研究流程 |
+| W3 研究垂直切片 | 10 | 按依赖构建研究流程 |
 | W4 集成与发布 | 4 | 串行端到端验证和人工发布审查 |
 
-实际最多适合同时运行四条基础泳道，而不是为 44 个任务启动 44 个 AI。建议同时运行 4 到 8 个 AI：维护者或一个集成 AI 保留给契约、Migration、冲突处理和完整质量门禁。继续增加 AI 数量通常只会增加合并冲突，不会缩短关键路径。
+实际最多适合同时运行四条基础泳道，而不是为 45 个任务启动 45 个 AI。建议同时运行 4 到 8 个 AI：维护者或一个集成 AI 保留给契约、Migration、冲突处理和完整质量门禁。继续增加 AI 数量通常只会增加合并冲突，不会缩短关键路径。
 
 关键路径是：
 
 ```text
-W0 → W2-01/02/03/04/06 → W2-05 → RES-01/02 → RES-03/04/05 → RES-06/07/08 → RES-09 → W4
+W0 → W2-01/02/03/04/06 → W2-05 → RES-01/02 → RES-03/04/05 → RES-06/07/08/10 → RES-09 → W4
 ```
 
 W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。W2-06 必须在 RES-05 之前完成，W2-05 必须在完整 UI/后端集成之前完成。但任何 AI 都不能绕过未完成的契约，创建私有或竞争性的 Schema。
@@ -733,16 +734,30 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。W2-06
 验收：100 Node Fixture 可交互；500 Node 有过滤/增量更新策略；大规模数据有聚合/列表降级说明；键盘、空、加载、错误和选择状态通过测试。
 ```
 
+#### `RES-10`：Timeline、Coverage 与 Gap 视图
+
+```text
+执行 RES-10，依赖 RES-02、RES-05、RES-06、W2-06、UI-03 和 UI-04。专项阅读 docs/PRD.md 的 Coverage、Gap、Views 和 Delivery Phases，docs/architecture/RESEARCH_ENGINE.md、docs/DATA_MODEL.md、相关 Page Spec、docs/frontend/PAGE_PATTERNS.md 和 docs/frontend/AI_FRONTEND_RULES.md。
+
+目标：实现项目级 Timeline、Coverage 和 Gap 的最小可用投影。Coverage 必须使用 PRD V0.1 公式：0.4 任务完成度 + 0.3 知识广度 + 0.2 证据密度 + 0.1 来源多样性；质量、来源新鲜度、置信度和交叉验证作为解释字段，不得伪装成精确科学评分。Gap 至少支持“研究维度低于 0.6”或“少于两个独立高质量来源”的可解释判定，并提供由用户批准后创建后续 ResearchTask 的动作。
+
+允许修改：Coverage/Gap/Timeline Domain Projection、类型化 Query Service、对应 Feature 页面、注册业务组件、Fixture 和测试。禁止修改原始 Task/Knowledge/Claim 语义、直接查询 SQLite、自动创建未经用户批准的任务、引入图表框架或把覆盖度结果写成不可追溯的结论。
+
+验收：Timeline 能按事件/来源/Claim 显示时间顺序；Coverage 展示公式各项、输入数据、更新时间和缺失原因；Gap 显示触发规则、涉及维度和建议任务；用户批准前建议保持只读；Loading、Empty、Error、Keyboard、Responsive 状态有测试；100/500 节点或任务 Fixture 不阻塞基础页面；无真实 Provider、网络或 API Key。
+
+如果 PRD 或数据契约缺少计算字段，停止实现并提出契约提案，不要在前端临时计算第二套指标。
+```
+
 #### `RES-09`：第一条完整研究旅程
 
 ```text
-执行 RES-09，依赖 RES-01 至 RES-08 全部完成。专项阅读 docs/PRD.md、docs/ARCHITECTURE.md、docs/TESTING.md、所有相关 Feature/Page/Data Spec 和已完成任务交接记录。
+执行 RES-09，依赖 RES-01 至 RES-08 以及 RES-10 全部完成。专项阅读 docs/PRD.md、docs/ARCHITECTURE.md、docs/TESTING.md、所有相关 Feature/Page/Data Spec 和已完成任务交接记录。
 
-目标：串联创建 Project → 配置 Research → 生成并批准 Plan → 执行 Mock Task DAG → 检查 Sources/Knowledge/Claims → 导出 Vault → 打开 Graph 的最小完整流程。
+目标：串联创建 Project → 配置 Research → 生成并批准 Plan → 执行 Mock Task DAG → 检查 Sources/Knowledge/Claims → 导出 Vault → 打开 Graph/Timeline/Coverage/Gap 的最小完整流程。
 
 允许修改：集成层、必要的 Adapter 连接、E2E Fixture、流程文档和集成测试。禁止在集成任务中新增领域架构、绕过契约、使用真实 Provider 或掩盖子任务失败。
 
-验收：离线环境完成完整流程；失败、暂停、恢复和取消可展示；关键 Claim 可追溯到 Evidence；Vault 不覆盖用户文件；Graph 与 Vault/SQLite 索引一致。
+验收：离线环境完成完整流程；失败、暂停、恢复和取消可展示；关键 Claim 可追溯到 Evidence；Vault 不覆盖用户文件；Graph、Timeline、Coverage、Gap 与 Vault/SQLite 索引一致；Gap 建议在用户批准后才能转为新任务。
 ```
 
 ### W4 发布加固任务
@@ -768,7 +783,7 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。W2-06
 
 允许修改：README、双语文档、Quick Start、示例说明、CHANGELOG、相关 Feature/Architecture 文档。禁止宣传尚未实现的功能或改变产品承诺。
 
-验收：中英文 README 章节同步；链接有效；Quick Start 与实际命令一致；版本、Status、已知问题和 Demo 与代码一致。
+验收：中英文 README 章节同步；链接有效；Quick Start 与实际命令一致；版本、Status、已知问题和 Demo 与代码一致；三组 Golden Fixture 均可离线校验，缺失时必须公开记录而不得声称已完成。
 ```
 
 #### `REL-03`：隐私和公共边界审计
