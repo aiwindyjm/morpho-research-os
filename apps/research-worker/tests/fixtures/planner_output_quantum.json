@@ -1,0 +1,29 @@
+{
+  "sections": [
+    {
+      "dimension": "Concepts",
+      "title": "Core concepts of quantum entanglement",
+      "objective": "Establish the foundational concepts and terminology.",
+      "tasks": [
+        {
+          "title": "Survey introductory sources",
+          "objective": "Find accessible explanations of entanglement.",
+          "runtime_type": "search"
+        }
+      ]
+    },
+    {
+      "dimension": "history",
+      "title": "History of entanglement research",
+      "objective": "Trace the EPR debate to Bell-test experiments.",
+      "tasks": [
+        {
+          "title": "Find historical accounts",
+          "objective": "Locate sources on the EPR paper and Bell tests.",
+          "runtime_type": "search"
+        }
+      ]
+    }
+  ],
+  "notes": "Fixture drafted for offline pipeline tests."
+}
