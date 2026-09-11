@@ -5,3 +5,5 @@
 Every release includes Highlights, What's New, Screenshots/Demo, Breaking Changes, Known Issues, and What's Next. Version comes from one root `VERSION` file; package, Cargo, worker, README status, and release automation read it.
 
 The release sequence is incremental: publish only a coherent, tested slice. A local maintainer may prepare several slices before publishing or publish them at different times; that private schedule is not part of Git. No commit may be fabricated or described misleadingly to conceal batching.
+
+All version sources and compatibility decisions follow [VERSIONS.md](VERSIONS.md).
