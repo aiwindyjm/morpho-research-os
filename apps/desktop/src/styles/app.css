@@ -1,0 +1,89 @@
+@import "tailwindcss";
+@import "@morpho/ui/tokens.css";
+
+/*
+ * Morpho token binding: semantic design tokens from packages/ui are mapped
+ * into Tailwind theme utilities. Pages and features never hard-code raw
+ * values; they consume utilities generated from these tokens.
+ */
+@theme inline {
+  --color-background: var(--morpho-color-background);
+  --color-surface: var(--morpho-color-surface);
+  --color-surface-raised: var(--morpho-color-surface-raised);
+  --color-border: var(--morpho-color-border);
+  --color-text-primary: var(--morpho-color-text-primary);
+  --color-text-secondary: var(--morpho-color-text-secondary);
+  --color-text-muted: var(--morpho-color-text-muted);
+  --color-accent: var(--morpho-color-accent);
+  --color-accent-soft: var(--morpho-color-accent-soft);
+  --color-success: var(--morpho-color-success);
+  --color-warning: var(--morpho-color-warning);
+  --color-error: var(--morpho-color-error);
+  --color-info: var(--morpho-color-info);
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-xxl: 32px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --text-display: 28px;
+  --text-display--line-height: 36px;
+  --text-display--font-weight: 600;
+  --text-h1: 22px;
+  --text-h1--line-height: 30px;
+  --text-h1--font-weight: 600;
+  --text-h2: 18px;
+  --text-h2--line-height: 26px;
+  --text-h2--font-weight: 600;
+  --text-h3: 15px;
+  --text-h3--line-height: 22px;
+  --text-h3--font-weight: 600;
+  --text-body: 14px;
+  --text-body--line-height: 22px;
+  --text-body--font-weight: 400;
+  --text-caption: 12px;
+  --text-caption--line-height: 18px;
+  --text-caption--font-weight: 400;
+  --text-label: 13px;
+  --text-label--line-height: 20px;
+  --text-label--font-weight: 500;
+
+  --shadow-panel: 0 1px 3px rgb(0 0 0 / 0.4);
+  --shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: var(--morpho-color-background);
+  color: var(--morpho-color-text-primary);
+  font-family:
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  font-size: var(--morpho-text-body-size);
+  line-height: var(--morpho-text-body-line-height);
+}
+
+/* Motion tier 1: fast micro-feedback. Tier 2 (transition) and tier 3
+ * (overlay entrance) live on the components that need them. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--morpho-color-accent);
+  outline-offset: 2px;
+}

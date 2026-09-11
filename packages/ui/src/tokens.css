@@ -1,0 +1,66 @@
+/*
+ * Morpho Design Tokens — single source of truth for color, spacing,
+ * typography, radius, shadow, and motion. Components consume these tokens;
+ * pages never hard-code raw values.
+ *
+ * Visual direction (docs/frontend/DESIGN_SYSTEM.md): dark research
+ * workspace, neutral surfaces, restrained accent color.
+ */
+:root {
+  /* Color — semantic */
+  --morpho-color-background: #101418;
+  --morpho-color-surface: #171c22;
+  --morpho-color-surface-raised: #1e252c;
+  --morpho-color-border: #2c3540;
+
+  --morpho-color-text-primary: #e8edf2;
+  --morpho-color-text-secondary: #a8b4bf;
+  --morpho-color-text-muted: #7d8a96;
+
+  --morpho-color-accent: #4f8fdd;
+  --morpho-color-accent-soft: rgb(79 143 221 / 0.16);
+
+  --morpho-color-success: #3fa46a;
+  --morpho-color-warning: #d99a3d;
+  --morpho-color-error: #d4574e;
+  --morpho-color-info: #4f9dd0;
+
+  /* Spacing scale */
+  --morpho-space-xs: 4px;
+  --morpho-space-sm: 8px;
+  --morpho-space-md: 12px;
+  --morpho-space-lg: 16px;
+  --morpho-space-xl: 24px;
+  --morpho-space-xxl: 32px;
+
+  /* Typography — size/line-height pairs per tier */
+  --morpho-text-display-size: 28px;
+  --morpho-text-display-line-height: 36px;
+  --morpho-text-h1-size: 22px;
+  --morpho-text-h1-line-height: 30px;
+  --morpho-text-h2-size: 18px;
+  --morpho-text-h2-line-height: 26px;
+  --morpho-text-h3-size: 15px;
+  --morpho-text-h3-line-height: 22px;
+  --morpho-text-body-size: 14px;
+  --morpho-text-body-line-height: 22px;
+  --morpho-text-caption-size: 12px;
+  --morpho-text-caption-line-height: 18px;
+  --morpho-text-label-size: 13px;
+  --morpho-text-label-line-height: 20px;
+
+  /* Radii */
+  --morpho-radius-sm: 4px;
+  --morpho-radius-md: 6px;
+  --morpho-radius-lg: 10px;
+
+  /* Shadow */
+  --morpho-shadow-panel: 0 1px 3px rgb(0 0 0 / 0.4);
+  --morpho-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.5);
+
+  /* Motion tiers: fast micro-feedback, base transitions, overlay entrances */
+  --morpho-motion-fast: 120ms;
+  --morpho-motion-base: 200ms;
+  --morpho-motion-slow: 320ms;
+  --morpho-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+}
