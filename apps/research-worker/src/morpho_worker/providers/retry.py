@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from morpho_worker.clock import Clock
+from morpho_worker.clock import Clock, SystemClock
 from morpho_worker.errors import MorphoError
 
 
@@ -55,3 +55,34 @@ def retry_failed(
             cause=error,
         )
     return error
+
+
+class RetryingProvider:
+    """Transport-level bounded retry wrapper for direct provider uses (for
+    example the search stage). LLM calls used through the structured output
+    pipeline are NOT wrapped by this: the pipeline owns output-quality
+    retries, and stacking the two would multiply attempts."""
+
+    def __init__(self, inner, policy: RetryPolicy, *, clock: Clock | None = None) -> None:
+        self._inner = inner
+        self._policy = policy
+        self._clock = clock or SystemClock()
+
+    def search(self, request):
+        last_error: MorphoError | None = None
+        for attempt in self._policy.attempts_range:
+            try:
+                return self._inner.search(request)
+            except MorphoError as exc:
+                last_error = exc
+                if exc.retryable and attempt < self._policy.max_attempts:
+                    sleep_backoff(self._clock, self._policy, attempt)
+                    continue
+                if exc.retryable:
+                    raise retry_failed(
+                        self._policy,
+                        exc,
+                        exhausted_message="The search provider kept failing; giving up after bounded retries.",
+                    )
+                raise
+        raise last_error  # pragma: no cover - unreachable
