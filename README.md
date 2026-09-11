@@ -43,6 +43,8 @@ The first reproducible fixture is planned under `examples/fixtures/brain-compute
 
 See [ROADMAP.md](ROADMAP.md). Releases are small, meaningful milestones; activity is never manufactured.
 
+For the implementation task map, see the [AI Parallel Development Plan](docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md).
+
 ## Contributing and community
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md), open an Issue or Discussion, and review the [development workflow](docs/development/GITHUB_WORKFLOW.md).

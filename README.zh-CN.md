@@ -43,6 +43,8 @@ React/Vite → Tauri IPC → Rust Core → Python Research Worker → SQLite 索
 
 架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，路线图见 [ROADMAP.md](ROADMAP.md)。每次发布都对应真实成果，不人为制造活跃度。
 
+开发任务拆分、并行泳道、依赖关系和 AI 交接格式见 [AI 并行开发计划](docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md)。
+
 ## 参与贡献与社区
 
 请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，然后通过 Issue 或 Discussion 参与。
