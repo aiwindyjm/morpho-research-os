@@ -21,3 +21,8 @@ jobs:
           en=$(grep -c '^## ' README.md)
           zh=$(grep -c '^## ' README.zh-CN.md)
           test "$en" -eq "$zh" || { echo "README heading counts differ: $en vs $zh"; exit 1; }
+      - name: Check private boundary
+        shell: bash
+        run: |
+          private_files=$(git ls-files private | grep -v '^private/conversations/.gitkeep$' || true)
+          test -z "$private_files" || { echo "Private files must not be tracked:"; echo "$private_files"; exit 1; }

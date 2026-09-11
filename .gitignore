@@ -29,5 +29,7 @@ docs/assets/generated/
 .playwright-cli/
 
 # Private conversation journal (never commit)
+private/*
+!private/conversations/
 private/conversations/*
 !private/conversations/.gitkeep
