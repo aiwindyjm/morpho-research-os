@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f7b10-1234-7000-8000-000000000003",
+  "sequence": 3,
+  "occurred_at": "2026-09-12T08:25:00Z",
+  "run_id": null,
+  "project_id": "018f7a00-0000-7000-8000-000000000001",
+  "type": "review.requested",
+  "payload": {
+    "claim_id": "018f6c40-8b88-7a02-1c2d-5e3f4a5b6c89",
+    "reason": "contradicting evidence"
+  }
+}

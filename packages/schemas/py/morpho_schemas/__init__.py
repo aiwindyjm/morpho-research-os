@@ -13,11 +13,14 @@ from pydantic import BaseModel
 from .envelope import (
     FixtureContract,
     FixtureEnvelope,
+    FixtureExpectedOutput,
+    FixtureOrigin,
     FixturePrompt,
     FixtureProvenance,
     FixtureProvenanceKind,
     FixtureStability,
 )
+from .event import Event, EventType
 from .project import (
     PlanGeneratedBy,
     Project,
@@ -93,8 +96,12 @@ from .worker import (
 __all__ = [
     "BINDINGS",
     "EstimatedCost",
+    "Event",
+    "EventType",
     "FixtureContract",
     "FixtureEnvelope",
+    "FixtureExpectedOutput",
+    "FixtureOrigin",
     "FixturePrompt",
     "FixtureProvenance",
     "FixtureProvenanceKind",
@@ -148,6 +155,7 @@ BINDINGS: dict[str, type[BaseModel]] = {
     "artifact": Artifact,
     "claim": Claim,
     "evidence": Evidence,
+    "event": Event,
     "knowledge-node": KnowledgeNode,
     "project": Project,
     "prompt-metadata": PromptMetadata,

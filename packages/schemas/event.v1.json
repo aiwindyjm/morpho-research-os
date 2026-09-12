@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/event.v1.json",
+  "title": "Event",
+  "description": "Domain-level research event (PRD §6 'Event'): an ordered, append-only, reconnectable projection of research activity, persisted as state projection and forwarded to the UI already redacted. Payloads must never contain secrets, credentials, raw provider prompts, or raw provider responses; emitters redact at construction and readers treat this schema as a floor, not a license to include sensitive material. Transport-level worker events are a separate contract (worker-event.v1.json). Draft producers in apps/ migrate to this contract in a later task (ADR-015).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "sequence", "occurred_at", "project_id", "type", "payload"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "event_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable event identifier; identical across replays (UUIDv7 by convention)."
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Strictly increasing per run (per project for project-level events); reconnect cursors resume after the last seen sequence."
+    },
+    "occurred_at": {
+      "type": "string",
+      "description": "RFC 3339 UTC timestamp of when the event occurred (convention, not format-asserted)."
+    },
+    "run_id": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Owning run. Absent (preferred) or null for project-level events, which use a project-scoped sequence space."
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Task the event is about for task.* events; may also be carried inside the payload."
+    },
+    "project_id": { "type": "string", "minLength": 1 },
+    "type": {
+      "enum": [
+        "task.created",
+        "task.started",
+        "task.progress",
+        "task.checkpoint",
+        "task.completed",
+        "task.failed",
+        "task.skipped",
+        "run.started",
+        "run.paused",
+        "run.completed",
+        "run.failed",
+        "run.cancelled",
+        "plan.drafted",
+        "plan.approved",
+        "plan.rejected",
+        "plan.superseded",
+        "source.discovered",
+        "source.fetched",
+        "source.evaluated",
+        "claim.created",
+        "claim.updated",
+        "claim.superseded",
+        "review.requested",
+        "review.resolved"
+      ],
+      "description": "Closed domain vocabulary grouped by prefix (task./run./plan./source./claim./review.) and aligned with the research-task, research-run, and research-plan status machines. Transport job.* types belong to worker-event.v1.json, not here."
+    },
+    "summary": {
+      "type": "string",
+      "description": "Optional human-readable one-line summary for timeline projections."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Type-discriminated, already-redacted event details; the shape is governed by the emitting event type and stays permissive here. Must never contain secrets or raw provider prompts/responses."
+    }
+  }
+}

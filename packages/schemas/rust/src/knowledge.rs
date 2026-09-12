@@ -182,16 +182,43 @@ pub enum CreatedBy {
     Ai,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClaimSchemaVersion {
+    #[serde(rename = "1.0")]
+    V1_0,
+    #[serde(rename = "1.1")]
+    V1_1,
+}
+
+/// Review lifecycle of a claim (ADR-016); evidence strength lives in `confidence`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClaimStatus {
+    #[serde(rename = "draft")]
+    Draft,
+    #[serde(rename = "needs_review")]
+    NeedsReview,
+    #[serde(rename = "confirmed")]
+    Confirmed,
+    #[serde(rename = "superseded")]
+    Superseded,
+}
+
+fn default_claim_confidence() -> Confidence {
+    Confidence::Unverified
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claim {
-    pub schema_version: SchemaVersionV1,
+    pub schema_version: ClaimSchemaVersion,
     pub claim_id: String,
     pub project_id: String,
     pub subject_node_id: String,
     pub predicate: String,
     pub object: String,
     pub scope: Option<String>,
-    pub status: Confidence,
+    pub status: ClaimStatus,
+    #[serde(default = "default_claim_confidence")]
+    pub confidence: Confidence,
     pub evidence_ids: Option<Vec<String>>,
     pub provenance: Option<ClaimProvenance>,
     pub review_state: Option<ReviewState>,

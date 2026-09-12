@@ -5,6 +5,7 @@
 //! (see `tests/corpus.rs`).
 
 pub mod envelope;
+pub mod event;
 pub mod knowledge;
 pub mod project;
 pub mod prompt;
@@ -15,9 +16,10 @@ pub mod worker;
 use serde::de::DeserializeOwned;
 
 pub use envelope::{
-    FixtureContract, FixtureEnvelope, FixturePrompt, FixtureProvenance, FixtureProvenanceKind,
-    FixtureStability,
+    FixtureContract, FixtureEnvelope, FixtureExpectedOutput, FixtureOrigin, FixturePrompt,
+    FixtureProvenance, FixtureProvenanceKind, FixtureStability,
 };
+pub use event::{Event, EventType};
 pub use knowledge::{
     Artifact, ArtifactFormat, ArtifactKind, Claim, ClaimProvenance, Confidence, ContentFormat,
     CreatedBy, Evidence, EvidenceDirection, EvidenceLocator, KnowledgeNode, KnowledgeNodeType,
@@ -55,6 +57,7 @@ pub const BINDING_NAMES: &[&str] = &[
     "artifact",
     "claim",
     "evidence",
+    "event",
     "fixture-envelope",
     "knowledge-node",
     "project",
@@ -90,6 +93,7 @@ pub fn validate_binding(name: &str, value: &serde_json::Value) -> Result<(), Str
         "artifact" => check::<Artifact>(value),
         "claim" => check::<Claim>(value),
         "evidence" => check::<Evidence>(value),
+        "event" => check::<Event>(value),
         "fixture-envelope" => check::<FixtureEnvelope>(value),
         "knowledge-node" => check::<KnowledgeNode>(value),
         "project" => check::<Project>(value),

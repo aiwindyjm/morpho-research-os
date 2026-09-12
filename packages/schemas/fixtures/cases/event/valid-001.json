@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f7b10-1234-7000-8000-000000000001",
+  "sequence": 42,
+  "occurred_at": "2026-09-12T08:15:00Z",
+  "run_id": "018f7b0f-aaaa-7000-8000-000000000001",
+  "task_id": "018f7b0e-bbbb-7000-8000-000000000002",
+  "project_id": "018f7a00-0000-7000-8000-000000000001",
+  "type": "task.completed",
+  "summary": "Search for 'quantum entanglement experiments' completed",
+  "payload": {
+    "task_id": "018f7b0e-bbbb-7000-8000-000000000002",
+    "sources_found": 5,
+    "checkpoint": "final"
+  }
+}

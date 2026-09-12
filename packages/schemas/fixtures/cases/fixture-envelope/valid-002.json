@@ -1,0 +1,32 @@
+{
+  "fixture_envelope_version": "1.0",
+  "fixture_id": "quantum-entanglement",
+  "kind": "research-config",
+  "description": "Dataset-variant envelope valid case mirroring the shipped golden fixtures.",
+  "input": {
+    "schema": "https://morpho.dev/schemas/research-config.v1.json",
+    "payload": {
+      "schema_version": "1.0",
+      "config_id": "018f7a01-0000-7000-8000-000000000001",
+      "project_id": "018f7a00-0000-7000-8000-000000000001",
+      "domain": "physics",
+      "topic": "quantum entanglement",
+      "purpose": "research",
+      "depth": 4,
+      "dimensions": ["concepts", "experiments"],
+      "languages": ["en"],
+      "source_types": ["paper", "encyclopedia"]
+    }
+  },
+  "expected_outputs": [],
+  "provenance": {
+    "origin": "synthetic",
+    "synthetic": true,
+    "license": "CC0-1.0",
+    "notes": "Synthetic configuration authored for offline testing."
+  },
+  "stability": {
+    "deterministic": true,
+    "ignored_fields": []
+  }
+}

@@ -71,8 +71,9 @@ Run the contract tests (from the repository root):
 | Source | `source.v1.json` | 1.0 | W2-06 | Discovered external source with dedup key and quality metadata. |
 | SourceContent | `source-content.v1.json` | 1.0 | W2-06 | Cacheable extracted content identity and integrity facts. |
 | KnowledgeNode | `knowledge-node.v1.json` | 1.0 | W2-06 | Graph node with type, aliases, confidence, and bounded metadata. |
-| Claim | `claim.v1.json` | 1.0 | W2-06 | Subject/predicate/object claim with status and provenance; never an entity. |
+| Claim | `claim.v1.json` | 1.0–1.1 | W2-06 (1.1 by ADR-016) | Subject/predicate/object claim with review-lifecycle status, confidence, and provenance; never an entity. |
 | Evidence | `evidence.v1.json` | 1.0 | W2-06 | Claim↔source link with locator and support/contradict direction. |
 | Relation | `relation.v1.json` | 1.0 | W2-06 | Typed node-to-node edge with confidence and lifecycle. |
 | Artifact | `artifact.v1.json` | 1.0 | W2-06 | Durable produced asset (vault export, report, snapshot). |
-| FixtureEnvelope | `fixture-envelope.v1.json` | 1.0 | W0-05 | Envelope for offline fixtures and golden results (`examples/fixtures/README.md`). |
+| Event | `event.v1.json` | 1.0 | ADR-015 | Domain research event: ordered, append-only, reconnectable, redacted activity projection (task/run/plan/source/claim/review vocabulary). Distinct from the transport `worker-event` contract. |
+| FixtureEnvelope | `fixture-envelope.v1.json` | 1.0 | W0-05 (unified by ADR-017) | Envelope for offline fixtures and golden results; accepts the contract variant (`*.fixture.json`) and the dataset variant (`fixture.json`), see `examples/fixtures/README.md`. |

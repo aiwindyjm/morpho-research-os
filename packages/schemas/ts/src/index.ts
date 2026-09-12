@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { FixtureEnvelopeSchema } from "./envelope";
+import { EventSchema } from "./event";
 import {
   ArtifactSchema,
   ClaimSchema,
@@ -32,6 +33,7 @@ import {
 } from "./worker";
 
 export * from "./envelope";
+export * from "./event";
 export * from "./knowledge";
 export * from "./project";
 export * from "./prompt";
@@ -49,6 +51,7 @@ export const BINDINGS: Record<string, z.ZodTypeAny> = {
     artifact: ArtifactSchema,
     claim: ClaimSchema,
     evidence: EvidenceSchema,
+    event: EventSchema,
     "knowledge-node": KnowledgeNodeSchema,
     project: ProjectSchema,
     "prompt-metadata": PromptMetadataSchema,

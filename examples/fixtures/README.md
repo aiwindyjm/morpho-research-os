@@ -4,23 +4,25 @@ Fixtures under `examples/fixtures/` are the shared, deterministic inputs and gol
 
 ## Envelope
 
-Every fixture is a single JSON file named `<case>.fixture.json` inside a dataset directory:
+Every fixture is a single JSON file under `examples/fixtures/`, in one of two variants of the unified envelope schema [`packages/schemas/fixture-envelope.v1.json`](../../packages/schemas/fixture-envelope.v1.json) (ADR-017):
 
 ```text
 examples/fixtures/
 ├── README.md                        # this specification
-├── minimal/                         # synthetic contract-level fixtures
+├── minimal/                         # synthetic contract-level fixtures (contract variant)
 │   └── research-config-basic.fixture.json
-├── quantum-entanglement/            # golden research datasets (added by TEST/E scope)
+├── quantum-entanglement/            # golden research datasets (dataset variant)
 ├── brain-computer-interface/
 └── large-language-model/
 ```
 
-Each file follows the frozen envelope schema [`packages/schemas/fixture-envelope.v1.json`](../../packages/schemas/fixture-envelope.v1.json):
+A file uses exactly ONE variant; `scripts/validate-fixture.py` rejects files that mix variant markers.
+
+### Contract variant (`*.fixture.json`, W0-05)
 
 | Field | Meaning |
 |---|---|
-| `schema_version` | Envelope version (`1.0`). |
+| `schema_version` | Envelope version (`1.0`). Variant marker. |
 | `fixture_id` | Globally unique `<dataset>.<case>` kebab-case ID. |
 | `description` | What the fixture exercises, in one sentence. |
 | `contract.schema` / `contract.schema_version` | The canonical contract in `packages/schemas/` that `input` (and `expected`, when present) must satisfy. Loaders resolve `<schema>.v<major>.json`. |
@@ -29,6 +31,18 @@ Each file follows the frozen envelope schema [`packages/schemas/fixture-envelope
 | `input` / `expected` | Deterministic instances. `expected` is omitted for input-only fixtures. |
 | `stability.stable_fields` | Fields compared byte-for-byte. |
 | `stability.volatile_fields` | Fields normalized before comparison. |
+
+### Dataset variant (`<dataset>/fixture.json`, TEST-01)
+
+| Field | Meaning |
+|---|---|
+| `fixture_envelope_version` | Envelope version (`1.0`). Variant marker. |
+| `fixture_id` | Kebab-case ID equal to the directory name. |
+| `kind` | Input schema base name, e.g. `research-config`. |
+| `input.schema` / `input.payload` | Canonical schema `$id` from `packages/schemas` and the payload that must satisfy it. |
+| `expected_outputs` | Array of golden `{name, schema, payload}` outputs. An explicitly empty array means outputs are pending, not absent. |
+| `provenance.origin` + `provenance.synthetic` | `synthetic` / `curated-public` / `user-contributed` plus the no-real-data boolean. |
+| `stability.deterministic` / `stability.ignored_fields` | Volatility markers for golden comparisons. |
 
 ## Determinism and normalization rules
 
@@ -45,10 +59,12 @@ Each file follows the frozen envelope schema [`packages/schemas/fixture-envelope
 
 ## Loader ownership
 
-The envelope specification is frozen by W0-05 (scope A). Cross-language loaders (`tests/` support in Rust, Python, TypeScript) are implemented by TEST-01 (scope E) strictly against this specification and the envelope schema; they must not invent a second envelope or extra implicit fields.
+The envelope specification is unified by ADR-017 under [`packages/schemas/fixture-envelope.v1.json`](../../packages/schemas/fixture-envelope.v1.json). Cross-language loaders (`tests/fixtures-support/loaders/`, TypeScript/Python/Rust) enforce the dataset-variant rules of that schema for the golden fixtures; they must not invent a second envelope or extra implicit fields.
 
 ## Golden research datasets (TEST-01, workgroup-e)
 
-The three golden research datasets named in `docs/PRD.md` and `docs/testing/MOCKS.md` exist as `examples/fixtures/{quantum-entanglement,brain-computer-interface,large-language-model}/fixture.json`. They were delivered by TEST-01 against the earlier envelope variant frozen at [`tests/fixtures-support/schema/fixture-envelope.v1.json`](../../tests/fixtures-support/schema/fixture-envelope.v1.json) (fields `fixture_envelope_version`, `kind`, `input.schema`/`input.payload`, `expected_outputs`, `provenance.origin`, `stability.ignored_fields`), and are validated offline by that variant's reference loaders under `tests/fixtures-support/loaders/` (TypeScript, Python, Rust; run via `tests/fixtures-support/run-fixture-checks.ps1`, wired into `.github/workflows/contracts.yml`).
+The three golden research datasets named in `docs/PRD.md` and `docs/testing/MOCKS.md` exist as `examples/fixtures/{quantum-entanglement,brain-computer-interface,large-language-model}/fixture.json`. They were delivered by TEST-01 against an earlier envelope variant (`fixture_envelope_version`/`kind`/`input.schema`+`input.payload`/`expected_outputs`, previously duplicated at `tests/fixtures-support/schema/fixture-envelope.v1.json`). ADR-017 unified the envelope: the dataset variant is now a recognized variant of the one canonical schema, the duplicate schema file was deleted, and the fixtures themselves are unchanged.
 
-These dataset files are named `fixture.json`, so they are outside `scripts/validate-fixture.py`'s `*.fixture.json` scope; this specification's validator covers the contract corpus (`minimal/` and `packages/schemas/fixtures/cases/`). Their `expected_outputs` are still pending: the blocking contracts (W2-01 plan/task, W2-06 knowledge schemas) are now frozen on main via the workgroup-a merge, so attaching golden outputs is unblocked contract-wise. Migrating the golden datasets onto `packages/schemas/fixture-envelope.v1.json` — including the payload fields newly required by `research-config.v1.json` (`config_id`, `project_id`) — is a reviewed TEST-01 follow-up; this merge does not silently rewrite the golden fixtures.
+`scripts/validate-fixture.py --all` validates every fixture under `examples/fixtures/` — both the contract-variant corpus (`minimal/`) and the dataset-variant golden fixtures — against the unified envelope and their referenced contracts, including deep payload validation. The reference loaders under `tests/fixtures-support/loaders/` continue to validate the golden fixtures offline with identical rules (run via `tests/fixtures-support/run-fixture-checks.ps1`, wired into `.github/workflows/contracts.yml`).
+
+The golden datasets' `expected_outputs` are still pending — they are explicitly empty arrays (`"expected_outputs": []`), meaning "pending, not absent": the blocking contracts (W2-01 plan/task, W2-06 knowledge schemas) are frozen on main via the workgroup-a merge, so attaching golden outputs is unblocked contract-wise. Outputs must be regenerated offline from the documented pipeline (mock providers only); they are never invented by hand. Migrating the golden datasets onto the contract variant is a possible future consolidation; this merge does not rewrite the golden fixtures.

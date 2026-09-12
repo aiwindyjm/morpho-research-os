@@ -107,15 +107,27 @@ export type ClaimProvenance = z.infer<typeof ClaimProvenanceSchema>;
 
 export const ReviewState = z.enum(["unreviewed", "needs-review", "reviewed"]);
 
+/**
+ * Released minors of the claim contract (ADR-016): 1.1 splits the formerly
+ * conflated `status` into `status` (review lifecycle) + `confidence`.
+ */
+export const ClaimSchemaVersion = z.enum(["1.0", "1.1"]);
+export type ClaimSchemaVersion = z.infer<typeof ClaimSchemaVersion>;
+
+/** Review lifecycle of a claim (ADR-016); evidence strength lives in `confidence`. */
+export const ClaimStatus = z.enum(["draft", "needs_review", "confirmed", "superseded"]);
+export type ClaimStatus = z.infer<typeof ClaimStatus>;
+
 export const ClaimSchema = z.object({
-  schema_version: SchemaVersionV1,
+  schema_version: ClaimSchemaVersion,
   claim_id: z.string().min(1),
   project_id: z.string().min(1),
   subject_node_id: z.string().min(1),
   predicate: z.string().min(1),
   object: z.string().min(1),
   scope: z.string().optional(),
-  status: Confidence,
+  status: ClaimStatus,
+  confidence: Confidence.default("unverified"),
   evidence_ids: z.array(z.string().min(1)).optional(),
   provenance: ClaimProvenanceSchema.optional(),
   review_state: ReviewState.optional(),

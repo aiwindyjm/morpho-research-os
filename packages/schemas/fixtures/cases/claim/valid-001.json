@@ -1,12 +1,13 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "claim_id": "018f6c40-8b88-7a02-1c2d-5e3f4a5b6c89",
   "project_id": "018f6b2e-a3d1-7c01-9e2a-5f8d3a1b7c02",
   "subject_node_id": "018f6c30-7a77-7901-0b1c-4d2e3f4a5b78",
   "predicate": "reduces",
   "object": "charge-noise sensitivity",
   "scope": "in superconducting platforms",
-  "status": "high",
+  "status": "confirmed",
+  "confidence": "high",
   "evidence_ids": ["018f6c50-9c99-7b03-2d3e-6f4a5b6c7d90"],
   "provenance": {
     "created_by": "ai",

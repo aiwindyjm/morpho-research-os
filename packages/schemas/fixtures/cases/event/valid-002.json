@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f7b10-1234-7000-8000-000000000002",
+  "sequence": 7,
+  "occurred_at": "2026-09-12T08:20:00Z",
+  "project_id": "018f7a00-0000-7000-8000-000000000001",
+  "type": "plan.approved",
+  "summary": "User approved the quantum entanglement research plan",
+  "payload": {
+    "plan_id": "018f7b0f-cccc-7000-8000-000000000003",
+    "sections": 7
+  }
+}

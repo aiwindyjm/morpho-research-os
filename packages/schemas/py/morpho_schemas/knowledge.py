@@ -103,15 +103,24 @@ class ClaimProvenance(_Closed):
     task_id: Optional[str] = None
 
 
+# Released minors of the claim contract (ADR-016): 1.1 splits the formerly
+# conflated `status` into `status` (review lifecycle) + `confidence`.
+ClaimSchemaVersion = Literal["1.0", "1.1"]
+
+# Review lifecycle of a claim (ADR-016); evidence strength lives in `confidence`.
+ClaimStatus = Literal["draft", "needs_review", "confirmed", "superseded"]
+
+
 class Claim(_Open):
-    schema_version: SchemaVersionV1
+    schema_version: ClaimSchemaVersion
     claim_id: str = Field(min_length=1)
     project_id: str = Field(min_length=1)
     subject_node_id: str = Field(min_length=1)
     predicate: str = Field(min_length=1)
     object: str = Field(min_length=1)
     scope: Optional[str] = None
-    status: Confidence
+    status: ClaimStatus
+    confidence: Confidence = "unverified"
     evidence_ids: Optional[list[str]] = None
     provenance: Optional[ClaimProvenance] = None
     review_state: Optional[ReviewState] = None

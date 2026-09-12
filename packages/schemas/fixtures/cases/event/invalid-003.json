@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f7b10-1234-7000-8000-000000000006",
+  "sequence": 4,
+  "occurred_at": "2026-09-12T08:40:00Z",
+  "project_id": "018f7a00-0000-7000-8000-000000000001",
+  "type": "source.fetched",
+  "timestamp_ms": 1700000000000,
+  "payload": {
+    "source_id": "018f7b12-dddd-7000-8000-000000000004"
+  }
+}

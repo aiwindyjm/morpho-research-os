@@ -1,23 +1,31 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://morpho.dev/schemas/fixture-envelope.v1.json",
-  "title": "Offline fixture envelope",
-  "description": "Versioned envelope for deterministic offline fixtures shared by Rust, Python, and TypeScript tests. TEST-01 loaders must read this format; they must not invent a second envelope.",
+  "title": "Offline fixture envelope (unified)",
+  "description": "Versioned envelope for deterministic offline fixtures shared by Rust, Python, and TypeScript tests. This is test infrastructure: it never defines domain fields and always defers payload validation to the canonical schemas in packages/schemas. One canonical envelope covers the two historical variants (ADR-017): the 'contract' variant (W0-05: schema_version + contract + expected + stability.stable_fields, files named *.fixture.json) and the 'dataset' variant (TEST-01: fixture_envelope_version + kind + input.schema/payload + expected_outputs + stability.deterministic, files named fixture.json). A file uses exactly ONE variant: the offline validators (scripts/validate-fixture.py, scripts/check-contracts.ps1, tests/fixtures-support loaders) dispatch on the variant marker and enforce the variant-specific required fields, because the v1 validation vocabulary (packages/schemas/README.md rule 5) cannot express conditional requirements in-schema.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "fixture_id", "description", "contract", "provenance", "input", "stability"],
+  "required": ["fixture_id", "input", "provenance"],
   "properties": {
-    "schema_version": { "enum": ["1.0"] },
+    "schema_version": {
+      "enum": ["1.0"],
+      "description": "Contract-variant marker (W0-05). Mutually exclusive with fixture_envelope_version."
+    },
+    "fixture_envelope_version": {
+      "enum": ["1.0"],
+      "description": "Dataset-variant marker (TEST-01). Mutually exclusive with schema_version."
+    },
     "fixture_id": {
       "type": "string",
       "minLength": 3,
-      "description": "Globally unique, kebab-case: '<dataset>.<case>', e.g. 'minimal.research-config-basic'."
+      "description": "Globally unique identifier. Contract variant: '<dataset>.<case>' kebab-case, e.g. 'minimal.research-config-basic'. Dataset variant: kebab-case, equal to the directory name holding fixture.json."
     },
     "description": { "type": "string", "minLength": 1 },
     "contract": {
       "type": "object",
       "additionalProperties": false,
       "required": ["schema", "schema_version"],
+      "description": "Contract variant: the canonical contract in packages/schemas that input (and expected) must satisfy.",
       "properties": {
         "schema": {
           "type": "string",
@@ -30,6 +38,11 @@
         }
       }
     },
+    "kind": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Dataset variant: what the input payload is; equals the input schema $id base name without extension and version suffix, e.g. research-config."
+    },
     "prompt": {
       "type": "object",
       "additionalProperties": false,
@@ -40,41 +53,72 @@
         "prompt_version": { "type": "string", "minLength": 1 }
       }
     },
+    "input": {
+      "type": "object",
+      "description": "Contract variant: the payload instance itself. Dataset variant: closed block {schema, payload} where schema is a canonical $id from packages/schemas and payload must satisfy it. The variant-specific shape is enforced by the offline validators."
+    },
+    "expected": {
+      "type": "object",
+      "description": "Contract variant: golden expected output; omitted for input-only fixtures. Must satisfy the contract family when present."
+    },
+    "expected_outputs": {
+      "type": "array",
+      "description": "Dataset variant: golden results. Entries are added only after the corresponding output schema is frozen in packages/schemas; an explicitly empty array means outputs are pending.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "schema", "payload"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Canonical schema $id from packages/schemas."
+          },
+          "payload": { "type": "object" }
+        }
+      }
+    },
     "provenance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "description": "Union of the variant provenance vocabularies; the variant-specific required keys (contract: kind; dataset: origin + synthetic) are enforced by the offline validators.",
       "properties": {
-        "kind": {
-          "enum": ["synthetic", "public-domain", "licensed-excerpt"]
+        "kind": { "enum": ["synthetic", "public-domain", "licensed-excerpt"] },
+        "origin": { "enum": ["synthetic", "curated-public", "user-contributed"] },
+        "synthetic": {
+          "type": "boolean",
+          "description": "Dataset variant: true means no captured provider output, no personal data, no private research content."
         },
+        "license": { "type": "string" },
         "notes": { "type": "string" },
         "source_url": { "type": "string" }
       }
     },
-    "input": {
-      "type": "object",
-      "description": "Deterministic input instance; must satisfy the contract named above."
-    },
-    "expected": {
-      "type": "object",
-      "description": "Golden expected output; optional for input-only fixtures. Must satisfy the same contract family when present."
-    },
     "stability": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["stable_fields", "volatile_fields"],
+      "description": "Union of the variant stability vocabularies; the variant-specific required keys are enforced by the offline validators.",
       "properties": {
         "stable_fields": {
           "type": "array",
           "minItems": 1,
           "items": { "type": "string" },
-          "description": "Fields compared byte-for-byte in golden checks."
+          "description": "Contract variant: fields compared byte-for-byte in golden checks."
         },
         "volatile_fields": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Fields normalized (dropped or placeholdered) before golden comparison; e.g. timestamps and generated IDs."
+          "description": "Contract variant: fields normalized (dropped or placeholdered) before golden comparison."
+        },
+        "deterministic": {
+          "type": "boolean",
+          "description": "Dataset variant: false means the fixture contains volatile fields that comparisons must normalize first."
+        },
+        "ignored_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Dataset variant: field paths excluded from golden comparisons."
         }
       }
     }

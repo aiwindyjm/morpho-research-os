@@ -2,7 +2,8 @@
 //!
 //! Validation rules are mirrored in `fixture-envelope.ts` and
 //! `fixture_envelope.py`. A rule change must land in all three at once.
-//! Envelope contract: tests/fixtures-support/schema/fixture-envelope.v1.json.
+//! Envelope contract: packages/schemas/fixture-envelope.v1.json (unified,
+//! ADR-017; these loaders enforce the dataset-variant rules of that schema).
 //! Payload validation is intentionally shallow (required + const at the top
 //! level of the referenced canonical schema); deep validation belongs to the
 //! schema toolchain, not to fixtures.

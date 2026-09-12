@@ -1,0 +1,35 @@
+{
+  "fixture_envelope_version": "1.0",
+  "fixture_id": "broken-dataset-envelope",
+  "kind": "research-config",
+  "description": "Dataset-variant invalid case: expected_outputs entry is missing its name.",
+  "input": {
+    "schema": "https://morpho.dev/schemas/research-config.v1.json",
+    "payload": {
+      "schema_version": "1.0",
+      "config_id": "018f7a01-0000-7000-8000-000000000009",
+      "project_id": "018f7a00-0000-7000-8000-000000000009",
+      "domain": "physics",
+      "topic": "quantum entanglement",
+      "purpose": "research",
+      "depth": 1,
+      "dimensions": ["concepts"],
+      "languages": ["en"],
+      "source_types": ["paper"]
+    }
+  },
+  "expected_outputs": [
+    {
+      "schema": "https://morpho.dev/schemas/research-plan.v1.json",
+      "payload": {}
+    }
+  ],
+  "provenance": {
+    "origin": "synthetic",
+    "synthetic": true
+  },
+  "stability": {
+    "deterministic": true,
+    "ignored_fields": []
+  }
+}

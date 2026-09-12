@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f7b10-1234-7000-8000-000000000005",
+  "sequence": 0,
+  "occurred_at": "2026-09-12T08:35:00Z",
+  "run_id": "018f7b0f-aaaa-7000-8000-000000000001",
+  "project_id": "018f7a00-0000-7000-8000-000000000001",
+  "type": "run.started",
+  "payload": {}
+}
