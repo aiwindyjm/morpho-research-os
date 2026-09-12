@@ -113,6 +113,7 @@ export function toGraphProjection(input: ProjectionInput): GraphProjection {
       dimension: node.dimension,
       source_count: node.source_ids.length,
       claim_count: claimCountByNode.get(node.id) ?? 0,
+      year: node.year ?? null,
     })),
     relations: relations
       .filter((rel) => rel.status === "active")

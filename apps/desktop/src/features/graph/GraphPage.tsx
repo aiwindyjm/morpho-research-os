@@ -1,22 +1,36 @@
 import { useMemo, useState } from "react";
-import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation } from "d3";
+import {
+  forceCenter,
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+  forceX,
+  forceY,
+} from "d3";
 import { Button, Card, Input, Select } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
-import { ResearchStatusBadge } from "@/components/cards";
+import { NODE_TYPE_BADGE_CLASS, ResearchStatusBadge } from "@/components/cards";
 import { CONFIDENCE_LABELS, NODE_TYPE_LABELS, dimensionLabel } from "@/types/labels";
 import type {
+  ConfidenceState,
   GraphNode,
   GraphProjection,
   KnowledgeNodeType,
 } from "@/types/domain";
+import { CONFIDENCE_STATES } from "@/types/domain";
 import { useGraph, useKnowledge } from "@/services/queries";
 
 /**
  * Graph view (RES-08): 2D knowledge graph with search, filters, selection,
- * and an inspector. An accessible list/table fallback is always available
- * (docs/frontend/ACCESSIBILITY.md); the force layout is computed
- * synchronously so rendering is deterministic and test-safe.
+ * and an inspector. PRD §13 filters: node type, dimension, confidence band
+ * (the six confidence states), relation type (edges), and a time/year range
+ * on nodes that carry a year. A clustering toggle groups nodes into
+ * per-dimension columns (d3 forceX toward column positions — no new deps).
+ * An accessible list/table fallback is always available (docs/frontend/
+ * ACCESSIBILITY.md) and reflects the same filters; the force layout is
+ * computed synchronously so rendering is deterministic and test-safe.
  *
  * Prototype alignment (spec §4, `view-graph`): one card with a chip toolbar,
  * the dark graph canvas (graph-canvas-bg) with accent-stroked node circles,
@@ -35,28 +49,10 @@ const TYPE_FILTERS: Array<{ id: "all" | KnowledgeNodeType; label: string }> = [
   { id: "Paper", label: "论文" },
 ];
 
-/** Prototype badge class per node type (same mapping as the knowledge view). */
-const NODE_TYPE_BADGE_CLASS: Record<KnowledgeNodeType, string> = {
-  Concept: "node-badge-accent",
-  Event: "node-badge-accent",
-  Person: "node-badge-alt",
-  Paper: "node-badge-alt",
-  Book: "node-badge-alt",
-  Experiment: "node-badge-alt",
-  Technology: "node-badge-alt",
-  Product: "node-badge-alt",
-  Application: "node-badge-alt",
-  Policy: "node-badge-alt",
-  Dataset: "node-badge-alt",
-  Company: "node-badge-warning",
-  Organization: "node-badge-warning",
-  Controversy: "node-badge-error",
-};
-
 /** Prototype chip styles (shared pattern with the sources view). */
 const CHIP_CLASS =
   "rounded-full border px-md py-1 text-caption transition-colors duration-[var(--morpho-motion-fast)]";
-const CHIP_SELECTED_CLASS = "text-info border-[rgb(114_167_255/0.45)] bg-accent-soft";
+const CHIP_SELECTED_CLASS = "chip-selected";
 const CHIP_IDLE_CLASS = "text-text-muted border-border hover:text-text-secondary";
 
 /** Inspector panel: scrollable content, overlay on the canvas edge from lg up. */
@@ -70,7 +66,10 @@ interface PositionedNode extends GraphNode {
   y: number;
 }
 
-function computeLayout(projection: GraphProjection): PositionedNode[] {
+function computeLayout(
+  projection: GraphProjection,
+  cluster: boolean,
+): PositionedNode[] {
   const nodes: PositionedNode[] = projection.nodes.map((node, index) => {
     const angle = (index / Math.max(1, projection.nodes.length)) * Math.PI * 2;
     return {
@@ -91,16 +90,36 @@ function computeLayout(projection: GraphProjection): PositionedNode[] {
     );
 
   const simulation = forceSimulation<PositionedNode>(nodes)
-    .force("charge", forceManyBody().strength(-160))
+    .force("charge", forceManyBody().strength(cluster ? -120 : -160))
     .force(
       "link",
       forceLink(links)
         .id((d) => (d as PositionedNode).id)
-        .distance(90),
+        .distance(cluster ? 70 : 90),
     )
     .force("center", forceCenter(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2))
     .force("collide", forceCollide<PositionedNode>((d) => 14 + d.source_count))
     .stop();
+
+  // Clustering: pull every node toward its dimension's column position and
+  // relax vertically around the canvas middle (PRD §13 group-by-dimension).
+  if (cluster) {
+    const dimensions = [...new Set(nodes.map((n) => n.dimension))];
+    const columnX = new Map(
+      dimensions.map(
+        (dimension, index) =>
+          [dimension, (CANVAS_WIDTH * (index + 1)) / (dimensions.length + 1)] as const,
+      ),
+    );
+    simulation
+      .force(
+        "clusterX",
+        forceX<PositionedNode>(
+          (d) => columnX.get(d.dimension) ?? CANVAS_WIDTH / 2,
+        ).strength(0.9),
+      )
+      .force("clusterY", forceY(CANVAS_HEIGHT / 2).strength(0.08));
+  }
 
   // Synchronous ticks: deterministic layout without animation frames.
   for (let i = 0; i < 260; i += 1) simulation.tick();
@@ -119,11 +138,29 @@ export function GraphPage({ projectId }: { projectId: string }) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | KnowledgeNodeType>("all");
   const [dimensionFilter, setDimensionFilter] = useState("all");
+  const [confidenceFilter, setConfidenceFilter] = useState<"all" | ConfidenceState>("all");
+  const [relationFilter, setRelationFilter] = useState("all");
+  const [yearFrom, setYearFrom] = useState("all");
+  const [yearTo, setYearTo] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [listMode, setListMode] = useState(false);
+  const [clusterMode, setClusterMode] = useState(false);
 
   const dimensions = useMemo(
     () => [...new Set((data?.nodes ?? []).map((n) => n.dimension))],
+    [data],
+  );
+  /** Distinct relation predicates (edge types) present in the projection. */
+  const predicates = useMemo(
+    () => [...new Set((data?.relations ?? []).map((r) => r.predicate))].sort((a, b) => a.localeCompare(b, "zh")),
+    [data],
+  );
+  /** Distinct node years for the time-range filter (ascending). */
+  const years = useMemo(
+    () =>
+      [...new Set((data?.nodes ?? []).map((n) => n.year).filter((y): y is number => y != null))].sort(
+        (a, b) => a - b,
+      ),
     [data],
   );
 
@@ -131,23 +168,37 @@ export function GraphPage({ projectId }: { projectId: string }) {
     const nodes = (data?.nodes ?? []).filter((node) => {
       if (typeFilter !== "all" && node.type !== typeFilter) return false;
       if (dimensionFilter !== "all" && node.dimension !== dimensionFilter) return false;
+      if (confidenceFilter !== "all" && node.confidence !== confidenceFilter) return false;
+      const from = yearFrom !== "all" ? Number(yearFrom) : null;
+      const to = yearTo !== "all" ? Number(yearTo) : null;
+      if (from !== null || to !== null) {
+        if (node.year == null) return false;
+        if (from !== null && node.year < from) return false;
+        if (to !== null && node.year > to) return false;
+      }
       if (!search.trim()) return true;
       const needle = search.trim().toLowerCase();
       return node.title.toLowerCase().includes(needle);
     });
     const nodeIds = new Set(nodes.map((n) => n.id));
     const relations = (data?.relations ?? []).filter(
-      (r) => nodeIds.has(r.source_node_id) && nodeIds.has(r.target_node_id),
+      (r) =>
+        nodeIds.has(r.source_node_id) &&
+        nodeIds.has(r.target_node_id) &&
+        (relationFilter === "all" || r.predicate === relationFilter),
     );
     return { nodes, relations };
-  }, [data, search, typeFilter, dimensionFilter]);
+  }, [data, search, typeFilter, dimensionFilter, confidenceFilter, relationFilter, yearFrom, yearTo]);
 
   const positioned = useMemo(
     () =>
       listMode || !data
         ? []
-        : computeLayout({ ...data, nodes: filtered.nodes, relations: filtered.relations }),
-    [data, filtered, listMode],
+        : computeLayout(
+            { ...data, nodes: filtered.nodes, relations: filtered.relations },
+            clusterMode,
+          ),
+    [data, filtered, listMode, clusterMode],
   );
   const positionedById = new Map(positioned.map((n) => [n.id, n]));
   const selected = data?.nodes.find((n) => n.id === selectedId) ?? null;
@@ -201,9 +252,6 @@ export function GraphPage({ projectId }: { projectId: string }) {
           <Button size="sm" variant="secondary" onClick={() => setListMode((v) => !v)}>
             {listMode ? "图形视图" : "列表视图（无障碍）"}
           </Button>
-          <Button size="sm" variant="secondary" disabled title="桌面版提供">
-            筛选
-          </Button>
           <Button size="sm" variant="primary" disabled title="桌面版提供">
             导出图片
           </Button>
@@ -238,6 +286,18 @@ export function GraphPage({ projectId }: { projectId: string }) {
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-sm">
+              <button
+                type="button"
+                aria-pressed={clusterMode}
+                onClick={() => setClusterMode((v) => !v)}
+                data-testid="graph-cluster-toggle"
+                title="按研究维度分列布局"
+                className={`${CHIP_CLASS} ${
+                  clusterMode ? CHIP_SELECTED_CLASS : CHIP_IDLE_CLASS
+                }`}
+              >
+                按维度聚类
+              </button>
               <Input
                 type="search"
                 aria-label="搜索节点"
@@ -259,6 +319,60 @@ export function GraphPage({ projectId }: { projectId: string }) {
                   </option>
                 ))}
               </Select>
+              <Select
+                aria-label="按置信状态过滤"
+                value={confidenceFilter}
+                onChange={(e) =>
+                  setConfidenceFilter(e.target.value as "all" | ConfidenceState)
+                }
+                className="max-w-40"
+              >
+                <option value="all">全部置信</option>
+                {CONFIDENCE_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {CONFIDENCE_LABELS[state]}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label="按关系类型过滤"
+                value={relationFilter}
+                onChange={(e) => setRelationFilter(e.target.value)}
+                className="max-w-40"
+              >
+                <option value="all">全部关系</option>
+                {predicates.map((predicate) => (
+                  <option key={predicate} value={predicate}>
+                    {predicate}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label="起始年份"
+                value={yearFrom}
+                onChange={(e) => setYearFrom(e.target.value)}
+                className="max-w-32"
+              >
+                <option value="all">年份从</option>
+                {years.map((year) => (
+                  <option key={year} value={String(year)}>
+                    {year}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label="结束年份"
+                value={yearTo}
+                onChange={(e) => setYearTo(e.target.value)}
+                className="max-w-32"
+              >
+                <option value="all">到</option>
+                {years.map((year) => (
+                  <option key={year} value={String(year)}>
+                    {year}
+                  </option>
+                ))}
+              </Select>
               <span className="text-caption text-text-muted" role="status">
                 {filtered.nodes.length} 节点 · {filtered.relations.length} 关系
               </span>
@@ -276,6 +390,7 @@ export function GraphPage({ projectId }: { projectId: string }) {
                       <th scope="col" className="px-md py-sm">类型</th>
                       <th scope="col" className="px-md py-sm">维度</th>
                       <th scope="col" className="px-md py-sm">置信</th>
+                      <th scope="col" className="px-md py-sm">年份</th>
                       <th scope="col" className="px-md py-sm">来源/论断</th>
                     </tr>
                   </thead>
@@ -294,7 +409,7 @@ export function GraphPage({ projectId }: { projectId: string }) {
                           }
                         }}
                         tabIndex={0}
-                        aria-selected={node.id === selectedId}
+                        aria-current={node.id === selectedId ? "true" : undefined}
                       >
                         <td className="px-md py-sm text-text-primary">{node.title}</td>
                         <td className="px-md py-sm text-text-secondary">
@@ -307,6 +422,9 @@ export function GraphPage({ projectId }: { projectId: string }) {
                           <ResearchStatusBadge state={node.confidence} kind="confidence" />
                         </td>
                         <td className="px-md py-sm text-text-secondary">
+                          {node.year ?? "—"}
+                        </td>
+                        <td className="px-md py-sm text-text-secondary">
                           {node.source_count}/{node.claim_count}
                         </td>
                       </tr>
@@ -317,7 +435,10 @@ export function GraphPage({ projectId }: { projectId: string }) {
               {inspector}
             </>
           ) : (
-            <div className="graph-canvas-bg relative mt-lg min-h-[440px] overflow-hidden rounded-md">
+            <div
+              className="graph-canvas-bg relative mt-lg min-h-[440px] overflow-hidden rounded-md"
+              data-clustered={clusterMode ? "true" : "false"}
+            >
               <svg
                 viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
                 className="h-auto w-full"
@@ -340,7 +461,9 @@ export function GraphPage({ projectId }: { projectId: string }) {
                       x2={target.x}
                       y2={target.y}
                       stroke={
-                        highlighted ? "rgb(114 167 255 / 0.7)" : "rgb(114 167 255 / 0.25)"
+                        highlighted
+                          ? "var(--morpho-color-graph-edge-active)"
+                          : "var(--morpho-color-graph-edge)"
                       }
                       strokeWidth={highlighted ? 2 : 1}
                       aria-label={`关系：${source.title} ${relation.predicate} ${target.title}`}
@@ -356,7 +479,7 @@ export function GraphPage({ projectId }: { projectId: string }) {
                       role="button"
                       tabIndex={0}
                       aria-label={`${node.title}（${NODE_TYPE_LABELS[node.type]}，置信 ${CONFIDENCE_LABELS[node.confidence]}）`}
-                      className="cursor-pointer focus-visible:outline-none"
+                      className="cursor-pointer"
                       onClick={() => setSelectedId(node.id)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -368,11 +491,11 @@ export function GraphPage({ projectId }: { projectId: string }) {
                     >
                       <circle
                         r={10 + Math.min(8, node.source_count)}
-                        fill="#1b273b"
+                        fill="var(--morpho-color-graph-node)"
                         stroke={
                           isSelected
                             ? "var(--morpho-color-accent)"
-                            : "rgb(114 167 255 / 0.55)"
+                            : "var(--morpho-color-graph-edge-hover)"
                         }
                         strokeWidth={isSelected ? 3 : 1.5}
                       />
@@ -380,7 +503,7 @@ export function GraphPage({ projectId }: { projectId: string }) {
                         y={24}
                         textAnchor="middle"
                         fill="var(--morpho-color-text-secondary)"
-                        fontSize="11"
+                        style={{ fontSize: "var(--morpho-text-micro-size)" }}
                       >
                         {node.title.length > 10 ? `${node.title.slice(0, 10)}…` : node.title}
                       </text>

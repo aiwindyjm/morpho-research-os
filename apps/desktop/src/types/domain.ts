@@ -277,6 +277,13 @@ export interface KnowledgeNode {
   claim_ids: string[];
   created_at: string;
   updated_at: string;
+  /**
+   * Mock-only temporal tag carried by the fixture data; it exists so the
+   * graph view can offer the PRD §13 time/year filter. It is NOT part of
+   * the persisted knowledge-node contract (the transport schema strips it
+   * from knowledge.list responses); only the graph projection exposes it.
+   */
+  year?: number;
 }
 
 export interface Claim {
@@ -441,6 +448,8 @@ export interface GraphNode {
   dimension: string;
   source_count: number;
   claim_count: number;
+  /** Temporal tag for the PRD §13 time/year filter; null when unknown. */
+  year?: number | null;
 }
 
 export interface GraphRelation {

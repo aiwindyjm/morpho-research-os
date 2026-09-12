@@ -313,6 +313,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 1),
     project_id: PROJECT_B_ID,
+    year: 2024,
     type: "Concept",
     title: "运动皮层解码",
     aliases: ["motor cortex decoding"],
@@ -328,6 +329,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 2),
     project_id: PROJECT_B_ID,
+    year: 2021,
     type: "Concept",
     title: "皮质脊髓通路",
     aliases: [],
@@ -343,6 +345,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 3),
     project_id: PROJECT_B_ID,
+    year: 2022,
     type: "Concept",
     title: "神经可塑性",
     aliases: ["neuroplasticity"],
@@ -358,6 +361,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 4),
     project_id: PROJECT_B_ID,
+    year: 2023,
     type: "Technology",
     title: "皮层内微电极阵列",
     aliases: ["Utah array"],
@@ -373,6 +377,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 5),
     project_id: PROJECT_B_ID,
+    year: 2024,
     type: "Technology",
     title: "闭环深部脑刺激",
     aliases: ["closed-loop DBS"],
@@ -388,6 +393,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 6),
     project_id: PROJECT_B_ID,
+    year: 2025,
     type: "Technology",
     title: "表面肌电混合接口",
     aliases: ["hybrid sEMG"],
@@ -403,6 +409,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 7),
     project_id: PROJECT_B_ID,
+    year: 2023,
     type: "Paper",
     title: "A high-bandwidth neural interface for motor cortex",
     aliases: [],
@@ -418,6 +425,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 8),
     project_id: PROJECT_B_ID,
+    year: 2022,
     type: "Paper",
     title: "Intracortical BCIs for restoring movement",
     aliases: [],
@@ -433,6 +441,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 9),
     project_id: PROJECT_B_ID,
+    year: 2025,
     type: "Application",
     title: "中风后上肢康复训练",
     aliases: [],
@@ -448,6 +457,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 10),
     project_id: PROJECT_B_ID,
+    year: 2024,
     type: "Application",
     title: "功能性电刺激协同控制",
     aliases: ["FES coupling"],
@@ -463,6 +473,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 11),
     project_id: PROJECT_B_ID,
+    year: 2026,
     type: "Company",
     title: "示例神经康复公司",
     aliases: [],
@@ -478,6 +489,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 12),
     project_id: PROJECT_B_ID,
+    year: 2026,
     type: "Controversy",
     title: "消费级神经数据隐私争议",
     aliases: [],
@@ -493,6 +505,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 13),
     project_id: PROJECT_B_ID,
+    year: 2026,
     type: "Event",
     title: "2026 神经接口康复临床试验完成",
     aliases: [],
@@ -508,6 +521,7 @@ export const nodesB: KnowledgeNode[] = [
   {
     id: fixtureId("ndbtbbb", 14),
     project_id: PROJECT_B_ID,
+    year: 2025,
     type: "Concept",
     title: "意图解码延迟",
     aliases: [],

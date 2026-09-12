@@ -335,6 +335,7 @@ export const graphProjectionSchema = z.object({
       dimension: z.string(),
       source_count: z.number().int().min(0),
       claim_count: z.number().int().min(0),
+      year: z.number().int().nullable().optional(),
     }),
   ),
   relations: z.array(

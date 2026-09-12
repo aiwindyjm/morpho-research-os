@@ -79,6 +79,80 @@ describe("GraphPage", () => {
     });
   });
 
+  it("confidence band filter narrows nodes to the selected state", async () => {
+    const user = userEvent.setup();
+    renderGraph();
+    await screen.findByRole("button", { name: /运动皮层解码/ });
+
+    await user.selectOptions(screen.getByLabelText("按置信状态过滤"), "confirmed");
+    await waitFor(() => {
+      expect(screen.getByText("3 节点 · 1 关系")).toBeInTheDocument();
+    });
+    // Only the three confirmed fixture nodes remain on the canvas.
+    expect(screen.queryByRole("button", { name: /运动皮层解码/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /皮层内微电极阵列/ })).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("按置信状态过滤"), "all");
+    await waitFor(() => {
+      expect(screen.getByText("14 节点 · 12 关系")).toBeInTheDocument();
+    });
+  });
+
+  it("relation type filter hides edges but keeps the nodes", async () => {
+    const user = userEvent.setup();
+    renderGraph();
+    await screen.findByRole("button", { name: /运动皮层解码/ });
+
+    await user.selectOptions(screen.getByLabelText("按关系类型过滤"), "被报道于");
+    await waitFor(() => {
+      expect(screen.getByText("14 节点 · 1 关系")).toBeInTheDocument();
+    });
+    // Nodes are unaffected by the edge filter.
+    expect(screen.getByRole("button", { name: /运动皮层解码/ })).toBeInTheDocument();
+  });
+
+  it("year range filter narrows nodes by their temporal tag", async () => {
+    const user = userEvent.setup();
+    renderGraph();
+    await screen.findByRole("button", { name: /运动皮层解码/ });
+
+    await user.selectOptions(screen.getByLabelText("起始年份"), "2026");
+    await waitFor(() => {
+      expect(screen.getByText("3 节点 · 1 关系")).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText("起始年份"), "2021");
+    await user.selectOptions(screen.getByLabelText("结束年份"), "2021");
+    await waitFor(() => {
+      expect(screen.getByText("1 节点 · 0 关系")).toBeInTheDocument();
+    });
+  });
+
+  it("cluster toggle switches the layout mode flag", async () => {
+    const user = userEvent.setup();
+    renderGraph();
+    await screen.findByTestId("graph-canvas");
+    expect(screen.getByTestId("graph-canvas").parentElement).toHaveAttribute(
+      "data-clustered",
+      "false",
+    );
+
+    const toggle = screen.getByTestId("graph-cluster-toggle");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("graph-canvas").parentElement).toHaveAttribute(
+      "data-clustered",
+      "true",
+    );
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("graph-canvas").parentElement).toHaveAttribute(
+      "data-clustered",
+      "false",
+    );
+  });
+
   it("selecting a node opens the inspector with details and relations", async () => {
     const user = userEvent.setup();
     renderGraph();
@@ -114,5 +188,22 @@ describe("GraphPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("graph-inspector")).toBeInTheDocument();
     });
+    // Selected row is marked with aria-current (aria-selected is invalid on
+    // a plain <tr> without a grid role).
+    expect(firstRow).toHaveAttribute("aria-current", "true");
+  });
+
+  it("the list fallback respects the confidence filter and shows the year column", async () => {
+    const user = userEvent.setup();
+    renderGraph();
+    await screen.findByRole("button", { name: /运动皮层解码/ });
+
+    await user.selectOptions(screen.getByLabelText("按置信状态过滤"), "confirmed");
+    await user.click(screen.getByRole("button", { name: /列表视图/ }));
+    const table = await screen.findByRole("table", { name: /知识节点列表/ });
+    // Header row + the three confirmed fixture nodes.
+    expect(within(table).getAllByRole("row")).toHaveLength(4);
+    expect(within(table).getAllByRole("row")[1]).toHaveTextContent("2023");
+    expect(within(table).queryByText("运动皮层解码")).not.toBeInTheDocument();
   });
 });
