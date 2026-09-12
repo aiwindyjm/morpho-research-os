@@ -94,7 +94,7 @@ describe("plan review → run flow", () => {
     // Simulate orchestrator ticks and observe the tasks view.
     for (let i = 0; i < 6; i++) mockBackend.step();
     await user.click(screen.getByRole("button", { name: "任务" }));
-    expect(await screen.findByRole("heading", { name: "任务" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "执行中的工作" })).toBeInTheDocument();
     await waitFor(
       () => {
         const rows = screen.getAllByTestId("task-row");
