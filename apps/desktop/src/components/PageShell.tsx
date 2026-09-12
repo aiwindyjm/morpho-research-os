@@ -32,7 +32,8 @@ export function PageShell({ kicker, title, description, actions, toolbar, childr
         </div>
         {toolbar ? <div className="mt-lg">{toolbar}</div> : null}
       </header>
-      <div className="view-fade min-h-0 flex-1 overflow-y-auto px-xl py-xl">{children}</div>
+      {/* Layout-level view-fade already animates view switches; no second fade here. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-xl py-xl">{children}</div>
     </div>
   );
 }

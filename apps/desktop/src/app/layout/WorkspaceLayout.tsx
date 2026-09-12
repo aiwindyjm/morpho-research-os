@@ -59,14 +59,25 @@ export function WorkspaceLayout() {
   );
 }
 
-/** 浮动助手(spec §8):右下 launcher + 360×530 弹出面板;Escape 关闭。 */
+/** 浮动助手(spec §8):右下 launcher + 360×530 弹出面板;Escape 关闭并归还焦点。 */
 function AssistantDock() {
   const assistantOpen = useWorkspaceStore((s) => s.assistantOpen);
   const setAssistantOpen = useWorkspaceStore((s) => s.setAssistantOpen);
   const panelRef = useRef<HTMLDivElement>(null);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
-    if (!assistantOpen) return;
+    if (!assistantOpen) {
+      // Close transition (spec §8): return focus to the launcher so it
+      // never drops to <body>. Skip the initial mount.
+      if (wasOpenRef.current) {
+        wasOpenRef.current = false;
+        launcherRef.current?.focus();
+      }
+      return;
+    }
+    wasOpenRef.current = true;
     panelRef.current?.focus();
     function onKeydown(event: KeyboardEvent) {
       if (event.key === "Escape") setAssistantOpen(false);
@@ -80,6 +91,7 @@ function AssistantDock() {
       {!assistantOpen ? (
         <button
           type="button"
+          ref={launcherRef}
           aria-label="打开 AI 助手"
           onClick={() => setAssistantOpen(true)}
           className="brand-gradient-button fixed bottom-xl right-xl z-30 flex items-center gap-sm rounded-full px-md py-sm text-[11px] font-bold text-[#f2f6ff] transition-transform hover:-translate-y-0.5"
