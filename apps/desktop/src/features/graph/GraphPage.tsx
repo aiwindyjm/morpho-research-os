@@ -59,6 +59,12 @@ const CHIP_CLASS =
 const CHIP_SELECTED_CLASS = "text-info border-[rgb(114_167_255/0.45)] bg-accent-soft";
 const CHIP_IDLE_CLASS = "text-text-muted border-border hover:text-text-secondary";
 
+/** Inspector panel: scrollable content, overlay on the canvas edge from lg up. */
+const INSPECTOR_BASE_CLASS =
+  "mt-lg overflow-y-auto rounded-md border border-border bg-surface/95 p-lg";
+const INSPECTOR_OVERLAY_CLASS =
+  "lg:absolute lg:inset-y-0 lg:right-0 lg:mt-0 lg:w-[245px] lg:rounded-none lg:border-0 lg:border-l";
+
 interface PositionedNode extends GraphNode {
   x: number;
   y: number;
@@ -159,19 +165,14 @@ export function GraphPage({ projectId }: { projectId: string }) {
     : [];
   const nodeTitles = new Map((data?.nodes ?? []).map((n) => [n.id, n.title]));
 
+  const inspectorClassName = listMode
+    ? INSPECTOR_BASE_CLASS
+    : `${INSPECTOR_BASE_CLASS} ${INSPECTOR_OVERLAY_CLASS}`;
+
   const inspector =
-    selected && !listMode ? (
+    selected ? (
       <GraphNodeInspector
-        className="mt-lg rounded-md border border-border bg-surface/95 p-lg lg:absolute lg:inset-y-0 lg:right-0 lg:mt-0 lg:w-[245px] lg:rounded-none lg:border-0 lg:border-l"
-        node={selected}
-        summary={summaryById.get(selected.id)}
-        relations={inspectorRelations}
-        nodeTitles={nodeTitles}
-        onClose={() => setSelectedId(null)}
-      />
-    ) : selected && listMode ? (
-      <GraphNodeInspector
-        className="mt-lg rounded-md border border-border bg-surface/95 p-lg"
+        className={inspectorClassName}
         node={selected}
         summary={summaryById.get(selected.id)}
         relations={inspectorRelations}
@@ -182,11 +183,7 @@ export function GraphPage({ projectId }: { projectId: string }) {
       <aside
         data-testid="graph-inspector"
         aria-label="图谱检查器"
-        className={
-          listMode
-            ? "mt-lg rounded-md border border-border bg-surface/95 p-lg"
-            : "mt-lg rounded-md border border-border bg-surface/95 p-lg lg:absolute lg:inset-y-0 lg:right-0 lg:mt-0 lg:w-[245px] lg:rounded-none lg:border-0 lg:border-l"
-        }
+        className={inspectorClassName}
       >
         <p className="text-body text-text-secondary">
           {listMode ? "点击列表中的节点查看详情。" : "点击节点查看详情。"}
