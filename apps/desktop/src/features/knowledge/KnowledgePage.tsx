@@ -1,16 +1,86 @@
 import { useMemo, useState } from "react";
-import { Badge, Card, Input, Select, Tabs } from "@morpho/ui";
+import { Badge, Button, Card, Input, Select, Tabs } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
-import { ClaimCard, KnowledgeCard } from "@/components/cards";
-import { KNOWLEDGE_NODE_TYPES } from "@/types/domain";
-import { NODE_TYPE_LABELS } from "@/types/labels";
+import { ClaimCard } from "@/components/cards";
+import {
+  KNOWLEDGE_NODE_TYPES,
+  type KnowledgeNode,
+  type KnowledgeNodeType,
+} from "@/types/domain";
+import { CONFIDENCE_LABELS, NODE_TYPE_LABELS } from "@/types/labels";
 import { useClaims, useEvidence, useKnowledge, useSources } from "@/services/queries";
 
 /**
- * Knowledge view — nodes and claims stay separate record types
- * (docs/PRD.md §6). Claims expand to their evidence with precise locators.
+ * Knowledge view (docs/PRD.md §6): nodes and claims stay separate record
+ * types. Claims expand to their evidence with precise locators.
+ *
+ * Prototype alignment (spec §4, `view-knowledge`): knowledge cards in a
+ * four-column grid with mono type badges and conflict styling. Badge mapping
+ * (prototype palette; types without a prototype entry follow the nearest
+ * existing node-badge colour):
+ *   Concept, Event            → node-badge-accent (蓝)
+ *   Person, Paper, Book, Experiment, Technology, Product, Application,
+ *   Policy, Dataset           → node-badge-alt (紫)
+ *   Company, Organization     → node-badge-warning (橙)
+ *   Controversy               → node-badge-error (红)
  */
+
+/** Prototype badge class per node type (mapping documented above). */
+const NODE_TYPE_BADGE_CLASS: Record<KnowledgeNodeType, string> = {
+  Concept: "node-badge-accent",
+  Event: "node-badge-accent",
+  Person: "node-badge-alt",
+  Paper: "node-badge-alt",
+  Book: "node-badge-alt",
+  Experiment: "node-badge-alt",
+  Technology: "node-badge-alt",
+  Product: "node-badge-alt",
+  Application: "node-badge-alt",
+  Policy: "node-badge-alt",
+  Dataset: "node-badge-alt",
+  Company: "node-badge-warning",
+  Organization: "node-badge-warning",
+  Controversy: "node-badge-error",
+};
+
+/** Prototype knowledge card: badge + confidence on top, meta at the bottom.
+ * Conflicting nodes get the prototype conflict gradient and their own testid. */
+function KnowledgeNodeCard({ node }: { node: KnowledgeNode }) {
+  const conflicting = node.status === "conflicting";
+  return (
+    <Card
+      data-testid={conflicting ? "knowledge-card-conflict" : "knowledge-card"}
+      className={`flex min-h-[203px] flex-col p-md ${
+        conflicting
+          ? "border-[rgb(237_119_136/0.28)] bg-gradient-to-br from-[rgb(97_34_49/0.13)] to-surface"
+          : ""
+      }`}
+    >
+      <div className="flex items-center justify-between gap-sm">
+        <span className={`badge-mono ${NODE_TYPE_BADGE_CLASS[node.type]}`}>
+          {NODE_TYPE_LABELS[node.type]}
+        </span>
+        <span
+          className={`text-caption ${conflicting ? "text-error" : "text-text-muted"}`}
+        >
+          {CONFIDENCE_LABELS[node.status]}
+        </span>
+      </div>
+      <h2 className="mt-md text-h3 text-text-primary">{node.title}</h2>
+      <p className="mt-xs min-h-[65px] text-caption text-text-secondary">
+        {node.summary}
+      </p>
+      <div className="mt-auto flex items-center gap-md text-caption text-text-muted">
+        <span>
+          ↗ {node.source_ids.length} 来源
+        </span>
+        <span>◇ {node.claim_ids.length} 结论</span>
+      </div>
+    </Card>
+  );
+}
+
 export function KnowledgePage({ projectId }: { projectId: string }) {
   const knowledge = useKnowledge(projectId);
   const claims = useClaims(projectId);
@@ -57,30 +127,15 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
         />
-        <Select
-          aria-label="按类型过滤"
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="max-w-48"
-        >
-          <option value="all">全部类型</option>
-          {KNOWLEDGE_NODE_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {NODE_TYPE_LABELS[type]}
-            </option>
-          ))}
-        </Select>
         <span className="text-caption text-text-muted" role="status">
           {filteredNodes.length} 个节点
         </span>
       </div>
-      <ul className="grid grid-cols-1 gap-lg lg:grid-cols-2">
+      <div className="grid gap-md md:grid-cols-2 xl:grid-cols-4">
         {filteredNodes.map((node) => (
-          <li key={node.id}>
-            <KnowledgeCard node={node} />
-          </li>
+          <KnowledgeNodeCard key={node.id} node={node} />
         ))}
-      </ul>
+      </div>
       {filteredNodes.length === 0 ? (
         <Card className="text-center text-body text-text-secondary">
           没有匹配的知识节点；试试更换关键词或清除过滤条件。
@@ -109,8 +164,29 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
 
   return (
     <PageShell
-      title="知识库"
-      description="实体、论断与证据分层存储；每条重要论断都可以追溯到来源定位。"
+      kicker="知识库"
+      title="已提取的知识"
+      description="节点是实体和概念，结论与证据单独保存。"
+      actions={
+        <>
+          <Select
+            aria-label="筛选类型"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="w-36"
+          >
+            <option value="all">全部类型</option>
+            {KNOWLEDGE_NODE_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {NODE_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </Select>
+          <Button variant="primary" disabled title="桌面版提供">
+            导出 Vault
+          </Button>
+        </>
+      }
       toolbar={
         sources.data ? (
           <div className="flex items-center gap-sm text-caption text-text-muted">
