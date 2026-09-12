@@ -1,8 +1,7 @@
-import { Badge, Button, Card, Progress } from "@morpho/ui";
+import { Badge, Button, Card } from "@morpho/ui";
 import {
   TASK_STATE_BADGE_VARIANT,
   TASK_STATE_LABELS,
-  TASK_KIND_LABELS,
   SOURCE_TYPE_LABELS,
   SOURCE_STATUS_LABELS,
   NODE_TYPE_LABELS,
@@ -16,7 +15,6 @@ import type {
   Evidence,
   KnowledgeNode,
   PlanStatus,
-  ResearchTask,
   Source,
   TaskState,
 } from "@/types/domain";
@@ -64,33 +62,6 @@ export function ResearchStatusBadge({
     <Badge variant={CONFIDENCE_BADGE_VARIANT[key]}>
       {CONFIDENCE_LABELS[key] ?? key}
     </Badge>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* TaskProgress                                                        */
-/* ------------------------------------------------------------------ */
-
-/** Registered business component: TaskProgress. */
-export function TaskProgress({
-  completed,
-  total,
-  label = "任务完成度",
-}: {
-  completed: number;
-  total: number;
-  label?: string;
-}) {
-  return (
-    <div className="flex min-w-40 flex-col gap-xs">
-      <div className="flex items-center justify-between text-caption text-text-secondary">
-        <span>{label}</span>
-        <span>
-          {completed}/{total}
-        </span>
-      </div>
-      <Progress value={total > 0 ? (completed / total) * 100 : 0} label={label} />
-    </div>
   );
 }
 
@@ -257,55 +228,5 @@ export function ClaimCard({
         ) : null}
       </div>
     </Card>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* TaskList pieces                                                     */
-/* ------------------------------------------------------------------ */
-
-/** Task row used by the Tasks page; keeps actions user-controllable
- * (pause/resume/retry/cancel per docs/frontend/UX_RULES.md). */
-export function TaskRow({
-  task,
-  sectionTitle,
-  actions,
-}: {
-  task: ResearchTask;
-  sectionTitle?: string;
-  actions?: React.ReactNode;
-}) {
-  return (
-    <div
-      className="flex flex-col gap-sm rounded-md border border-border bg-surface p-md"
-      data-testid="task-row"
-      data-state={task.state}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-sm">
-        <div className="flex flex-wrap items-center gap-sm">
-          <ResearchStatusBadge state={task.state} kind="task" />
-          <span className="text-body text-text-primary">{task.title}</span>
-          <Badge variant="neutral">{TASK_KIND_LABELS[task.kind]}</Badge>
-          {sectionTitle ? (
-            <span className="text-caption text-text-muted">{sectionTitle}</span>
-          ) : null}
-        </div>
-        {actions ? <div className="flex items-center gap-xs">{actions}</div> : null}
-      </div>
-      {task.description ? (
-        <p className="text-caption text-text-secondary">{task.description}</p>
-      ) : null}
-      <div className="flex flex-wrap gap-md text-caption text-text-muted">
-        <span>尝试次数 {task.attempt}</span>
-        {task.dependencies.length > 0 ? (
-          <span>依赖 {task.dependencies.length} 个前置任务</span>
-        ) : null}
-        {task.checkpoint ? <span>检查点 {task.checkpoint}</span> : null}
-        {task.error_code ? (
-          <span className="text-error">错误码 {task.error_code}</span>
-        ) : null}
-        <span>幂等键 {task.idempotency_key.slice(0, 18)}…</span>
-      </div>
-    </div>
   );
 }

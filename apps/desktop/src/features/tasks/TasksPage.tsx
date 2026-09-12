@@ -152,14 +152,14 @@ export function TasksPage({ projectId }: { projectId: string }) {
           title: "还没有任务",
           description:
             plan?.status === "approved"
-              ? "计划已批准，点击右上角「开始运行」创建任务。"
+              ? "计划已批准，点击右上角「继续运行」创建任务。"
               : plan?.status === "draft"
                 ? "先到「研究计划」页审查并批准计划，批准后会创建任务。"
                 : "先在「研究计划」页生成并批准一份计划。",
           action:
             plan?.status === "approved" ? (
               <Button variant="primary" onClick={() => void startRun.start.mutateAsync().catch(() => undefined)}>
-                开始运行
+                继续运行
               </Button>
             ) : undefined,
         }}
