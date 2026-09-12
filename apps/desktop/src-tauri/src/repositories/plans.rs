@@ -67,6 +67,8 @@ pub struct TaskRecord {
     pub cache_ref: Option<String>,
     pub result_ref: Option<String>,
     pub error_ref: Option<String>,
+    /// Why the task was explicitly skipped (migration 002).
+    pub skip_reason: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -86,9 +88,9 @@ pub struct CreatedPlan {
     pub tasks: Vec<TaskRecord>,
 }
 
-/// Task states allowed by the schema CHECK; the state machine itself is
-/// owned by the task DAG work (RES-02).
-pub const TASK_STATES: [&str; 9] = [
+/// Task states allowed by the schema CHECK; which transitions between them
+/// are legal is decided by [`crate::orchestrator`] (PRD §7).
+pub const TASK_STATES: [&str; 10] = [
     "PENDING",
     "PLANNING",
     "RUNNING",
@@ -98,6 +100,7 @@ pub const TASK_STATES: [&str; 9] = [
     "COMPLETED",
     "FAILED",
     "CANCELLED",
+    "SKIPPED",
 ];
 
 /// Plan statuses allowed by the schema CHECK (`draft` -> `approved` /
@@ -182,6 +185,7 @@ impl Plans {
                 cache_ref: None,
                 result_ref: None,
                 error_ref: None,
+                skip_reason: None,
                 created_at: now,
                 updated_at: now,
             };
@@ -309,7 +313,7 @@ fn task_select(suffix: &str) -> String {
     format!(
         "SELECT id, plan_id, section_id, run_id, title, task_type, status, idempotency_key,
                 checkpoint, retry_count, max_retries, cache_ref, result_ref, error_ref,
-                created_at, updated_at
+                skip_reason, created_at, updated_at
          FROM tasks {suffix}"
     )
 }
@@ -342,8 +346,9 @@ fn map_task(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         cache_ref: row.get(11)?,
         result_ref: row.get(12)?,
         error_ref: row.get(13)?,
-        created_at: row.get(14)?,
-        updated_at: row.get(15)?,
+        skip_reason: row.get(14)?,
+        created_at: row.get(15)?,
+        updated_at: row.get(16)?,
     })
 }
 
@@ -430,6 +435,7 @@ mod tests {
             assert!(task.cache_ref.is_none());
             assert!(task.result_ref.is_none());
             assert!(task.error_ref.is_none());
+            assert!(task.skip_reason.is_none());
         }
         assert_eq!(
             created.tasks[1].section_id,

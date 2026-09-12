@@ -1,6 +1,6 @@
 //! Task reads and status updates.
 //!
-//! The legal transition graph is owned by the task DAG work (RES-02); this
+//! The legal transition graph is owned by [`crate::orchestrator`]; this
 //! repository only persists and reads. Statuses are validated against the
 //! schema's CHECK list before any write.
 
@@ -8,6 +8,17 @@ use crate::error::CoreError;
 use crate::ids::now_unix_ms;
 use crate::repositories::plans::TaskRecord;
 use rusqlite::{params, Connection, Row, Transaction};
+
+/// One `task_dependencies` row (migration 002 adds `condition`; new rows
+/// default to `'completed-or-skipped'`, the PRD §7 behavior).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskDependencyRecord {
+    pub task_id: String,
+    pub depends_on_task_id: String,
+    /// `'completed'` or `'completed-or-skipped'`; interpretation lives in the
+    /// orchestrator.
+    pub condition: String,
+}
 
 pub struct Tasks;
 
@@ -140,6 +151,107 @@ impl Tasks {
             None::<&str>,
         )
     }
+
+    /// Records why a task was explicitly skipped (migration 002). Setting a
+    /// reason never changes the task status; the SKIPPED transition itself is
+    /// the orchestrator's decision.
+    pub fn set_skip_reason(
+        tx: &Transaction<'_>,
+        id: &str,
+        reason: &str,
+    ) -> Result<TaskRecord, CoreError> {
+        let changed = tx
+            .execute(
+                "UPDATE tasks SET skip_reason = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, reason, now_unix_ms()],
+            )
+            .map_err(CoreError::from)?;
+        if changed == 0 {
+            return Err(CoreError::database(format!("task '{id}' not found")));
+        }
+        tx_immediate_get(tx, id)
+    }
+
+    /// All tasks assigned to a run, oldest first (the orchestrator's run
+    /// rollup input).
+    pub fn list_for_run(conn: &Connection, run_id: &str) -> Result<Vec<TaskRecord>, CoreError> {
+        let sql = format!(
+            "SELECT id, plan_id, section_id, run_id, title, task_type, status, idempotency_key,
+                    checkpoint, retry_count, max_retries, cache_ref, result_ref, error_ref,
+                    skip_reason, created_at, updated_at
+             FROM tasks WHERE run_id = ?1 ORDER BY created_at, id"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(CoreError::from)?;
+        let rows = stmt
+            .query_map(params![run_id], map_task)
+            .map_err(CoreError::from)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CoreError::from)?;
+        Ok(rows)
+    }
+
+    /// Direct dependencies of a task: rows where the task is the dependent.
+    pub fn dependencies_of(
+        conn: &Connection,
+        task_id: &str,
+    ) -> Result<Vec<TaskDependencyRecord>, CoreError> {
+        dependency_rows(
+            conn,
+            "WHERE task_id = ?1 ORDER BY depends_on_task_id",
+            task_id,
+        )
+    }
+
+    /// Direct dependents of a task: rows where the task is depended on.
+    pub fn dependents_of(
+        conn: &Connection,
+        task_id: &str,
+    ) -> Result<Vec<TaskDependencyRecord>, CoreError> {
+        dependency_rows(
+            conn,
+            "WHERE depends_on_task_id = ?1 ORDER BY task_id",
+            task_id,
+        )
+    }
+
+    /// Claims every still-unassigned PENDING task of a plan for a run.
+    /// Idempotent: only rows with a NULL `run_id` are touched, so replays and
+    /// later runs of the same plan never steal tasks from another run.
+    /// Returns the number of tasks claimed.
+    pub fn claim_for_run(
+        tx: &Transaction<'_>,
+        plan_id: &str,
+        run_id: &str,
+    ) -> Result<usize, CoreError> {
+        tx.execute(
+            "UPDATE tasks SET run_id = ?2, updated_at = ?3
+             WHERE plan_id = ?1 AND run_id IS NULL AND status = 'PENDING'",
+            params![plan_id, run_id, now_unix_ms()],
+        )
+        .map_err(CoreError::from)
+    }
+}
+
+fn dependency_rows(
+    conn: &Connection,
+    suffix: &str,
+    task_id: &str,
+) -> Result<Vec<TaskDependencyRecord>, CoreError> {
+    let sql =
+        format!("SELECT task_id, depends_on_task_id, condition FROM task_dependencies {suffix}");
+    let mut stmt = conn.prepare(&sql).map_err(CoreError::from)?;
+    let rows = stmt
+        .query_map(params![task_id], |row| {
+            Ok(TaskDependencyRecord {
+                task_id: row.get(0)?,
+                depends_on_task_id: row.get(1)?,
+                condition: row.get(2)?,
+            })
+        })
+        .map_err(CoreError::from)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CoreError::from)?;
+    Ok(rows)
 }
 
 /// Applies one static per-column UPDATE (`?1` = task id, `?2` = new value or
@@ -168,7 +280,7 @@ fn select_one(
     let sql = format!(
         "SELECT id, plan_id, section_id, run_id, title, task_type, status, idempotency_key,
                 checkpoint, retry_count, max_retries, cache_ref, result_ref, error_ref,
-                created_at, updated_at
+                skip_reason, created_at, updated_at
          FROM tasks {suffix}"
     );
     let mut stmt = conn.prepare(&sql).map_err(CoreError::from)?;
@@ -182,7 +294,7 @@ fn select_one(
 fn tx_immediate_get(tx: &Transaction<'_>, id: &str) -> Result<TaskRecord, CoreError> {
     let sql = "SELECT id, plan_id, section_id, run_id, title, task_type, status, idempotency_key,
                       checkpoint, retry_count, max_retries, cache_ref, result_ref, error_ref,
-                      created_at, updated_at
+                      skip_reason, created_at, updated_at
                FROM tasks WHERE id = ?1";
     tx.query_row(sql, params![id], map_task)
         .map_err(CoreError::from)
@@ -204,8 +316,9 @@ fn map_task(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         cache_ref: row.get(11)?,
         result_ref: row.get(12)?,
         error_ref: row.get(13)?,
-        created_at: row.get(14)?,
-        updated_at: row.get(15)?,
+        skip_reason: row.get(14)?,
+        created_at: row.get(15)?,
+        updated_at: row.get(16)?,
     })
 }
 
@@ -359,6 +472,145 @@ mod tests {
         let (mut conn, _task) = task_in_db();
         let err = with_write_tx(&mut conn, |tx| {
             Tasks::set_checkpoint(tx, "ghost", "{}").map(|_| ())
+        })
+        .unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
+    }
+
+    /// Project -> config -> plan (two dependent tasks) -> run fixture.
+    fn run_with_dependency_dag() -> (Connection, String, String, String) {
+        let mut conn = migrated_memory_db().unwrap();
+        let project_id = with_write_tx(&mut conn, |tx| {
+            Projects::insert(
+                tx,
+                &NewProject {
+                    name: "P".into(),
+                    description: String::new(),
+                },
+            )
+            .map(|p| p.id)
+        })
+        .unwrap();
+        let config_id = with_write_tx(&mut conn, |tx| {
+            ResearchConfigs::insert(
+                tx,
+                &NewResearchConfig {
+                    project_id: project_id.clone(),
+                    ..Default::default()
+                },
+            )
+            .map(|c| c.id)
+        })
+        .unwrap();
+        let created = with_write_tx(&mut conn, |tx| {
+            Plans::insert_draft(
+                tx,
+                &PlanDraft {
+                    plan: NewPlan {
+                        project_id,
+                        research_config_id: config_id,
+                        title: "T".into(),
+                    },
+                    sections: vec![],
+                    tasks: vec![
+                        NewTask {
+                            title: "a".into(),
+                            task_type: "search".into(),
+                            idempotency_key: "dag-a".into(),
+                            section_index: None,
+                            depends_on: vec![],
+                        },
+                        NewTask {
+                            title: "b".into(),
+                            task_type: "extraction".into(),
+                            idempotency_key: "dag-b".into(),
+                            section_index: None,
+                            depends_on: vec!["dag-a".into()],
+                        },
+                    ],
+                },
+            )
+        })
+        .unwrap();
+        let plan_id = created.plan.id.clone();
+        let (a_id, b_id) = (created.tasks[0].id.clone(), created.tasks[1].id.clone());
+        let run_id = with_write_tx(&mut conn, |tx| {
+            crate::repositories::runs::Runs::insert(
+                tx,
+                &crate::repositories::runs::NewRun {
+                    id: None,
+                    project_id: created.plan.project_id.clone(),
+                    plan_id: plan_id.clone(),
+                    started_at: None,
+                },
+            )
+            .map(|r| r.id)
+        })
+        .unwrap();
+        (conn, run_id, a_id, b_id)
+    }
+
+    #[test]
+    fn claim_for_run_is_idempotent_and_scoped_to_unassigned_pending_tasks() {
+        let (mut conn, run_id, a_id, b_id) = run_with_dependency_dag();
+        let plan_id = plan_of(&conn, &a_id);
+        let claimed =
+            with_write_tx(&mut conn, |tx| Tasks::claim_for_run(tx, &plan_id, &run_id)).unwrap();
+        assert_eq!(claimed, 2);
+        let listed = Tasks::list_for_run(&conn, &run_id).unwrap();
+        assert_eq!(listed.len(), 2);
+        assert!(listed.iter().all(|t| t.status == "PENDING"));
+
+        // Replaying claims nothing; already-assigned tasks are untouched.
+        let again =
+            with_write_tx(&mut conn, |tx| Tasks::claim_for_run(tx, &plan_id, &run_id)).unwrap();
+        assert_eq!(again, 0);
+
+        // A task moved out of PENDING is not claimable either.
+        with_write_tx(&mut conn, |tx| Tasks::update_status(tx, &b_id, "COMPLETED")).unwrap();
+        let after =
+            with_write_tx(&mut conn, |tx| Tasks::claim_for_run(tx, &plan_id, &run_id)).unwrap();
+        assert_eq!(after, 0);
+    }
+
+    fn plan_of(conn: &Connection, task_id: &str) -> String {
+        conn.query_row(
+            "SELECT plan_id FROM tasks WHERE id = ?1",
+            params![task_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn dependency_rows_expose_the_condition_column() {
+        let (conn, _run_id, a_id, b_id) = run_with_dependency_dag();
+        let deps = Tasks::dependencies_of(&conn, &b_id).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].depends_on_task_id, a_id);
+        assert_eq!(deps[0].condition, "completed-or-skipped");
+
+        let dependents = Tasks::dependents_of(&conn, &a_id).unwrap();
+        assert_eq!(dependents.len(), 1);
+        assert_eq!(dependents[0].task_id, b_id);
+        assert!(Tasks::dependencies_of(&conn, &a_id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn skip_reason_round_trips_without_touching_status() {
+        let (mut conn, task) = task_in_db();
+        let updated = with_write_tx(&mut conn, |tx| {
+            Tasks::set_skip_reason(tx, &task.id, "covered by another run")
+        })
+        .unwrap();
+        assert_eq!(
+            updated.skip_reason.as_deref(),
+            Some("covered by another run")
+        );
+        assert_eq!(updated.status, "PENDING");
+
+        let err = with_write_tx(&mut conn, |tx| {
+            Tasks::set_skip_reason(tx, "ghost", "x").map(|_| ())
         })
         .unwrap_err();
         assert!(err.developer_detail.contains("not found"));

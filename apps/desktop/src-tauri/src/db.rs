@@ -11,7 +11,7 @@ use rusqlite::{Connection, Transaction};
 use std::path::Path;
 
 /// Highest schema version shipped in `migrations/`.
-pub const LATEST_SCHEMA_VERSION: i64 = 1;
+pub const LATEST_SCHEMA_VERSION: i64 = 2;
 
 /// A numbered SQL migration. `sql` may contain multiple statements.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,11 +24,18 @@ pub struct Migration {
 /// The migrations embedded in this build. New migrations are new numbered
 /// files plus one entry here; existing entries are immutable.
 pub fn embedded_migrations() -> Vec<Migration> {
-    vec![Migration {
-        version: 1,
-        name: "initial",
-        sql: include_str!("../migrations/001_initial.sql"),
-    }]
+    vec![
+        Migration {
+            version: 1,
+            name: "initial",
+            sql: include_str!("../migrations/001_initial.sql"),
+        },
+        Migration {
+            version: 2,
+            name: "task_skip_and_orchestrator",
+            sql: include_str!("../migrations/002_task_skip_and_orchestrator.sql"),
+        },
+    ]
 }
 
 /// Opens a connection with the core's mandatory SQLite defaults:
@@ -185,6 +192,12 @@ mod tests {
     fn embedded_migrations_are_consistent() {
         let migrations = embedded_migrations();
         assert_eq!(migrations[0].version, 1);
+        let versions: Vec<i64> = migrations.iter().map(|m| m.version).collect();
+        assert_eq!(
+            versions,
+            vec![1, 2],
+            "migrations must be gapless and ordered"
+        );
         assert_eq!(LATEST_SCHEMA_VERSION, migrations.last().unwrap().version);
     }
 
@@ -192,7 +205,10 @@ mod tests {
     fn fresh_database_migrates_to_latest() {
         let mut conn = open_in_memory().unwrap();
         let outcome = migrate(&mut conn, &embedded_migrations()).unwrap();
-        assert_eq!(outcome.applied, vec![(1, "initial")]);
+        assert_eq!(
+            outcome.applied,
+            vec![(1, "initial"), (2, "task_skip_and_orchestrator")]
+        );
         assert_eq!(outcome.current, LATEST_SCHEMA_VERSION);
         assert_eq!(
             current_schema_version(&conn).unwrap(),
@@ -345,5 +361,144 @@ mod tests {
                 .unwrap();
             assert!(exists, "table {table} missing from 001_initial.sql");
         }
+    }
+
+    /// Seeds a version-1 database (migration 1 only) with one row in every
+    /// table the 002 rebuild touches, using raw SQL so this module stays
+    /// independent of the repositories.
+    fn v1_database_with_data() -> Connection {
+        let mut conn = open_in_memory().unwrap();
+        let migrations = embedded_migrations();
+        migrate(&mut conn, &[migrations[0].clone()]).unwrap();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, description, status, created_at, updated_at)
+             VALUES ('p1', 'P', '', 'active', 1, 1);
+             INSERT INTO research_configs (id, project_id, domain, topic, purpose, depth,
+                                           created_at, updated_at)
+             VALUES ('c1', 'p1', 'd', 't', 'learning', 2, 1, 1);
+             INSERT INTO plans (id, project_id, research_config_id, title, status,
+                                created_at, updated_at)
+             VALUES ('pl1', 'p1', 'c1', 'T', 'approved', 1, 1);
+             INSERT INTO runs (id, project_id, plan_id, status, started_at, created_at, updated_at)
+             VALUES ('r1', 'p1', 'pl1', 'running', 1, 1, 1);
+             INSERT INTO tasks (id, plan_id, run_id, title, task_type, status,
+                                idempotency_key, retry_count, max_retries,
+                                created_at, updated_at)
+             VALUES ('t1', 'pl1', 'r1', 'search', 'search', 'COMPLETED', 'k-1', 1, 3, 1, 1),
+                    ('t2', 'pl1', 'r1', 'extract', 'extraction', 'PENDING', 'k-2', 0, 3, 1, 1);
+             INSERT INTO task_dependencies (task_id, depends_on_task_id, created_at)
+             VALUES ('t2', 't1', 1);
+             INSERT INTO events (id, run_id, task_id, sequence, event_type, payload, created_at)
+             VALUES ('e1', 'r1', 't1', 1, 'task.completed', '{}', 1);
+             INSERT INTO llm_usage (id, task_id, provider, model, input_tokens, created_at)
+             VALUES ('u1', 't1', 'builtin', 'm', 10, 1);",
+        )
+        .unwrap();
+        conn
+    }
+
+    /// Names of user-visible schema objects (tables + indexes, no internal
+    /// sqlite_autoindex rows) for fresh-vs-upgraded parity checks.
+    fn schema_objects(conn: &Connection) -> Vec<(String, String, Option<String>)> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT type, name, sql FROM sqlite_master
+                 WHERE name NOT LIKE 'sqlite_%'
+                 ORDER BY type, name",
+            )
+            .unwrap();
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        rows
+    }
+
+    #[test]
+    fn upgrade_from_001_preserves_data_and_extends_checks() {
+        let mut conn = v1_database_with_data();
+
+        // Pre-migration: the v1 CHECK rejects SKIPPED and skip_reason is absent.
+        let skipped_rejected = conn
+            .execute("UPDATE tasks SET status = 'SKIPPED' WHERE id = 't2'", [])
+            .is_err();
+        assert!(skipped_rejected, "v1 CHECK must not know SKIPPED");
+
+        // Upgrade applies exactly migration 2.
+        let outcome = migrate(&mut conn, &embedded_migrations()).unwrap();
+        assert_eq!(outcome.applied, vec![(2, "task_skip_and_orchestrator")]);
+        assert_eq!(current_schema_version(&conn).unwrap(), 2);
+
+        // Every rebuild table kept its rows and values.
+        let (tasks, deps, events, usage): (i64, i64, i64, i64) = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM tasks),
+                        (SELECT COUNT(*) FROM task_dependencies),
+                        (SELECT COUNT(*) FROM events),
+                        (SELECT COUNT(*) FROM llm_usage)",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!((tasks, deps, events, usage), (2, 1, 1, 1));
+        let (status, retry, idem): (String, i64, String) = conn
+            .query_row(
+                "SELECT status, retry_count, idempotency_key FROM tasks WHERE id = 't1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (status.as_str(), retry, idem.as_str()),
+            ("COMPLETED", 1, "k-1")
+        );
+
+        // The new shapes are writable: SKIPPED + skip_reason on tasks,
+        // needs_review on runs, and the dependency condition column.
+        conn.execute(
+            "UPDATE tasks SET status = 'SKIPPED', skip_reason = 'not needed' WHERE id = 't2'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE runs SET status = 'needs_review' WHERE id = 'r1'",
+            [],
+        )
+        .unwrap();
+        let condition: String = conn
+            .query_row(
+                "SELECT condition FROM task_dependencies WHERE task_id = 't2'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(condition, "completed-or-skipped");
+
+        // The rebuilt foreign-key graph is intact.
+        let violations = conn
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .query_map([], |_| Ok(()))
+            .unwrap()
+            .count();
+        assert_eq!(violations, 0, "foreign_key_check must be clean after 002");
+    }
+
+    #[test]
+    fn fresh_install_and_upgrade_paths_produce_the_same_schema() {
+        let mut upgraded = v1_database_with_data();
+        migrate(&mut upgraded, &embedded_migrations()).unwrap();
+
+        let mut fresh = open_in_memory().unwrap();
+        migrate(&mut fresh, &embedded_migrations()).unwrap();
+
+        assert_eq!(schema_objects(&fresh), schema_objects(&upgraded));
     }
 }

@@ -10,10 +10,19 @@ use crate::ids::{new_id, now_unix_ms};
 use rusqlite::{params, Connection, Row, Transaction};
 use serde::{Deserialize, Serialize};
 
-/// Run states allowed by the schema CHECK.
-pub const RUN_STATES: [&str; 5] = ["running", "paused", "completed", "failed", "cancelled"];
+/// Run states allowed by the schema CHECK. `needs_review` (migration 002)
+/// parks a run whose tasks wait for review; it is not terminal.
+pub const RUN_STATES: [&str; 6] = [
+    "running",
+    "paused",
+    "needs_review",
+    "completed",
+    "failed",
+    "cancelled",
+];
 
-/// Statuses after which a run does no further work.
+/// Statuses after which a run does no further work. `needs_review` is
+/// deliberately absent: a resolved review resumes the run.
 const TERMINAL_STATES: [&str; 3] = ["completed", "failed", "cancelled"];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,8 +107,9 @@ impl Runs {
     }
 
     /// Updates a run status. Terminal statuses stamp `finished_at` with the
-    /// update time; non-terminal updates leave `finished_at` untouched.
-    /// Transition legality is the orchestrator's responsibility.
+    /// update time; non-terminal updates clear it again (a reopened run —
+    /// for example when the orchestrator retries a failed task — is back in
+    /// flight). Transition legality is the orchestrator's responsibility.
     pub fn update_status(
         tx: &Transaction<'_>,
         id: &str,
@@ -119,7 +129,7 @@ impl Runs {
             .map_err(CoreError::from)?
         } else {
             tx.execute(
-                "UPDATE runs SET status = ?2, updated_at = ?3 WHERE id = ?1",
+                "UPDATE runs SET status = ?2, finished_at = NULL, updated_at = ?3 WHERE id = ?1",
                 params![id, status, now],
             )
             .map_err(CoreError::from)?
