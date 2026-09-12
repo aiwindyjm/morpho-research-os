@@ -9,8 +9,9 @@ import { PROJECT_A_ID, PROJECT_B_ID } from "@/services/mocks/fixtures-a";
 import { ToastProvider } from "@morpho/ui";
 
 /**
- * Graph view (RES-08): fixture graph renders, search/filters narrow it,
- * selection opens the inspector, and the accessible list fallback works.
+ * Graph view (RES-08, prototype-aligned chrome): fixture graph renders on
+ * the dark canvas, type chips narrow it, selection opens the inspector
+ * aside, and the accessible list fallback keeps working.
  */
 
 function renderGraph(projectId = PROJECT_B_ID) {
@@ -30,22 +31,39 @@ beforeEach(() => {
 describe("GraphPage", () => {
   it("renders the projected fixture graph with nodes and relations", async () => {
     renderGraph();
-    expect(await screen.findByRole("heading", { name: "图谱" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId("graph-canvas")).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByRole("heading", { name: "研究关系地图" }),
+    ).toBeInTheDocument();
+    const canvas = await screen.findByTestId("graph-canvas");
+    expect(canvas.parentElement).toHaveClass("graph-canvas-bg");
     await waitFor(() => {
       expect(
         screen.getByRole("button", { name: /运动皮层解码/ }),
       ).toBeInTheDocument();
     });
-    expect(screen.getByText("14 节点 / 12 关系")).toBeInTheDocument();
+    expect(screen.getByText("14 节点 · 12 关系")).toBeInTheDocument();
   });
 
   it("an unrevealed project shows the graph empty state", async () => {
     renderGraph(PROJECT_A_ID);
     expect(await screen.findByTestId("page-empty")).toBeInTheDocument();
     expect(screen.getByText("图谱还没有内容")).toBeInTheDocument();
+  });
+
+  it("type chips narrow the graph to the selected node type", async () => {
+    const user = userEvent.setup();
+    renderGraph();
+    await screen.findByRole("button", { name: /运动皮层解码/ });
+
+    await user.click(screen.getByRole("button", { name: "论文" }));
+    await waitFor(() => {
+      expect(screen.getByText(/^2 节点/)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "全部节点" }));
+    await waitFor(() => {
+      expect(screen.getByText("14 节点 · 12 关系")).toBeInTheDocument();
+    });
   });
 
   it("search narrows nodes and updates the count", async () => {
@@ -67,9 +85,18 @@ describe("GraphPage", () => {
     const node = await screen.findByRole("button", { name: /运动皮层解码/ });
     await user.click(node);
     const inspector = await screen.findByTestId("graph-inspector");
+    expect(within(inspector).getByText("当前选择")).toBeInTheDocument();
     expect(within(inspector).getByText("运动皮层解码")).toBeInTheDocument();
+    expect(
+      within(inspector).getByText("从运动皮层神经信号中解码运动意图。"),
+    ).toBeInTheDocument();
     expect(within(inspector).getByLabelText("关闭详情")).toBeInTheDocument();
     expect(within(inspector).getByText(/关系（/)).toBeInTheDocument();
+    const openMarkdown = within(inspector).getByRole("button", {
+      name: "打开 Markdown",
+    });
+    expect(openMarkdown).toBeDisabled();
+    expect(openMarkdown).toHaveAttribute("title", "桌面版提供");
   });
 
   it("offers an accessible list fallback and keyboard selection", async () => {
