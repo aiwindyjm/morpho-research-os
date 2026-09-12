@@ -33,6 +33,7 @@ Thumbs.db
 docs/assets/generated/
 *.log
 .playwright-cli/
+apps/desktop/test-results/
 
 # Private conversation journal (never commit)
 private/*

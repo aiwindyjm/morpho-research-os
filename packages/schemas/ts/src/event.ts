@@ -20,6 +20,7 @@ export const EventType = z.enum([
   "run.completed",
   "run.failed",
   "run.cancelled",
+  "run.incremental_report",
   "plan.drafted",
   "plan.approved",
   "plan.rejected",

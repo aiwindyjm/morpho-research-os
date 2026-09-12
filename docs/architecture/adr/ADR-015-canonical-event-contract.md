@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-09-12)
+Accepted (2026-09-12; amended 2026-09-12 — see [Amendment 1](#amendment-1-2026-09-12-add-runincremental_report-to-the-type-vocabulary))
 
 ## Context
 
@@ -38,3 +38,11 @@ Add `packages/schemas/event.v1.json` (minor 1.0) as the canonical domain event e
 - Schema registry, bindings, and corpus grow one contract (`event`); CI corpus tests enforce tri-language accept/reject parity.
 - Apps migrate in a later task: `ipc.rs` `ResearchEvent`, `domain.ts` `RunEvent`, and worker `events.py` converge onto this contract (field renames `event_type`→`type`, `timestamp_ms`/`timestamp`→`occurred_at`, `seq`→`sequence`, `id`→`event_id`; add `project_id`). No application code changes in this task.
 - New event types are enum additions: allowed only when the emitting and consuming sides are updated in the same change (README rule 4).
+
+## Amendment 1 (2026-09-12): add `run.incremental_report` to the type vocabulary
+
+**Status:** Accepted (maintainer-approved vocabulary addition).
+
+**Change:** the frozen `run.*` group gains one type, `run.incremental_report`. The enum value is added to `packages/schemas/event.v1.json` and to the Zod, Pydantic, and Serde mirrors in the same change, plus one corpus valid case (`fixtures/cases/event/valid-004.json`) whose payload carries the incremental report's counts and itemized lists. Minor stays `1.0`: this is a same-change vocabulary ratification under README rule 4 (all consumers updated together), not a new writer-targeted minor; readers that never upgraded keep rejecting the type, which is the safe direction for a closed vocabulary.
+
+**Justification:** incremental research is a PRD §14 core flow, now implemented worker-side (`apps/research-worker/src/morpho_worker/incremental.py` and `orchestrator.py`): when a run completes, its sources and claims are diffed against the project's prior completed-run baseline, the report is persisted through the result sink (record type `incremental-report`), and the run announces it with a `run.incremental_report` event whose payload is the report summary (counts; `prior_run_id: null` for a project's first run). Ratifying the type keeps the emitter inside the closed contract instead of passing through as an "unknown" extension. The Rust side already consumes it as a domain event projection (events repository + `morpho://events`); no payload freeze is made here — the payload stays permissive per Decision 3 until a report record contract is frozen.

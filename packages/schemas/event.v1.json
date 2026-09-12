@@ -47,6 +47,7 @@
         "run.completed",
         "run.failed",
         "run.cancelled",
+        "run.incremental_report",
         "plan.drafted",
         "plan.approved",
         "plan.rejected",
@@ -60,7 +61,7 @@
         "review.requested",
         "review.resolved"
       ],
-      "description": "Closed domain vocabulary grouped by prefix (task./run./plan./source./claim./review.) and aligned with the research-task, research-run, and research-plan status machines. Transport job.* types belong to worker-event.v1.json, not here."
+      "description": "Closed domain vocabulary grouped by prefix (task./run./plan./source./claim./review.) and aligned with the research-task, research-run, and research-plan status machines. run.incremental_report was added by ADR-015 Amendment 1 (incremental research reporting, PRD §14). Transport job.* types belong to worker-event.v1.json, not here."
     },
     "summary": {
       "type": "string",

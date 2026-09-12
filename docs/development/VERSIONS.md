@@ -35,6 +35,15 @@ Migration conditions:
 - **Prompts**: a changed prompt must bump its metadata version; caches keyed on the old version are invalid by construction (see `docs/ai/CACHE_AND_COST.md`).
 - **App**: `0.0.x` experimental, `0.1.0` first complete local workflow, per `docs/development/RELEASE_STRATEGY.md`.
 
+## Notable schema version notes
+
+Compatibility-relevant facts about specific contracts; the authoritative per-contract index stays in `packages/schemas/README.md`.
+
+| Contract | Current minor | Note |
+|---|---|---|
+| `claim.v1.json` | 1.1 | Minor 1.1 (ADR-016) splits the formerly conflated status field into `status` (review lifecycle) + `confidence` (evidence strength); writers target 1.1, readers accept 1.0 and 1.1. |
+| `event.v1.json` | 1.0 | ADR-015 Amendment 1 (2026-09-12) ratified the `run.incremental_report` type into the 1.0 vocabulary in the same change that updated all consumers and the corpus (`packages/schemas/README.md` rule 4); no new writer-targeted minor was released. |
+
 ## Release-time synchronization
 
 Release preparation (owned by REL tasks, executed by the maintainer) reads `VERSION`, stamps every manifest, records app + schema majors in use + worker + protocol + prompt versions in the release notes, and tags `vMAJOR.MINOR.PATCH`. Automated stamping must never run as a side effect of a normal build or test.

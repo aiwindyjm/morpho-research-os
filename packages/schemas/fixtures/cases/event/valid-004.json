@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f7b10-1234-7000-8000-000000000007",
+  "sequence": 21,
+  "occurred_at": "2026-09-12T09:05:00Z",
+  "run_id": "018f7b0f-aaaa-7000-8000-000000000001",
+  "project_id": "018f7a00-0000-7000-8000-000000000001",
+  "type": "run.incremental_report",
+  "summary": "Run diff against prior run: 2 new sources, 1 changed claim, 1 conflicting claim",
+  "payload": {
+    "run_id": "018f7b0f-aaaa-7000-8000-000000000001",
+    "prior_run_id": "018f7b0e-9999-7000-8000-00000000000a",
+    "counts": {
+      "sources_total": 3,
+      "sources_new": 2,
+      "sources_changed": 0,
+      "sources_conflicting": 1,
+      "sources_unchanged": 0,
+      "claims_total": 4,
+      "claims_new": 2,
+      "claims_changed": 1,
+      "claims_conflicting": 1,
+      "claims_unchanged": 0
+    },
+    "sources_new": [
+      {
+        "source_id": "018f7b12-dddd-7000-8000-000000000005",
+        "url_dedup_key": "https://history.test/bell",
+        "fingerprint": "sha256:9f2c"
+      }
+    ],
+    "sources_conflicting": [
+      {
+        "source_id": "018f7b12-dddd-7000-8000-000000000006",
+        "url_dedup_key": "https://concepts.test/page",
+        "fingerprint": "sha256:41ab",
+        "prior_fingerprint": "sha256:07de"
+      }
+    ],
+    "claims_new": [
+      {
+        "claim_id": "018f6c40-8b88-7a02-1c2d-5e3f4a5b6c90",
+        "subject_node_id": "018f7b13-eeee-7000-8000-000000000001",
+        "predicate": "published_in"
+      }
+    ],
+    "claims_changed": [
+      {
+        "claim_id": "018f6c40-8b88-7a02-1c2d-5e3f4a5b6c91",
+        "subject_node_id": "018f7b13-eeee-7000-8000-000000000002",
+        "predicate": "derived_at"
+      }
+    ],
+    "claims_conflicting": [
+      {
+        "claim_id": "018f6c40-8b88-7a02-1c2d-5e3f4a5b6c92",
+        "subject_node_id": "018f7b13-eeee-7000-8000-000000000003",
+        "predicate": "implies",
+        "prior_claim_id": "018f6c40-8b88-7a02-1c2d-5e3f4a5b6c8f"
+      }
+    ]
+  }
+}

@@ -34,6 +34,9 @@ pub enum EventType {
     RunFailed,
     #[serde(rename = "run.cancelled")]
     RunCancelled,
+    /// Added by ADR-015 Amendment 1 (incremental research reporting, PRD §14).
+    #[serde(rename = "run.incremental_report")]
+    RunIncrementalReport,
     #[serde(rename = "plan.drafted")]
     PlanDrafted,
     #[serde(rename = "plan.approved")]
