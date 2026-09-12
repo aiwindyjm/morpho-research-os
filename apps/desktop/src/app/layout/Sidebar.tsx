@@ -1,27 +1,26 @@
-import { useEffect } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { WORKSPACE_VIEWS, useWorkspaceStore, type ViewId } from "@/stores/workspaceStore";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 
 /**
- * 240px navigation sidebar. Below 768px it becomes an accessible drawer
- * (docs/frontend/PAGE_PATTERNS.md); Escape closes it and focus moves to
- * the first item when it opens.
+ * 236px navigation sidebar. Below the lg breakpoint it becomes an accessible
+ * drawer (docs/frontend/PAGE_PATTERNS.md): aria-modal dialog semantics,
+ * focus moves into the drawer when it opens, Tab is trapped, Escape closes
+ * it, and focus returns to the opener (the ☰ 菜单 button) on close — the
+ * same contract as the Dialog primitive.
  */
-export function Sidebar({ variant }: { variant: "docked" | "drawer" }) {
+export function Sidebar({
+  variant,
+  returnFocusTo,
+}: {
+  variant: "docked" | "drawer";
+  /** Drawer close returns focus here (the ☰ 菜单 button in WorkspaceLayout). */
+  returnFocusTo?: RefObject<HTMLButtonElement | null>;
+}) {
   const activeView = useWorkspaceStore((s) => s.activeView);
   const setActiveView = useWorkspaceStore((s) => s.setActiveView);
   const drawerOpen = useWorkspaceStore((s) => s.sidebarDrawerOpen);
-  const setDrawerOpen = useWorkspaceStore((s) => s.setSidebarDrawerOpen);
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
-
-  useEffect(() => {
-    if (variant !== "drawer" || !drawerOpen) return;
-    function onKeydown(event: KeyboardEvent) {
-      if (event.key === "Escape") setDrawerOpen(false);
-    }
-    document.addEventListener("keydown", onKeydown);
-    return () => document.removeEventListener("keydown", onKeydown);
-  }, [variant, drawerOpen, setDrawerOpen]);
 
   const hasProject = activeProjectId !== "";
   // 项目作用域视图(config/plan/tasks 等)依赖活动项目,未选中项目时只保留「我的研究」;
@@ -35,18 +34,18 @@ export function Sidebar({ variant }: { variant: "docked" | "drawer" }) {
   const nav = (
     <nav
       aria-label="主导航"
-      className="flex h-full w-[236px] flex-col overflow-y-auto border-r border-border bg-[#0d121b] p-md"
+      className="flex h-full w-sidebar flex-col overflow-y-auto border-r border-border bg-surface-sunken p-md"
     >
       <div className="flex items-center gap-sm px-sm pb-lg pt-sm">
         <span
           aria-hidden="true"
-          className="brand-mark flex size-[34px] items-center justify-center rounded-[10px] text-[17px] font-extrabold text-[#f2f6ff]"
+          className="brand-mark flex size-[34px] items-center justify-center rounded-brand text-[17px] font-extrabold text-text-on-brand"
         >
           M
         </span>
         <span>
           <span className="kicker block">Research OS</span>
-          <span className="block text-[17px] font-bold leading-tight tracking-tight text-text-primary">
+          <span className="block text-subhead font-bold leading-tight tracking-tight text-text-primary">
             Morpho
           </span>
         </span>
@@ -61,10 +60,10 @@ export function Sidebar({ variant }: { variant: "docked" | "drawer" }) {
               type="button"
               aria-current={activeView === view.id ? "page" : undefined}
               onClick={() => setActiveView(view.id as ViewId)}
-              className={`flex w-full items-center gap-[11px] rounded-md px-md py-sm text-left text-[12px] transition-colors duration-[var(--morpho-motion-fast)] ${
+              className={`flex w-full items-center gap-[11px] rounded-md px-md py-sm text-left text-caption transition-colors duration-[var(--morpho-motion-fast)] ${
                 activeView === view.id
                   ? "bg-accent-soft text-text-primary shadow-[inset_2px_0_0_var(--morpho-color-accent)]"
-                  : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
+                  : "text-text-secondary hover:bg-overlay-hover hover:text-text-primary"
               }`}
             >
               <span aria-hidden="true" className="w-4 text-center text-base leading-none">
@@ -78,9 +77,9 @@ export function Sidebar({ variant }: { variant: "docked" | "drawer" }) {
 
       <div className="mt-auto grid gap-md border-t border-border pt-md">
         <div className="flex items-center gap-sm px-sm">
-          <span aria-hidden="true" className="inline-block size-[7px] rounded-full bg-success" />
+          <span aria-hidden="true" className="inline-block size-dot rounded-full bg-success" />
           <span>
-            <strong className="block text-[11px] text-text-primary">本地工作区</strong>
+            <strong className="block text-micro text-text-primary">本地工作区</strong>
             <small className="text-caption text-text-muted">数据保存在本机</small>
           </span>
         </div>
@@ -89,10 +88,10 @@ export function Sidebar({ variant }: { variant: "docked" | "drawer" }) {
             type="button"
             aria-current={activeView === settingsView.id ? "page" : undefined}
             onClick={() => setActiveView(settingsView.id as ViewId)}
-            className={`flex w-full items-center gap-[11px] rounded-md px-md py-sm text-left text-[12px] ${
+            className={`flex w-full items-center gap-[11px] rounded-md px-md py-sm text-left text-caption ${
               activeView === settingsView.id
                 ? "bg-accent-soft text-text-primary"
-                : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
+                : "text-text-secondary hover:bg-overlay-hover hover:text-text-primary"
             }`}
           >
             <span aria-hidden="true" className="w-4 text-center text-base leading-none">
@@ -106,21 +105,87 @@ export function Sidebar({ variant }: { variant: "docked" | "drawer" }) {
   );
 
   if (variant === "docked") {
-    return <aside className="hidden md:block md:w-[236px] md:shrink-0">{nav}</aside>;
+    return <aside className="hidden lg:block lg:w-sidebar lg:shrink-0">{nav}</aside>;
   }
 
   if (!drawerOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-40 md:hidden" data-testid="sidebar-drawer">
+    <SidebarDrawer returnFocusTo={returnFocusTo}>{nav}</SidebarDrawer>
+  );
+}
+
+/** Focusable selector, mirroring the Dialog primitive (packages/ui). */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Drawer shell: mounted only while open so the focus contract maps onto
+ * mount/unmount exactly like Dialog — focus in on mount, Escape + backdrop
+ * close, Tab trapped inside the nav panel, focus back to the opener on
+ * unmount.
+ */
+function SidebarDrawer({
+  children,
+  returnFocusTo,
+}: {
+  children: ReactNode;
+  returnFocusTo?: RefObject<HTMLButtonElement | null>;
+}) {
+  const setDrawerOpen = useWorkspaceStore((s) => s.setSidebarDrawerOpen);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    const focusables = panel?.querySelectorAll<HTMLElement>(FOCUSABLE);
+    (focusables?.[0] ?? panel)?.focus();
+
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setDrawerOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [],
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeydown, true);
+    return () => {
+      document.removeEventListener("keydown", handleKeydown, true);
+      returnFocusTo?.current?.focus();
+    };
+  }, [setDrawerOpen, returnFocusTo]);
+
+  return (
+    <div className="fixed inset-0 z-40 lg:hidden" data-testid="sidebar-drawer">
       <button
         type="button"
         aria-label="关闭导航"
-        className="absolute inset-0 bg-black/60"
+        className="absolute inset-0 bg-scrim"
         onClick={() => setDrawerOpen(false)}
       />
-      <div className="absolute inset-y-0 left-0 shadow-[var(--morpho-shadow-overlay)]">
-        {nav}
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="导航菜单"
+        tabIndex={-1}
+        className="absolute inset-y-0 left-0 outline-none shadow-overlay"
+      >
+        {children}
       </div>
     </div>
   );
