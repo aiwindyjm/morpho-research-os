@@ -6,8 +6,10 @@ Rules (workgroup D first round):
   deterministic mock adapters - the offline pipeline must run without any
   network or credential.
 - LLM roles resolve to the configured OpenAI-compatible adapter.
-- Search stays on the mock adapter in V0.1; a configured non-mock search
-  provider raises a clear structured error instead of silently pretending.
+- Search defaults to the mock adapter in V0.1; explicitly selecting a
+  configured ``kind=search`` provider via ``search_for(search_provider_id=...)``
+  yields the SearXNG adapter, and a wrong/unknown selection raises a clear
+  structured error instead of silently pretending.
 - Embeddings use the replaceable mock in V0.1 (no vector database).
 
 When a configured model is unavailable the adapter raises the explicit
@@ -36,6 +38,7 @@ from morpho_worker.providers.ports import (
 )
 from morpho_worker.providers.openai_compat import HttpTransport, OpenAICompatibleLLM
 from morpho_worker.providers.retry import RetryPolicy, RetryingProvider
+from morpho_worker.providers.searxng import SearxngSearch
 
 
 class ProviderFactory:
@@ -76,9 +79,33 @@ class ProviderFactory:
 
     # Search ----------------------------------------------------------------
 
-    def search_for(self, *, fixture_results=None) -> SearchProvider:
-        """V0.1 ships the mock search adapter only; real search adapters
-        follow the W2-03 freeze and the RES-03 adapter boundary."""
+    def search_for(
+        self, *, fixture_results=None, search_provider_id: str | None = None
+    ) -> SearchProvider:
+        """V0.1 defaults to the mock search adapter. Passing a configured
+        ``kind=search`` provider id selects the SearXNG adapter, unless
+        ``offline_mock`` forces the offline path (mock always wins there).
+        An unknown id or a non-search kind is a structured
+        ``PROVIDER_UNAVAILABLE`` error, never a silent mock fallback."""
+
+        if search_provider_id and not self.config.offline_mock:
+            provider = self.config.providers.get(search_provider_id)
+            if provider is None:
+                raise MorphoError(
+                    ErrorCode.PROVIDER_UNAVAILABLE,
+                    f"The search selection references provider {search_provider_id!r}, which is not configured.",
+                    retryable=False,
+                )
+            if provider.kind is not ProviderKind.SEARCH:
+                raise MorphoError(
+                    ErrorCode.PROVIDER_UNAVAILABLE,
+                    f"The search selection requires a search provider, but {search_provider_id!r} is a {provider.kind.value} provider.",
+                    retryable=False,
+                )
+            adapter = SearxngSearch(provider, env=self._env, transport=self._transport)
+            return RetryingProvider(
+                adapter, self.retry_policy_for(provider), clock=self._clock
+            )
 
         mock = MockSearchProvider(results=fixture_results or ())
         return RetryingProvider(
