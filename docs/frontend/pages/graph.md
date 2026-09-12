@@ -18,4 +18,4 @@ Analytics/Events: 无
 
 ## Prototype alignment (ADR-013)
 
-目标设计（实施计划 Task 13，进行中，以计划与原型为准）：工具条改为类型筛选 chips +「N 节点 · M 关系」计数；画布容器使用 `graph-canvas-bg` 径向暗色背景，SVG 节点对齐原型配色（选中节点蓝色高亮光晕），仅改样式不改 d3 力导向逻辑。右侧 245px inspector（testid `graph-inspector`）：当前选择标题 + 类型徽章 + 摘要 + 来源/关系统计 +「打开 Markdown」（禁用，title「桌面版提供」）；窄屏回落到画布下方流式布局。
+已实施（实施计划 Task 13）：工具条为类型筛选 chips（全部节点 / 概念 / 技术 / 企业 / 论文，复用来源页 chip 样式）+「N 节点 · M 关系」计数；画布容器使用 `graph-canvas-bg` 径向暗色背景，SVG 节点对齐原型配色（选中节点蓝色高亮光晕），仅改样式不改 d3 力导向逻辑。右侧 245px inspector（testid `graph-inspector`）内容区可滚动（`overflow-y-auto`）：当前选择标题 + 类型徽章 + 摘要 + 来源/关系统计 + 关系列表 +「打开 Markdown」（禁用，title「桌面版提供」）；窄屏回落到画布下方流式布局。

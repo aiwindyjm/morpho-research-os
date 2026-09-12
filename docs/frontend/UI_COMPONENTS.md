@@ -1,2 +1,2 @@
 # UI Components
-Primitives: Button, Input, Textarea, Select, Checkbox, Dialog, Popover, Tooltip, Tabs, Badge, Card, Table, Progress, Toast, Skeleton, Alert. Business components: ResearchDepthSelector, ResearchDimensionPicker, ResearchStatusBadge, TaskProgress, SourceCard, KnowledgeCard, ClaimCard, EvidenceList, ResearchPlanTree, GraphNodeInspector, CoveragePanel.
+Primitives: Button, Input, Textarea, Select, Checkbox, Dialog, Popover, Tooltip, Tabs, Badge, Card, Table, Progress, Toast, Skeleton, Alert. Business components: PurposeSelect, ResearchStatusBadge, SourceCard, KnowledgeCard, ClaimCard, EvidenceList, GraphNodeInspector. (Removed: ResearchDepthSelector, ResearchDimensionPicker, ResearchPlanTree, TaskProgress, TaskRow, CoveragePanel — see COMPONENT_REGISTRY.md.)

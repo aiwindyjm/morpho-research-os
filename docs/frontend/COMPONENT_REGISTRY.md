@@ -12,14 +12,11 @@ Registered business components (`apps/desktop/src/`):
 | PageShell | `components/PageShell.tsx` | Prototype page heading: kicker + display title + lede + actions, optional toolbar, fade-in content | static |
 | PageStates (PageLoading/PageEmpty/PageError) | `components/PageStates.tsx` | Mandatory loading/empty/error rendering | loading, empty, error, content |
 | ResearchStatusBadge | `components/cards.tsx` | Task/plan/confidence status badge | per documented vocabulary |
-| TaskProgress | `components/cards.tsx` | Completed/total progress with Progress primitive | determinate/empty |
 | SourceCard | `components/cards.tsx` | Source with URL, type, quality metadata | evaluated / pending quality |
 | KnowledgeCard | `components/cards.tsx` | Node summary with type, confidence, counts | default |
 | ClaimCard | `components/cards.tsx` | Claim statement with subject and scope | per confidence state |
 | EvidenceList | `components/cards.tsx` | Evidence quotes with locator and direction | support/contradict, empty |
-| TaskRow | `components/cards.tsx` | Task row with state-driven user actions | per TaskState |
-| ResearchDepthSelector / ResearchDimensionPicker / PurposeSelect | `components/research.tsx` | Structured config controls (PRD §5) | disabled, checked |
-| ResearchPlanTree | `components/research.tsx` | Plan sections with editable task drafts | draft (editable) / locked |
+| PurposeSelect | `components/research.tsx` | Research purpose select (PRD §5) consumed by the config page | disabled |
 | GraphCanvas | `features/graph/GraphPage.tsx` | SVG 2D force graph with node selection | nodes/relations filtered, keyboard focus |
 | GraphNodeInspector | `features/graph/GraphPage.tsx` | Selected node details and relations | open/closed |
 | AssistantPanel | `features/assistant/AssistantPanel.tsx` | Project-bound assistant: explain progress, suggest next task, list pending reviews, record decision (explicit save) | loading, responding, error, saved |
@@ -31,7 +28,7 @@ Registered business components (`apps/desktop/src/`):
 | JournalPage | `features/journal/JournalPage.tsx` | Private local journal: date-grouped entries, entry form, explicit Markdown/JSON download; meta bar with 仅本机 badge and 保存规则 aside | empty, error (inline), content |
 | journal service | `services/journal.ts` | localStorage journal (`morpho.journal.<YYYY-MM-DD>`): `todayIso/listEntries/addEntry/buildMarkdown/buildJson/downloadMarkdown/downloadJson`; explicit download only, no network (DO_NOT_BREAK #11/#12) | local-only |
 
-Removed (ADR-013): `TimelinePage` / `GapsPage` (incl. CoveragePanel/GapCard rows) — content absorbed by OverviewPage; the coverage/gaps/timeline queries and services remain and are consumed by the overview page. `PlaceholderPage` now serves the `reports` view only (settings is a real page).
+Removed (ADR-013): `TimelinePage` / `GapsPage` (incl. CoveragePanel/GapCard rows) — content absorbed by OverviewPage; the coverage/gaps/timeline queries and services remain and are consumed by the overview page. `PlaceholderPage` now serves the `reports` view only (settings is a real page). Also removed as dead code (zero consumers after prototype alignment): `ResearchDepthSelector` / `ResearchDimensionPicker` / `ResearchPlanTree` / `PlanTreeNode` and `TaskProgress` / `TaskRow` — the config, plan, tasks, and projects pages render their own prototype-aligned markup; `PurposeSelect` remains (config page).
 
 ## Prototype effect-layer class inventory (`apps/desktop/src/styles/prototype.css`, ADR-013)
 
