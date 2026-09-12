@@ -12,6 +12,32 @@ ResearchConfig → Planner → Plan Review (gate) → Task DAG
   Relation / Claim / Evidence / ValidationReport) → ResultSink
 ```
 
+## Quickstart (CLI)
+
+`run_research.py` closes the loop from one command: question → plan →
+approval gate → run → JSON. Offline first (deterministic mocks, zero
+network, zero credentials):
+
+```bash
+python apps/research-worker/run_research.py --profile offline --approve \
+  --config-json '{"domain":"physics","topic":"quantum entanglement","purpose":"learning","depth":3,"dimensions":["concepts","history"],"languages":["en"],"source_types":["paper","web_page"]}' \
+  --out-dir out/demo
+```
+
+Then a real local run on an installed Ollama model (no cloud key needed):
+
+```bash
+python apps/research-worker/run_research.py --profile local \
+  --config-file research-config.json --out-dir out/local --approve
+```
+
+Without `--approve` only `plan.json` is written and the run never starts
+(the CLI cannot bypass the plan review gate). With it, the run writes the
+eight whitelisted result files into `--out-dir`. Exit codes: `0` success or
+pending review, `1` failed run, `2` configuration error. Hardware → model
+tiers, profile details, and the optional SearXNG search adapter are covered
+in `docs/ai/LOCAL_COMPUTE.md`.
+
 ## Boundaries (non-negotiable)
 
 - The worker **never** writes the Vault, SQLite, or any UI state, and never
@@ -56,7 +82,7 @@ tests/               pytest suite; fixtures under tests/fixtures
 
 ```bash
 pip install -e apps/research-worker[dev]
-pytest apps/research-worker/tests
+cd apps/research-worker && python -m pytest tests
 ```
 
 Everything runs offline; `FakeClock` and scripted mock providers make runs

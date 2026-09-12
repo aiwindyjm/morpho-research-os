@@ -70,6 +70,11 @@
 | `RES-08` | `Review` | `8082dc7` | 前端交付：D3 2D 力导向图谱（SVG）、搜索/类型/维度过滤、节点键盘选择与 GraphNodeInspector、无障碍列表降级；14 节点 Fixture 有测试（5 个 GraphPage 测试） | 图谱数据投影为 Mock 实现；接入真实 Knowledge/Relation 投影待 W2-06 与 RES-05 合并后完成 |
 | `RES-09` | `Planned` | — | — | — |
 | `RES-10` | `Review` | `8082dc7` | 前端交付：Timeline（倒序事件投影）、Coverage 面板逐维展示 PRD 公式分量/权重/原始输入/原因、Gap 卡（覆盖率<0.6 或独立高质量来源<2 的可解释判定）；建议批准前只读、批准后才创建任务（GapsPage 3 测试 + 后端投影测试） | 覆盖度/缺口投影当前由 Mock 服务按 PRD §14 公式实现；真实投影接入待 RES-02/RES-05/RES-06 与 W2-06 合并后完成 |
+| **分支集成与本地计算闭环** |  |  |  |  |
+| `INT-01` | `Review` | `94ab7aa` | 三组工作区分支串行合入 main：Fixture 工具链与边界检查（contracts.yml CI、check-contracts/check-architecture、TS Fixture Loader）、v1.0 契约与 Fixture 语料（packages/schemas、packages/prompts、ci.yml、WORKER_PROTOCOL.md 等，合并提交 `86d7c30`）、Python 研究引擎（合并时 160 项 pytest 通过，合并提交 `826abd4`）；`277f9c7` 对齐 golden fixture 与 research-config v1 并隔离 rust-loader；`3946720` 移除复活的前端视图并对齐 mock 配置 | 集成任务串行执行；合并后契约/架构/边界检查与各语言测试全绿 |
+| `PY-06` | `Review` | `0f981f8` | pytest 164 passed：default/local/offline 三 profile 预设仅改角色路由与 offline_mock，不新增 Provider；显式 `MORPHO_ROLE_*` 覆盖优先于 `MORPHO_PROFILE`；未知 profile 明确报错 | `local` 路由 8B 本地规划模型的质量取舍见 docs/ai/MODEL_ROUTING.md |
+| `PY-07` | `Review` | `cb7f912` | pytest 185 passed：SearXNG JSON API 适配器仅经 `search_for(search_provider_id=...)` 显式启用，默认仍为 mock；https/环回 http 端点构造期校验、不跟随重定向；超时/连接/429/5xx 可重试 SEARCH_FAILED，其余 4xx 与不可读载荷不可重试；URL 规范化去重与 time_range 桶映射；测试注入 transport 零真实网络 | 无凭据需求；未知 id 或非 search kind 为结构化 PROVIDER_UNAVAILABLE，不做静默 mock 回退 |
+| `PY-08` | `Review` | `6a68d1d` | pytest 190 passed（`c6c05e7` 修正后 192）：无 `--approve` 仅落 plan.json 且不执行 DAG；`--approve` 后只写白名单 8 个结果文件；退出码 0/1/2 语义与 provider 误配置清晰报错有测试 | CLI 不能绕过 PlanStore 审批门禁；`--profile` 默认 offline（零网络零凭据） |
 | **W4** |  |  |  |  |
 | `REL-01` | `Planned` | — | — | — |
 | `REL-02` | `Planned` | — | — | — |
