@@ -56,8 +56,7 @@ describe("KnowledgePage prototype alignment", () => {
     renderPage();
 
     const conflictCard = await screen.findByTestId("knowledge-card-conflict");
-    expect(conflictCard).toHaveClass("border-[rgb(237_119_136/0.28)]");
-    expect(conflictCard).toHaveClass("bg-gradient-to-br");
+    expect(conflictCard).toHaveClass("card-active-error");
     expect(
       within(conflictCard).getByText("消费级神经数据隐私争议"),
     ).toBeInTheDocument();

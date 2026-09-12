@@ -9,15 +9,61 @@ import {
   PLAN_STATUS_LABELS,
   dimensionLabel,
 } from "@/types/labels";
-import type {
-  Claim,
-  ConfidenceState,
-  Evidence,
-  KnowledgeNode,
-  PlanStatus,
-  Source,
-  TaskState,
+import {
+  QUALITY_SOURCE_THRESHOLD,
+  type Claim,
+  type ConfidenceState,
+  type Evidence,
+  type KnowledgeNode,
+  type KnowledgeNodeType,
+  type PlanStatus,
+  type Source,
+  type TaskState,
 } from "@/types/domain";
+
+/* ------------------------------------------------------------------ */
+/* Shared mappings and helpers                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Prototype badge class per node type (spec §4 prototype palette; types
+ * without a prototype entry follow the nearest existing node-badge colour).
+ * Shared by the knowledge view cards and the graph inspector.
+ */
+export const NODE_TYPE_BADGE_CLASS: Record<KnowledgeNodeType, string> = {
+  Concept: "node-badge-accent",
+  Event: "node-badge-accent",
+  Person: "node-badge-alt",
+  Paper: "node-badge-alt",
+  Book: "node-badge-alt",
+  Experiment: "node-badge-alt",
+  Technology: "node-badge-alt",
+  Product: "node-badge-alt",
+  Application: "node-badge-alt",
+  Policy: "node-badge-alt",
+  Dataset: "node-badge-alt",
+  Company: "node-badge-warning",
+  Organization: "node-badge-warning",
+  Controversy: "node-badge-error",
+};
+
+/** A source meets the documented quality bar on both axes (docs/PRD.md §6). */
+export function isQualitySource(source: Source): boolean {
+  return (
+    source.quality !== null &&
+    source.quality.authority >= QUALITY_SOURCE_THRESHOLD &&
+    source.quality.fitness >= QUALITY_SOURCE_THRESHOLD
+  );
+}
+
+/** Normalized host for the compact source row; falls back to a short URL. */
+function sourceHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url.length > 28 ? `${url.slice(0, 28)}…` : url;
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* ResearchStatusBadge                                                 */
@@ -69,8 +115,76 @@ export function ResearchStatusBadge({
 /* SourceCard                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Registered business component: SourceCard. */
-export function SourceCard({ source }: { source: Source }) {
+/** Prototype compact-row grid (spec §4, `view-sources`). */
+const SOURCE_ROW_GRID =
+  "grid grid-cols-[74px_1fr_70px_35px] items-center gap-md border-b border-border py-md min-h-[70px]";
+
+/** Prototype type-badge class per source type (spec §4). */
+function sourceTypeBadgeClass(type: Source["source_type"]): string {
+  if (type === "paper" || type === "documentation") return "badge-mono node-badge-alt";
+  if (type === "web_page") return "badge-mono node-badge-accent";
+  return "pill pill-neutral";
+}
+
+/** Prototype quality tier caption for the compact row. */
+function sourceTier(source: Source): { label: string; className: string } {
+  if (!source.quality) return { label: "待审核", className: "text-text-muted" };
+  return isQualitySource(source)
+    ? { label: "高质量", className: "text-success" }
+    : { label: "中等", className: "text-warning" };
+}
+
+/**
+ * Registered business component: SourceCard.
+ * variant="card" (default): full card with URL and quality rationale.
+ * variant="row": the prototype's compact list row (source-row testid) used
+ * by the sources view — same data, prototype row anatomy.
+ */
+export function SourceCard({
+  source,
+  variant = "card",
+}: {
+  source: Source;
+  variant?: "card" | "row";
+}) {
+  if (variant === "row") {
+    const tier = sourceTier(source);
+    return (
+      <li data-testid="source-row" className={SOURCE_ROW_GRID}>
+        <span className={sourceTypeBadgeClass(source.source_type)}>
+          {SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type}
+        </span>
+        <div className="min-w-0">
+          <strong className="text-body text-text-primary">{source.title}</strong>
+          <small className="mt-xs block truncate text-caption text-text-muted">
+            <span>{sourceHost(source.url)}</span>
+            <span aria-hidden="true"> · </span>
+            <span>
+              {SOURCE_STATUS_LABELS[source.status] ?? source.status}
+            </span>
+          </small>
+        </div>
+        <div className="flex flex-col gap-xs">
+          <span className={`text-caption ${tier.className}`}>{tier.label}</span>
+          <span className="font-mono text-[11px] text-text-muted">
+            {source.quality
+              ? ((source.quality.authority + source.quality.fitness) / 2).toFixed(2)
+              : "—"}
+          </span>
+        </div>
+        <a
+          href={source.url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="打开来源"
+          className="text-caption text-info hover:underline"
+        >
+          ↗
+        </a>
+      </li>
+    );
+  }
+
   return (
     <Card className="flex flex-col gap-sm">
       <div className="flex items-start justify-between gap-md">
@@ -110,36 +224,40 @@ export function SourceCard({ source }: { source: Source }) {
 /* KnowledgeCard                                                       */
 /* ------------------------------------------------------------------ */
 
-/** Registered business component: KnowledgeCard. */
-export function KnowledgeCard({
-  node,
-  onOpen,
-}: {
-  node: KnowledgeNode;
-  onOpen?: (node: KnowledgeNode) => void;
-}) {
+/**
+ * Registered business component: KnowledgeCard — the prototype knowledge
+ * card (spec §4, `view-knowledge`): mono type badge and confidence caption
+ * on top, title + summary, source/claim counts at the bottom. Conflicting
+ * nodes get the prototype conflict styling and their own testid.
+ */
+export function KnowledgeCard({ node }: { node: KnowledgeNode }) {
+  const conflicting = node.status === "conflicting";
   return (
-    <Card className="flex flex-col gap-sm">
-      <div className="flex items-start justify-between gap-md">
-        <button
-          type="button"
-          className="text-left text-h3 text-text-primary hover:underline focus-visible:underline"
-          onClick={() => onOpen?.(node)}
-        >
-          {node.title}
-        </button>
-        <Badge variant="accent">{NODE_TYPE_LABELS[node.type]}</Badge>
-      </div>
-      {node.aliases.length > 0 ? (
-        <p className="text-caption text-text-muted">别名：{node.aliases.join("、")}</p>
-      ) : null}
-      <p className="text-body text-text-secondary">{node.summary}</p>
-      <div className="flex flex-wrap items-center gap-sm">
-        <ResearchStatusBadge state={node.status} kind="confidence" />
-        <Badge variant="neutral">{dimensionLabel(node.dimension)}</Badge>
-        <span className="text-caption text-text-muted">
-          来源 {node.source_ids.length} · 论断 {node.claim_ids.length}
+    <Card
+      data-testid={conflicting ? "knowledge-card-conflict" : "knowledge-card"}
+      className={`flex min-h-[203px] flex-col p-md ${
+        conflicting ? "card-active-error" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between gap-sm">
+        <span className={`badge-mono ${NODE_TYPE_BADGE_CLASS[node.type]}`}>
+          {NODE_TYPE_LABELS[node.type]}
         </span>
+        <span
+          className={`text-caption ${conflicting ? "text-error" : "text-text-muted"}`}
+        >
+          {CONFIDENCE_LABELS[node.status]}
+        </span>
+      </div>
+      <h2 className="mt-md text-h3 text-text-primary">{node.title}</h2>
+      <p className="mt-xs min-h-[65px] text-caption text-text-secondary">
+        {node.summary}
+      </p>
+      <div className="mt-auto flex items-center gap-md text-caption text-text-muted">
+        <span>
+          ↗ {node.source_ids.length} 来源
+        </span>
+        <span>◇ {node.claim_ids.length} 结论</span>
       </div>
     </Card>
   );

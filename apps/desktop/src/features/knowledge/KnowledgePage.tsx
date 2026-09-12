@@ -2,13 +2,9 @@ import { useMemo, useState } from "react";
 import { Badge, Button, Card, Input, Select, Tabs } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
-import { ClaimCard } from "@/components/cards";
-import {
-  KNOWLEDGE_NODE_TYPES,
-  type KnowledgeNode,
-  type KnowledgeNodeType,
-} from "@/types/domain";
-import { CONFIDENCE_LABELS, NODE_TYPE_LABELS } from "@/types/labels";
+import { ClaimCard, KnowledgeCard } from "@/components/cards";
+import { KNOWLEDGE_NODE_TYPES } from "@/types/domain";
+import { NODE_TYPE_LABELS } from "@/types/labels";
 import { useClaims, useEvidence, useKnowledge, useSources } from "@/services/queries";
 
 /**
@@ -16,70 +12,11 @@ import { useClaims, useEvidence, useKnowledge, useSources } from "@/services/que
  * types. Claims expand to their evidence with precise locators.
  *
  * Prototype alignment (spec §4, `view-knowledge`): knowledge cards in a
- * four-column grid with mono type badges and conflict styling. Badge mapping
- * (prototype palette; types without a prototype entry follow the nearest
- * existing node-badge colour):
- *   Concept, Event            → node-badge-accent (蓝)
- *   Person, Paper, Book, Experiment, Technology, Product, Application,
- *   Policy, Dataset           → node-badge-alt (紫)
- *   Company, Organization     → node-badge-warning (橙)
- *   Controversy               → node-badge-error (红)
+ * four-column grid with mono type badges and conflict styling, rendered by
+ * the registered KnowledgeCard (prototype card anatomy incl. the conflict
+ * variant). Badge mapping lives in components/cards.tsx
+ * (NODE_TYPE_BADGE_CLASS).
  */
-
-/** Prototype badge class per node type (mapping documented above). */
-const NODE_TYPE_BADGE_CLASS: Record<KnowledgeNodeType, string> = {
-  Concept: "node-badge-accent",
-  Event: "node-badge-accent",
-  Person: "node-badge-alt",
-  Paper: "node-badge-alt",
-  Book: "node-badge-alt",
-  Experiment: "node-badge-alt",
-  Technology: "node-badge-alt",
-  Product: "node-badge-alt",
-  Application: "node-badge-alt",
-  Policy: "node-badge-alt",
-  Dataset: "node-badge-alt",
-  Company: "node-badge-warning",
-  Organization: "node-badge-warning",
-  Controversy: "node-badge-error",
-};
-
-/** Prototype knowledge card: badge + confidence on top, meta at the bottom.
- * Conflicting nodes get the prototype conflict gradient and their own testid. */
-function KnowledgeNodeCard({ node }: { node: KnowledgeNode }) {
-  const conflicting = node.status === "conflicting";
-  return (
-    <Card
-      data-testid={conflicting ? "knowledge-card-conflict" : "knowledge-card"}
-      className={`flex min-h-[203px] flex-col p-md ${
-        conflicting
-          ? "border-[rgb(237_119_136/0.28)] bg-gradient-to-br from-[rgb(97_34_49/0.13)] to-surface"
-          : ""
-      }`}
-    >
-      <div className="flex items-center justify-between gap-sm">
-        <span className={`badge-mono ${NODE_TYPE_BADGE_CLASS[node.type]}`}>
-          {NODE_TYPE_LABELS[node.type]}
-        </span>
-        <span
-          className={`text-caption ${conflicting ? "text-error" : "text-text-muted"}`}
-        >
-          {CONFIDENCE_LABELS[node.status]}
-        </span>
-      </div>
-      <h2 className="mt-md text-h3 text-text-primary">{node.title}</h2>
-      <p className="mt-xs min-h-[65px] text-caption text-text-secondary">
-        {node.summary}
-      </p>
-      <div className="mt-auto flex items-center gap-md text-caption text-text-muted">
-        <span>
-          ↗ {node.source_ids.length} 来源
-        </span>
-        <span>◇ {node.claim_ids.length} 结论</span>
-      </div>
-    </Card>
-  );
-}
 
 export function KnowledgePage({ projectId }: { projectId: string }) {
   const knowledge = useKnowledge(projectId);
@@ -133,7 +70,7 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
       </div>
       <div className="grid gap-md md:grid-cols-2 xl:grid-cols-4">
         {filteredNodes.map((node) => (
-          <KnowledgeNodeCard key={node.id} node={node} />
+          <KnowledgeCard key={node.id} node={node} />
         ))}
       </div>
       {filteredNodes.length === 0 ? (

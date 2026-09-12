@@ -2,55 +2,22 @@ import { useState } from "react";
 import { Button, Card, Input } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
-import { QUALITY_SOURCE_THRESHOLD, type Source } from "@/types/domain";
-import { SOURCE_STATUS_LABELS, SOURCE_TYPE_LABELS } from "@/types/labels";
+import { SourceCard, isQualitySource } from "@/components/cards";
 import { useSources } from "@/services/queries";
 
 /**
  * Sources view (RES-03 frontend), prototype alignment (spec §4,
  * `view-sources`): a quality summary strip, a search + type-chip toolbar,
- * and compact source rows. Quality describes authority and fitness for
- * purpose only — it never declares a low-rated source false (docs/PRD.md §6).
- *
- * Prototype badge mapping (spec §4): paper/documentation → node-badge-alt
- * (紫), web_page → node-badge-accent (蓝), other source types → pill-neutral
- * (灰). Row grid keeps the prototype template; the quality caption and its
- * mono mean score share the third column, the ↗ external link closes the row.
+ * and compact prototype rows rendered by the registered SourceCard
+ * (variant="row"). Quality describes authority and fitness for purpose
+ * only — it never declares a low-rated source false (docs/PRD.md §6).
  */
-
-/** A source meets the documented quality bar on both axes. */
-function isQualitySource(source: Source): boolean {
-  return (
-    source.quality !== null &&
-    source.quality.authority >= QUALITY_SOURCE_THRESHOLD &&
-    source.quality.fitness >= QUALITY_SOURCE_THRESHOLD
-  );
-}
-
-/** Prototype type-badge class per source type. */
-function sourceTypeBadgeClass(type: Source["source_type"]): string {
-  if (type === "paper" || type === "documentation") return "badge-mono node-badge-alt";
-  if (type === "web_page") return "badge-mono node-badge-accent";
-  return "pill pill-neutral";
-}
-
-/** Normalized host for the row subtitle; falls back to a truncated URL. */
-function sourceHost(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url.length > 28 ? `${url.slice(0, 28)}…` : url;
-  }
-}
 
 const TYPE_FILTERS = [
   { id: "all", label: "全部类型" },
   { id: "paper", label: "论文" },
   { id: "documentation", label: "官方文档" },
 ] as const;
-
-const SOURCE_GRID =
-  "grid grid-cols-[74px_1fr_70px_35px] items-center gap-md border-b border-border py-md min-h-[70px]";
 
 /** Prototype `source-summary` tile: one 21px number plus a caption. */
 function SummaryTile({
@@ -156,7 +123,7 @@ export function SourcesPage({ projectId }: { projectId: string }) {
                 onClick={() => setTypeFilter(id)}
                 className={`rounded-full border px-md py-1 text-caption transition-colors duration-[var(--morpho-motion-fast)] ${
                   typeFilter === id
-                    ? "text-info border-[rgb(114_167_255/0.45)] bg-accent-soft"
+                    ? "chip-selected"
                     : "text-text-muted border-border hover:text-text-secondary"
                 }`}
               >
@@ -170,47 +137,9 @@ export function SourcesPage({ projectId }: { projectId: string }) {
         </div>
 
         <ol>
-          {visible.map((source) => {
-            const tier = source.quality
-              ? isQualitySource(source)
-                ? { label: "高质量", className: "text-success" }
-                : { label: "中等", className: "text-warning" }
-              : { label: "待审核", className: "text-text-muted" };
-            return (
-              <li key={source.id} data-testid="source-row" className={SOURCE_GRID}>
-                <span className={sourceTypeBadgeClass(source.source_type)}>
-                  {SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type}
-                </span>
-                <div className="min-w-0">
-                  <strong className="text-body text-text-primary">{source.title}</strong>
-                  <small className="mt-xs block truncate text-caption text-text-muted">
-                    <span>{sourceHost(source.url)}</span>
-                    <span aria-hidden="true"> · </span>
-                    <span>
-                      {SOURCE_STATUS_LABELS[source.status] ?? source.status}
-                    </span>
-                  </small>
-                </div>
-                <div className="flex flex-col gap-xs">
-                  <span className={`text-caption ${tier.className}`}>{tier.label}</span>
-                  <span className="font-mono text-[11px] text-text-muted">
-                    {source.quality
-                      ? ((source.quality.authority + source.quality.fitness) / 2).toFixed(2)
-                      : "—"}
-                  </span>
-                </div>
-                <a
-                  href={source.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="打开来源"
-                  className="text-caption text-info hover:underline"
-                >
-                  ↗
-                </a>
-              </li>
-            );
-          })}
+          {visible.map((source) => (
+            <SourceCard key={source.id} source={source} variant="row" />
+          ))}
         </ol>
         {visible.length === 0 ? (
           <Card className="text-center text-body text-text-secondary">
