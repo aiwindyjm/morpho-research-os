@@ -7,6 +7,7 @@ from morpho_worker.config import (
     ProviderRole,
     ProviderRoles,
     WorkerConfig,
+    apply_profile,
     default_worker_config,
     from_env,
     resolve_key_reference,
@@ -139,3 +140,31 @@ def test_from_env_rejects_non_reference_key_ref():
 def test_from_env_bad_number_is_clear_error():
     with pytest.raises(ValueError):
         from_env({"MORPHO_MAX_CONCURRENCY": "many"})
+
+
+def test_profile_local_routes_all_llm_roles_to_ollama():
+    config = apply_profile(default_worker_config(), "local")
+    assert config.offline_mock is False
+    for role in ("planner", "validation", "extraction", "summarization", "classification"):
+        assert getattr(config.roles, role) == "ollama-local"
+    assert config.roles.embedding == "mock"
+
+
+def test_profile_offline_and_default_are_idempotent():
+    base = default_worker_config()
+    assert apply_profile(base, "offline").offline_mock is True
+    assert apply_profile(base, "default") is base  # unchanged, same object ok
+    assert apply_profile(base, "") is base
+
+
+def test_profile_unknown_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        apply_profile(default_worker_config(), "cloud")
+
+
+def test_from_env_applies_profile_then_explicit_roles():
+    env = {"MORPHO_PROFILE": "local", "MORPHO_ROLE_PLANNER": "ollama-local-fallback"}
+    config = from_env(env)
+    assert config.roles.planner == "ollama-local-fallback"
+    assert config.roles.extraction == "ollama-local"

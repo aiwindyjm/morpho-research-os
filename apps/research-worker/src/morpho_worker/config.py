@@ -155,6 +155,26 @@ def default_worker_config() -> WorkerConfig:
     )
 
 
+def apply_profile(config: WorkerConfig, profile: str) -> WorkerConfig:
+    """Routing presets. Profiles are configuration sugar over ProviderRoles;
+    they never add providers or change contracts."""
+
+    profile = (profile or "default").strip().lower()
+    if profile in {"", "default"}:
+        return config
+    if profile == "offline":
+        return config.model_copy(update={"offline_mock": True})
+    if profile == "local":
+        return config.model_copy(update={
+            "offline_mock": False,
+            "roles": config.roles.model_copy(update={
+                role: "ollama-local" for role in
+                ("planner", "validation", "extraction", "summarization", "classification")
+            }),
+        })
+    raise ValueError(f"unknown profile: {profile!r}")
+
+
 _PROVIDER_ENV_PREFIX = "MORPHO_PROVIDER_"
 _PROVIDER_ENV_FIELDS = ("BASE_URL", "KEY_REF", "KIND", "MODEL", "RETRIES", "TIMEOUT")
 
@@ -195,6 +215,11 @@ def from_env(
         MORPHO_PROVIDER_<NAME>_TIMEOUT=120
         MORPHO_PROVIDER_<NAME>_RETRIES=2
         MORPHO_ROLE_<ROLE>=<provider-name>
+        MORPHO_PROFILE=local|offline|default
+
+    ``MORPHO_PROFILE`` is applied before the explicit ``MORPHO_ROLE_<ROLE>``
+    overrides, so a per-role environment variable still wins over the
+    profile's routing preset.
     """
 
     config = base if base is not None else default_worker_config()
@@ -246,6 +271,11 @@ def from_env(
         if raw := fields.get("RETRIES", ""):
             entry["max_retries"] = int(raw)
     data["providers"] = providers
+
+    # Profile first, explicit MORPHO_ROLE_* on top: the per-role override
+    # always wins over the preset.
+    if raw := env.get("MORPHO_PROFILE", ""):
+        data = apply_profile(WorkerConfig.model_validate(data), raw).model_dump()
 
     for role in ProviderRole:
         key = f"MORPHO_ROLE_{role.value.upper()}"
