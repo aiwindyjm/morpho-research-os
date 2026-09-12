@@ -18,3 +18,5 @@ Analytics/Events: 无
 ## Prototype alignment (ADR-013)
 
 已实施（实施计划 Task 12）：顶部 4 块质量汇总（`source-summary`：全部 / 高质量 / 中等 / 待审核，按 quality 字段计数着色）；工具条为搜索框（aria-label「搜索来源或关键词」）+ 类型筛选 chips。来源由卡片改为行式列表：`badge-mono` 类型徽章（PAPER 紫 / OFFICIAL 蓝 / 其它灰）+ 标题 + 域名/状态元信息 + 质量标签 + 分数（mono）+ 外链 ↗（`rel="noreferrer"` 保留）。
+
+有意简化（V0.1）：时间筛选 chips 有意省略，仅保留类型筛选 chips。

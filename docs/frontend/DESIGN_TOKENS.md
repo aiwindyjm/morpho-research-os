@@ -1,5 +1,5 @@
 # Design Tokens
-Define semantic CSS variables for background, surface, border, text, accent, success, warning, error, info; spacing xs 4, sm 8, md 12, lg 16, xl 24, xxl 32; typography Display/H1/H2/H3/Body/Caption/Label; radii and motion tiers. Components consume tokens; pages never hard-code values.
+Define semantic CSS variables for background, surface, border, text, accent, success, warning, error, info; spacing xs 4, sm 8, md 12, lg 16, xl 24, xxl 32; typography Display/H1/H2/H3/Body/Caption/Label; radii and motion tiers. Components consume tokens; pages never hard-code colors outside the tint governance rule below.
 
 Values are aligned with the product prototype (ADR-013, `docs/architecture/adr/ADR-013-align-visual-tokens-with-prototype.md`): semantic names are unchanged, only values moved, so consumers are affected only by value changes. Source of truth: `packages/ui/src/tokens.css`.
 
@@ -48,4 +48,4 @@ Visual effects that Tailwind utilities cannot express cleanly. The effect layer 
 | `graph-canvas-bg` | Radial dark graph canvas |
 | `timeline-connector` | Dashed connector between overview research-path rows (parent is position-relative) |
 
-Rule: pages never hard-code colors outside `tokens.css` and `prototype.css` (ADR-013 boundary; DO_NOT_BREAK #4 — this is prototype alignment, not an arbitrary redesign).
+Rule (ADR-013, decision 2): base colors on pages must come from semantic tokens. Token-derived alpha tints — the same RGB triple as a named token with an `/alpha` suffix (e.g. `border-[rgb(114_167_255/0.45)]`) — are permitted in Tailwind arbitrary values. One-off approved literals are limited to those listed in the ADR: sidebar background `#0d121b`, avatar `#b8c8ef`/`#151a24`, brand text `#f2f6ff`, graph node fill `#1b273b`, plus the gradient composites in `prototype.css` (ADR-013 boundary; DO_NOT_BREAK #4 — this is prototype alignment, not an arbitrary redesign).
