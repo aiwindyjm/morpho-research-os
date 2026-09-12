@@ -7,23 +7,24 @@
  * workspace, neutral surfaces, restrained accent color.
  */
 :root {
-  /* Color — semantic */
-  --morpho-color-background: #101418;
-  --morpho-color-surface: #171c22;
-  --morpho-color-surface-raised: #1e252c;
-  --morpho-color-border: #2c3540;
+  /* Color — semantic (aligned with prototype/styles.css; ADR-013) */
+  --morpho-color-background: #0b0f17;
+  --morpho-color-surface: #111722;
+  --morpho-color-surface-raised: #1b2433;
+  --morpho-color-border: rgb(176 191 215 / 0.13);
 
-  --morpho-color-text-primary: #e8edf2;
-  --morpho-color-text-secondary: #a8b4bf;
-  --morpho-color-text-muted: #7d8a96;
+  --morpho-color-text-primary: #e8edf5;
+  --morpho-color-text-secondary: #8490a5;
+  --morpho-color-text-muted: #606b80;
 
-  --morpho-color-accent: #4f8fdd;
-  --morpho-color-accent-soft: rgb(79 143 221 / 0.16);
+  --morpho-color-accent: #3b82f6;
+  --morpho-color-accent-soft: rgb(114 167 255 / 0.11);
+  --morpho-color-accent-alt: #b59aff;
 
-  --morpho-color-success: #3fa46a;
-  --morpho-color-warning: #d99a3d;
-  --morpho-color-error: #d4574e;
-  --morpho-color-info: #4f9dd0;
+  --morpho-color-success: #62d0a3;
+  --morpho-color-warning: #efaa65;
+  --morpho-color-error: #ed7788;
+  --morpho-color-info: #72a7ff;
 
   /* Spacing scale */
   --morpho-space-xs: 4px;
@@ -50,13 +51,13 @@
   --morpho-text-label-line-height: 20px;
 
   /* Radii */
-  --morpho-radius-sm: 4px;
-  --morpho-radius-md: 6px;
-  --morpho-radius-lg: 10px;
+  --morpho-radius-sm: 6px;
+  --morpho-radius-md: 8px;
+  --morpho-radius-lg: 12px;
 
   /* Shadow */
-  --morpho-shadow-panel: 0 1px 3px rgb(0 0 0 / 0.4);
-  --morpho-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.5);
+  --morpho-shadow-panel: 0 18px 45px rgb(0 0 0 / 0.18);
+  --morpho-shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.38);
 
   /* Motion tiers: fast micro-feedback, base transitions, overlay entrances */
   --morpho-motion-fast: 120ms;

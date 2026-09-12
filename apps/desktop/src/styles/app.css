@@ -20,6 +20,7 @@
   --color-warning: var(--morpho-color-warning);
   --color-error: var(--morpho-color-error);
   --color-info: var(--morpho-color-info);
+  --color-accent-alt: var(--morpho-color-accent-alt);
 
   --spacing-xs: 4px;
   --spacing-sm: 8px;
@@ -54,8 +55,8 @@
   --text-label--line-height: 20px;
   --text-label--font-weight: 500;
 
-  --shadow-panel: 0 1px 3px rgb(0 0 0 / 0.4);
-  --shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.5);
+  --shadow-panel: 0 18px 45px rgb(0 0 0 / 0.18);
+  --shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.38);
 }
 
 :root {

@@ -1,0 +1,106 @@
+/*
+ * Prototype alignment effect layer (ADR-013, spec §2/§3).
+ * Visual effects the Tailwind utilities cannot express cleanly. All colors
+ * come from tokens.css; raw values here are gradient/glow composites that
+ * were approved with the prototype.
+ */
+
+.kicker {
+  color: var(--morpho-color-text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.view-fade {
+  animation: morpho-fade-in 220ms var(--morpho-motion-ease);
+}
+@keyframes morpho-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.brand-mark {
+  background: linear-gradient(145deg, #2459aa, #8d5eea);
+  box-shadow: 0 7px 18px rgb(78 124 227 / 0.25);
+}
+
+.main-glow {
+  background:
+    radial-gradient(circle at 70% -20%, rgb(53 74 119 / 0.13), transparent 38%);
+}
+
+.metric-accent {
+  position: relative;
+  overflow: hidden;
+  border-color: rgb(114 167 255 / 0.25);
+  background: linear-gradient(145deg, rgb(45 81 145 / 0.35), var(--morpho-color-surface) 65%);
+}
+.metric-accent::after {
+  content: "";
+  position: absolute;
+  right: -20px;
+  top: -40px;
+  width: 115px;
+  height: 115px;
+  border: 1px solid rgb(114 167 255 / 0.14);
+  border-radius: 50%;
+}
+
+.pill {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 10px;
+}
+.pill-success { color: var(--morpho-color-success); background: rgb(98 208 163 / 0.1); }
+.pill-warning { color: var(--morpho-color-warning); background: rgb(239 170 101 / 0.1); }
+.pill-accent  { color: var(--morpho-color-info);     background: rgb(114 167 255 / 0.1); }
+.pill-neutral { color: var(--morpho-color-text-secondary); background: rgb(255 255 255 / 0.05); }
+.pill-error   { color: var(--morpho-color-error);    background: rgb(237 119 136 / 0.1); }
+
+.badge-mono {
+  border-radius: 4px;
+  padding: 5px 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+.node-badge-accent  { color: var(--morpho-color-info);       background: rgb(114 167 255 / 0.1); }
+.node-badge-alt     { color: var(--morpho-color-accent-alt); background: rgb(181 154 255 / 0.1); }
+.node-badge-warning { color: var(--morpho-color-warning);    background: rgb(239 170 101 / 0.1); }
+.node-badge-error   { color: var(--morpho-color-error);      background: rgb(237 119 136 / 0.1); }
+
+.progress-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.09);
+}
+.progress-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--morpho-color-accent), var(--morpho-color-accent-alt));
+}
+
+.brand-gradient-button {
+  background: linear-gradient(135deg, #315fae, #7250b8);
+  box-shadow: 0 12px 30px rgb(31 71 142 / 0.32);
+}
+
+.graph-canvas-bg {
+  background:
+    radial-gradient(circle at 45% 50%, rgb(49 78 136 / 0.16), transparent 38%),
+    #0c111a;
+}
+
+/* Dashed connector on overview/path rows; parent is position:relative. */
+.timeline-connector::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 34px;
+  bottom: -27px;
+  border-left: 1px dashed var(--morpho-color-border);
+}
