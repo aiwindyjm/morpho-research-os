@@ -14,3 +14,7 @@ Loading State: PageLoading
 Error State: PageError + 重试；保存错误以 Alert 呈现
 Responsive: md 以下单列；保存/放弃按钮固定在页头
 Analytics/Events: 无
+
+## Prototype alignment (ADR-013)
+
+目标设计（实施计划 Task 9，进行中，以计划与原型为准）：单面板内 01–04 编号分区——01 研究主题（领域/主题/目的/受众）、02 研究范围（深度 1–5 分段控件 + 时间范围 + 语言复选 + 地域范围）、03 研究维度（chips 多选，`aria-pressed`；「＋ 自定义维度」V0.1 禁用，title「桌面版提供」）、04 来源偏好（卡片式复选）。字段全部映射现有 `ResearchConfig` 契约，保存走 `useUpdateConfig`，无新增字段；保存/放弃与错误 Alert 逻辑不变。

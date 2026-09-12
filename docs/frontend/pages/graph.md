@@ -15,3 +15,7 @@ Error State: PageError + 重试
 Responsive: Inspector 换行到画布下方（<1280）；画布 SVG 等比缩放
 Accessibility: SVG 节点为 role=button + aria-label；列表视图提供语义表格；布局为同步力导向计算（确定性、无动画帧依赖）
 Analytics/Events: 无
+
+## Prototype alignment (ADR-013)
+
+目标设计（实施计划 Task 13，进行中，以计划与原型为准）：工具条改为类型筛选 chips +「N 节点 · M 关系」计数；画布容器使用 `graph-canvas-bg` 径向暗色背景，SVG 节点对齐原型配色（选中节点蓝色高亮光晕），仅改样式不改 d3 力导向逻辑。右侧 245px inspector（testid `graph-inspector`）：当前选择标题 + 类型徽章 + 摘要 + 来源/关系统计 +「打开 Markdown」（禁用，title「桌面版提供」）；窄屏回落到画布下方流式布局。

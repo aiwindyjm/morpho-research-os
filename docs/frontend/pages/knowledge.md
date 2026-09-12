@@ -14,3 +14,7 @@ Loading State: PageLoading（两个查询合并）
 Error State: PageError + 重试
 Responsive: 卡片 1 列（<1024）/ 2 列（≥1024）
 Analytics/Events: 无
+
+## Prototype alignment (ADR-013)
+
+目标设计（实施计划 Task 12，进行中，以计划与原型为准）：知识节点改为 4 列卡片网格（md 2 列）：`badge-mono` 类型徽章（concept 蓝 / technology 紫 / company 橙 / claim 红）+ 可信度标签 + 标题 + 描述 + 底部来源/关系统计；存在冲突的节点卡使用红色渐变描边样式。论断与证据的分层展示与证据展开逻辑不变。

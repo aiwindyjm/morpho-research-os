@@ -14,3 +14,7 @@ Loading State: PageLoading
 Error State: PageError + 重试；操作失败以 Alert 呈现（含 MorphoError user_message）
 Responsive: 操作按钮在页头自动换行；树列表单列流式
 Analytics/Events: 无
+
+## Prototype alignment (ADR-013)
+
+目标设计（实施计划 Task 10，进行中，以计划与原型为准）：页头 kicker「研究计划 / 待确认|已批准」+「重新生成」与「确认并开始」（后者 aria-label 保留「批准计划」，App.test 依赖）。新增汇总条（`plan-summary`）四格：预计任务（plan 任务数）/ 来源（当前来源数）/ 研究维度（config 维度数）/ 需要审核（待审核 claims 数），全部真实数据。计划树改为分组头（编号 + 标题 + 描述 + 任务数 + 折叠按钮）→ 任务行（序号 + 标题 + 类型标签）；现有编辑/批准/拒绝/重新生成交互全部保留。

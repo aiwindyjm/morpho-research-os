@@ -14,3 +14,7 @@ Loading State: PageLoading（骨架）
 Error State: PageError + 重试
 Responsive: 1 列（<768）/ 2 列（≥768）/ 3 列（≥1280）；侧边栏 <768 收纳为抽屉
 Analytics/Events: 无（V0.1 不引入遥测）
+
+## Prototype alignment (ADR-013)
+
+目标设计（实施计划 Task 8，进行中，以计划与原型为准）：页头 kicker「我的研究」+「＋ 新建研究」；工具条为客户端搜索框（按名称/描述过滤，aria-label「搜索我的研究」）+「N 个项目」计数。项目改为卡片网格（md 2 列 / xl 3 列）：状态 pill（进行中绿 / 已暂停橙 / 草稿灰，由项目聚合推导）、名称、描述、meta 行（覆盖率 / 来源数 / 更新时间）、卡底 3px 进度条；当前项目卡渐变高亮。末尾虚线「新建一个研究」卡打开现有创建 Dialog；现有「进入工作台 / 研究配置」按钮交互保留。

@@ -1,5 +1,7 @@
 # Page Specification: 时间线（Timeline）
 
+> **Superseded:** 本页内容已并入 overview.md(ADR-013,2026-09-12)。timeline/gaps 作为独立视图已移除,数据查询(coverage/gaps/timeline)保留并由概览页消费。
+
 Page: 时间线（Timeline）
 Purpose: 按时间倒序展示运行、来源、论断与知识事件（RES-10）。
 Pattern: List（时间轴）

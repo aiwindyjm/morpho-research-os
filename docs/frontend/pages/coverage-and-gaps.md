@@ -1,5 +1,7 @@
 # Page Specification: 覆盖与缺口（Coverage & Gaps）
 
+> **Superseded:** 本页内容已并入 overview.md(ADR-013,2026-09-12)。timeline/gaps 作为独立视图已移除,数据查询(coverage/gaps/timeline)保留并由概览页消费。
+
 Page: 覆盖与缺口（Coverage & Gaps）
 Purpose: 按维度展示可解释覆盖度（PRD V0.1 公式：0.4 任务完成度 + 0.3 知识广度 + 0.2 证据密度 + 0.1 来源多样性）与缺口建议；建议批准前只读（RES-10）。
 Pattern: Dashboard（分区区块）
