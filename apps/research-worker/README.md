@@ -62,7 +62,12 @@ src/morpho_worker/
                      final rules)
   events.py          research.event.v1 envelopes, ordered append-only log,
                      cursor reconnect, redaction, JSONL/SSE codecs
-  transport.py       draft /health, /version, /compatibility HTTP endpoints
+  transport.py       draft HTTP transport (stdlib http.server): /health,
+                     /version, /compatibility, plus the job routes below;
+                     exact + {param} route tables and SSE stream replies
+  jobs.py            draft job surface (W2-02): POST /jobs, GET /jobs/{id},
+                     POST /jobs/{id}/cancel, GET /jobs/{id}/events (SSE);
+                     per-job worker thread + per-job pinned event log
   providers/         ports, deterministic mocks, OpenAI-compatible adapter
                      (draft), factory/role routing, cache, retry, usage
   pipeline/          prompt registry (packages/prompts assets) and the
@@ -77,6 +82,25 @@ src/morpho_worker/
   interfaces.py      stage ports, StageContext, idempotent result sink
 tests/               pytest suite; fixtures under tests/fixtures
 ```
+
+## HTTP surface (draft until W2-02)
+
+`transport.WorkerService` serves on loopback; everything except a missing
+token requires the session bearer token (`WorkerService(session_token=...)`
+— the current draft also gates `/health`/`/version` behind it):
+
+| Endpoint | Behavior |
+|---|---|
+| `GET /health`, `GET /version`, `POST /compatibility` | Process/protocol metadata and the draft compatibility probe |
+| `POST /jobs` | Strict job request envelope (`schema_version "1"`, `kind`, `config`, optional `approve_plan`); unknown fields rejected. `research_run` runs the full pipeline (offline/mock providers by default in mock mode). `approve_plan=true` is the caller's plan review decision — without it the request fails with `PLAN_NOT_APPROVED` and no DAG is built. Returns `201` + job envelope (job_id, status, created_at, protocol_version, counts) |
+| `GET /jobs/{id}` | Job envelope with the mapped status (PENDING / PLANNING / RUNNING / VALIDATING / NEEDS_REVIEW / PAUSED / COMPLETED / FAILED / CANCELLED) and task counts |
+| `POST /jobs/{id}/cancel` | Cooperative cancel via the DAG runner; idempotent (a terminal job returns its terminal state) |
+| `GET /jobs/{id}/events` | SSE stream (`text/event-stream`) of the per-job `EventLog`: `id: <sequence>` framing, replay from `Last-Event-ID` header or `?after_sequence=`, comment heartbeats, clean EOF (sentinel comment) on terminal state |
+
+Unknown ids return the structured `NOT_FOUND` envelope (404); auth failures
+`UNAUTHORIZED` (401); malformed bodies `BAD_REQUEST` (400). Job events are
+redacted through `events.py` — provider keys, raw prompts, and raw responses
+never appear.
 
 ## Running tests
 
@@ -129,8 +153,9 @@ code, to be settled at the W2 freeze):
 3. Draft state-machine extensions: `FAILED → PENDING` (scheduler requeue /
    manual retry), `PENDING → FAILED` (dependency-failure cascade, named by
    RESEARCH_ENGINE.md), interruptible states → `PENDING` (crash recovery).
-4. Draft transport codes (`UNAUTHORIZED`, `NOT_FOUND`, `BAD_REQUEST`) for
-   HTTP-level errors; the worker protocol itself freezes at W2-02.
+4. Draft transport codes (`UNAUTHORIZED`, `NOT_FOUND`, `BAD_REQUEST`,
+   `UNSUPPORTED_JOB_KIND`) for HTTP-level errors; the worker protocol
+   itself freezes at W2-02.
 5. Confidence aggregation heuristic for nodes: agreement from ≥ 2
    independent sources raises confidence; a single mention with no numeric
    confidence stays `unverified`. A claim without located evidence can

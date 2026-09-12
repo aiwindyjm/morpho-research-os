@@ -230,12 +230,18 @@ class EventLog:
     def wait_for(
         self, job_id: str, after_sequence: int, timeout: float | None = None
     ) -> list[EventEnvelope]:
-        """Block until at least one event after the cursor exists."""
+        """Block until at least one event after the cursor exists.
+
+        Waits whenever there is nothing new after ``after_sequence`` (whether
+        the log is empty or only holds events at/before the cursor), which is
+        what streaming consumers reconnecting on a cursor need.
+        """
 
         with self._condition:
-            if not self._events.get(job_id):
-                self._condition.wait(timeout=timeout)
             events = self._events.get(job_id, [])
+            if not [event for event in events if event.sequence > after_sequence]:
+                self._condition.wait(timeout=timeout)
+                events = self._events.get(job_id, [])
             return [event for event in events if event.sequence > after_sequence]
 
     def close(self, job_id: str) -> None:

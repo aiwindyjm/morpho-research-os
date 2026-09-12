@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 
 import pytest
 
@@ -151,6 +152,23 @@ def test_wait_for_returns_new_events(log):
     events = log.wait_for("job-1", after_sequence=0, timeout=5)
     thread.join(timeout=5)
     assert [event.type for event in events] == ["later.event"]
+
+
+def test_wait_for_blocks_until_event_after_cursor_when_earlier_events_exist(log):
+    # A streaming consumer reconnecting on a cursor must wait for the NEXT
+    # event, not return an empty list just because the log is non-empty.
+    log.append("job-1", "one")
+    log.append("job-1", "two")
+
+    def late_producer():
+        time.sleep(0.05)
+        log.append("job-1", "three")
+
+    thread = threading.Thread(target=late_producer)
+    thread.start()
+    events = log.wait_for("job-1", after_sequence=2, timeout=5)
+    thread.join(timeout=5)
+    assert [event.sequence for event in events] == [3]
 
 
 def test_concurrent_appends_keep_total_order(log):

@@ -120,10 +120,16 @@ class ResearchOrchestrator:
 
     # Run lifecycle (RES-02) ---------------------------------------------------
 
-    def start_run(self, plan_id: str) -> str:
+    def start_run(
+        self, plan_id: str, *, on_run_created: Callable[[str], None] | None = None
+    ) -> str:
         """Build the DAG for an APPROVED plan and drive it to completion.
 
         Returns the run id; run/task state lives in the state store.
+        ``start_run`` blocks until the run finishes, so callers that need the
+        run id while it is in flight (e.g. the job HTTP surface wiring
+        cooperative cancel) pass ``on_run_created``, invoked right after the
+        run record is created and before any task executes.
         """
 
         plan = self._plan_store.require_approved(plan_id)
@@ -136,6 +142,8 @@ class ResearchOrchestrator:
                 config_fingerprint=plan.config_fingerprint,
             )
         )
+        if on_run_created is not None:
+            on_run_created(run_id)
         for task in self._static_tasks(run_id, plan):
             self._store.add_task(task)
         self._emit(run_id, "run.created", {"plan_id": plan.plan_id})
