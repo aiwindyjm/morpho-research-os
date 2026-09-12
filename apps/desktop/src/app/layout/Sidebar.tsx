@@ -24,55 +24,89 @@ export function Sidebar({ variant }: { variant: "docked" | "drawer" }) {
   }, [variant, drawerOpen, setDrawerOpen]);
 
   const hasProject = activeProjectId !== "";
-  const items = WORKSPACE_VIEWS.filter(
+  // 项目作用域视图(config/plan/tasks 等)依赖活动项目,未选中项目时只保留「我的研究」;
+  // 设置是全局入口,按原型放在侧栏底部而非主列表 —— 请勿把它"补"回上面的列表。
+  const navViews = WORKSPACE_VIEWS.filter(
     (view) =>
       view.id !== "reports" && view.id !== "settings" && (hasProject || view.id === "projects"),
   );
+  const settingsView = WORKSPACE_VIEWS.find((view) => view.id === "settings");
 
   const nav = (
     <nav
       aria-label="主导航"
-      className="flex h-full w-60 flex-col gap-md overflow-y-auto border-r border-border bg-surface p-md"
+      className="flex h-full w-[236px] flex-col overflow-y-auto border-r border-border bg-[#0d121b] p-md"
     >
-      <div className="flex items-center gap-sm px-sm py-sm">
+      <div className="flex items-center gap-sm px-sm pb-lg pt-sm">
         <span
           aria-hidden="true"
-          className="flex size-7 items-center justify-center rounded-md bg-accent text-label text-background"
+          className="brand-mark flex size-[34px] items-center justify-center rounded-[10px] text-[17px] font-extrabold text-[#f2f6ff]"
         >
           M
         </span>
-        <span className="text-h3 text-text-primary">Morpho Research</span>
+        <span>
+          <span className="kicker block">Research OS</span>
+          <span className="block text-[17px] font-bold leading-tight tracking-tight text-text-primary">
+            Morpho
+          </span>
+        </span>
       </div>
 
       <ProjectSwitcher />
 
-      <ul className="flex flex-col gap-xs" data-testid="view-nav">
-        {items.map((view) => (
+      <ul className="mt-lg flex flex-col gap-[3px]" data-testid="view-nav">
+        {navViews.map((view) => (
           <li key={view.id}>
             <button
               type="button"
               aria-current={activeView === view.id ? "page" : undefined}
               onClick={() => setActiveView(view.id as ViewId)}
-              className={`w-full rounded-md px-md py-sm text-left text-label transition-colors duration-[var(--morpho-motion-fast)] ${
+              className={`flex w-full items-center gap-[11px] rounded-md px-md py-sm text-left text-[12px] transition-colors duration-[var(--morpho-motion-fast)] ${
                 activeView === view.id
-                  ? "bg-accent-soft text-text-primary"
-                  : "text-text-secondary hover:bg-surface-raised hover:text-text-primary"
+                  ? "bg-accent-soft text-text-primary shadow-[inset_2px_0_0_var(--morpho-color-accent)]"
+                  : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
               }`}
             >
+              <span aria-hidden="true" className="w-4 text-center text-base leading-none">
+                {view.icon}
+              </span>
               {view.label}
             </button>
           </li>
         ))}
       </ul>
 
-      <p className="mt-auto px-sm text-caption text-text-muted">
-        本地优先 · 研究是你的资产
-      </p>
+      <div className="mt-auto grid gap-md border-t border-border pt-md">
+        <div className="flex items-center gap-sm px-sm">
+          <span aria-hidden="true" className="inline-block size-[7px] rounded-full bg-success" />
+          <span>
+            <strong className="block text-[11px] text-text-primary">本地工作区</strong>
+            <small className="text-caption text-text-muted">数据保存在本机</small>
+          </span>
+        </div>
+        {settingsView ? (
+          <button
+            type="button"
+            aria-current={activeView === settingsView.id ? "page" : undefined}
+            onClick={() => setActiveView(settingsView.id as ViewId)}
+            className={`flex w-full items-center gap-[11px] rounded-md px-md py-sm text-left text-[12px] ${
+              activeView === settingsView.id
+                ? "bg-accent-soft text-text-primary"
+                : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
+            }`}
+          >
+            <span aria-hidden="true" className="w-4 text-center text-base leading-none">
+              {settingsView.icon}
+            </span>
+            {settingsView.label}
+          </button>
+        ) : null}
+      </div>
     </nav>
   );
 
   if (variant === "docked") {
-    return <aside className="hidden md:block md:w-60 md:shrink-0">{nav}</aside>;
+    return <aside className="hidden md:block md:w-[236px] md:shrink-0">{nav}</aside>;
   }
 
   if (!drawerOpen) return null;

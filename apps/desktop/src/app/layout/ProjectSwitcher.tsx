@@ -1,4 +1,4 @@
-import { useProjects, useCreateProject } from "@/services/queries";
+import { useProjects, useCreateProject, useAssistantContext } from "@/services/queries";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { Button, Dialog, Input, Popover, Textarea } from "@morpho/ui";
 import { useState } from "react";
@@ -10,6 +10,7 @@ import { useState } from "react";
 export function ProjectSwitcher() {
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
   const setActiveProject = useWorkspaceStore((s) => s.setActiveProject);
+  const setActiveView = useWorkspaceStore((s) => s.setActiveView);
   const { data: projects, isLoading } = useProjects();
   const createProject = useCreateProject();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -50,35 +51,38 @@ export function ProjectSwitcher() {
             aria-expanded={expanded}
             aria-haspopup="dialog"
             data-testid="project-switcher"
-            className="flex w-full items-center justify-between gap-sm rounded-md border border-border bg-surface-raised px-md py-sm text-left"
+            className="flex w-full items-center gap-sm rounded-md border border-border bg-surface px-md py-sm text-left"
           >
-            <span className="min-w-0">
-              <span className="block text-caption text-text-muted">当前项目</span>
-              <span className="block truncate text-label text-text-primary">
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full bg-accent-alt shadow-[0_0_0_4px_rgb(181_154_255/0.11)]"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12px] font-semibold text-text-primary">
                 {isLoading ? "加载中…" : (active?.name ?? "未选择项目")}
               </span>
+              <span className="block text-caption text-text-muted">Research project</span>
             </span>
             <span aria-hidden="true" className="text-text-muted">
-              ▾
+              ⌄
             </span>
           </button>
         )}
       >
+        <div className="flex items-center justify-between px-md pb-sm pt-xs">
+          <span className="kicker">当前工作区</span>
+          <button
+            type="button"
+            data-testid="project-menu-manage"
+            className="text-[10px] text-info"
+            onClick={() => setActiveView("projects")}
+          >
+            管理全部
+          </button>
+        </div>
         <div className="flex max-h-72 flex-col gap-xs overflow-y-auto" role="listbox" aria-label="项目列表">
           {(projects ?? []).map((project) => (
-            <button
-              key={project.id}
-              role="option"
-              aria-selected={project.id === activeProjectId}
-              onClick={() => setActiveProject(project.id)}
-              className={`rounded-md px-md py-sm text-left text-body transition-colors duration-[var(--morpho-motion-fast)] ${
-                project.id === activeProjectId
-                  ? "bg-accent-soft text-text-primary"
-                  : "text-text-secondary hover:bg-surface hover:text-text-primary"
-              }`}
-            >
-              {project.name}
-            </button>
+            <ProjectMenuRow key={project.id} projectId={project.id} name={project.name} />
           ))}
           {(projects ?? []).length === 0 ? (
             <p className="px-md py-sm text-caption text-text-muted">
@@ -146,5 +150,46 @@ export function ProjectSwitcher() {
         </form>
       </Dialog>
     </div>
+  );
+}
+
+/** One prototype menu row: status dot + name + progress line, per-project query. */
+function ProjectMenuRow({ projectId, name }: { projectId: string; name: string }) {
+  const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
+  const setActiveProject = useWorkspaceStore((s) => s.setActiveProject);
+  const { data: context } = useAssistantContext(projectId);
+  const isActive = projectId === activeProjectId;
+
+  const total = context?.tasks_total ?? 0;
+  const done = context?.tasks_completed ?? 0;
+  const status =
+    context?.plan_status === "none" || total === 0
+      ? { label: "草稿 · 尚未运行", dot: "bg-text-muted shadow-[0_0_0_4px_rgb(132_144_165/0.1)]" }
+      : done < total
+        ? { label: `进行中 · ${total > 0 ? Math.round((done / total) * 100) : 0}%`, dot: "bg-accent-alt shadow-[0_0_0_4px_rgb(181_154_255/0.11)]" }
+        : { label: "已暂停 · 100%", dot: "bg-warning shadow-[0_0_0_4px_rgb(239_170_101/0.1)]" };
+
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={isActive}
+      data-testid="project-menu-item"
+      onClick={() => setActiveProject(projectId)}
+      className={`flex w-full items-center gap-sm rounded-md px-md py-sm text-left ${
+        isActive ? "bg-accent-soft" : "hover:bg-accent-soft"
+      }`}
+    >
+      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${status.dot}`} />
+      <span className="min-w-0 flex-1">
+        <strong className="block truncate text-[11px] font-semibold text-text-primary">{name}</strong>
+        <small className="block text-caption text-text-muted">{status.label}</small>
+      </span>
+      {isActive ? (
+        <span aria-hidden="true" className="text-[12px] text-info">
+          ✓
+        </span>
+      ) : null}
+    </button>
   );
 }

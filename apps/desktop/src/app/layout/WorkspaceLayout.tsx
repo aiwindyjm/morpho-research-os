@@ -1,5 +1,6 @@
 import { WORKSPACE_VIEWS, useWorkspaceStore } from "@/stores/workspaceStore";
 import { Sidebar } from "./Sidebar";
+import { Topbar } from "./Topbar";
 import { AssistantPanel } from "@/features/assistant/AssistantPanel";
 import { viewContent } from "../viewRegistry";
 import { Button } from "@morpho/ui";
@@ -32,7 +33,7 @@ export function WorkspaceLayout() {
 
       <main
         id="main-content"
-        className="flex min-w-0 flex-1 flex-col"
+        className="main-glow flex min-w-0 flex-1 flex-col"
         aria-label={`${viewLabel}视图`}
       >
         <div className="flex items-center gap-sm border-b border-border px-md py-sm lg:hidden">
@@ -47,7 +48,10 @@ export function WorkspaceLayout() {
           <span className="text-label text-text-secondary">{viewLabel}</span>
         </div>
 
-        <div className="min-h-0 flex-1">{viewContent(activeView, activeProjectId)}</div>
+        <Topbar />
+        <div className="view-fade min-h-0 flex-1">
+          {viewContent(activeView, activeProjectId)}
+        </div>
       </main>
 
       {activeProjectId !== "" ? (
