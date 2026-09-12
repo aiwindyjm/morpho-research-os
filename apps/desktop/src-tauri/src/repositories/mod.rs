@@ -8,10 +8,16 @@
 //! * every error surfaces as the unified [`CoreError`] model.
 
 pub mod artifacts;
+pub mod claims;
 pub mod configs;
+pub mod events;
+pub mod evidence;
 pub mod knowledge;
+pub mod llm_usage;
 pub mod plans;
 pub mod projects;
+pub mod relations;
+pub mod runs;
 pub mod services;
 pub mod sources;
 pub mod tasks;

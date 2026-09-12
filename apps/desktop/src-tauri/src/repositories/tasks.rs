@@ -61,6 +61,103 @@ impl Tasks {
         }
         tx_immediate_get(tx, id)
     }
+
+    /// Persists JSON task parameters / checkpoint state for resumable
+    /// execution (DO_NOT_BREAK #6). Status is untouched; transition legality
+    /// stays with the orchestrator.
+    pub fn set_checkpoint(
+        tx: &Transaction<'_>,
+        id: &str,
+        checkpoint: &str,
+    ) -> Result<TaskRecord, CoreError> {
+        set_ref_column(
+            tx,
+            id,
+            "UPDATE tasks SET checkpoint = ?2, updated_at = ?3 WHERE id = ?1",
+            Some(checkpoint),
+        )
+    }
+
+    /// Drops a stored checkpoint (for example after a completed run leaves
+    /// nothing to resume).
+    pub fn clear_checkpoint(tx: &Transaction<'_>, id: &str) -> Result<TaskRecord, CoreError> {
+        set_ref_column(
+            tx,
+            id,
+            "UPDATE tasks SET checkpoint = NULL, updated_at = ?3 WHERE id = ?1",
+            None::<&str>,
+        )
+    }
+
+    /// Records where a task's validated output lives (vault path or storage
+    /// reference). The referenced bytes are owned by their producers; this
+    /// column only points at them.
+    pub fn set_result(
+        tx: &Transaction<'_>,
+        id: &str,
+        result_ref: &str,
+    ) -> Result<TaskRecord, CoreError> {
+        set_ref_column(
+            tx,
+            id,
+            "UPDATE tasks SET result_ref = ?2, updated_at = ?3 WHERE id = ?1",
+            Some(result_ref),
+        )
+    }
+
+    /// Clears a stale result reference.
+    pub fn clear_result(tx: &Transaction<'_>, id: &str) -> Result<TaskRecord, CoreError> {
+        set_ref_column(
+            tx,
+            id,
+            "UPDATE tasks SET result_ref = NULL, updated_at = ?3 WHERE id = ?1",
+            None::<&str>,
+        )
+    }
+
+    /// Records where a task's structured failure detail lives (for example a
+    /// redacted error report). Setting this does not change the task status;
+    /// the orchestrator decides that transition.
+    pub fn set_error(
+        tx: &Transaction<'_>,
+        id: &str,
+        error_ref: &str,
+    ) -> Result<TaskRecord, CoreError> {
+        set_ref_column(
+            tx,
+            id,
+            "UPDATE tasks SET error_ref = ?2, updated_at = ?3 WHERE id = ?1",
+            Some(error_ref),
+        )
+    }
+
+    /// Clears an error reference (for example before a retry attempt).
+    pub fn clear_error(tx: &Transaction<'_>, id: &str) -> Result<TaskRecord, CoreError> {
+        set_ref_column(
+            tx,
+            id,
+            "UPDATE tasks SET error_ref = NULL, updated_at = ?3 WHERE id = ?1",
+            None::<&str>,
+        )
+    }
+}
+
+/// Applies one static per-column UPDATE (`?1` = task id, `?2` = new value or
+/// NULL, `?3` = updated_at) and returns the refreshed record. Unknown ids
+/// surface as a structured not-found error.
+fn set_ref_column(
+    tx: &Transaction<'_>,
+    id: &str,
+    sql: &'static str,
+    value: Option<&str>,
+) -> Result<TaskRecord, CoreError> {
+    let changed = tx
+        .execute(sql, params![id, value, now_unix_ms()])
+        .map_err(CoreError::from)?;
+    if changed == 0 {
+        return Err(CoreError::database(format!("task '{id}' not found")));
+    }
+    tx_immediate_get(tx, id)
 }
 
 fn select_one(
@@ -70,7 +167,8 @@ fn select_one(
 ) -> Result<Option<TaskRecord>, CoreError> {
     let sql = format!(
         "SELECT id, plan_id, section_id, run_id, title, task_type, status, idempotency_key,
-                retry_count, max_retries, created_at, updated_at
+                checkpoint, retry_count, max_retries, cache_ref, result_ref, error_ref,
+                created_at, updated_at
          FROM tasks {suffix}"
     );
     let mut stmt = conn.prepare(&sql).map_err(CoreError::from)?;
@@ -83,7 +181,8 @@ fn select_one(
 
 fn tx_immediate_get(tx: &Transaction<'_>, id: &str) -> Result<TaskRecord, CoreError> {
     let sql = "SELECT id, plan_id, section_id, run_id, title, task_type, status, idempotency_key,
-                      retry_count, max_retries, created_at, updated_at
+                      checkpoint, retry_count, max_retries, cache_ref, result_ref, error_ref,
+                      created_at, updated_at
                FROM tasks WHERE id = ?1";
     tx.query_row(sql, params![id], map_task)
         .map_err(CoreError::from)
@@ -99,10 +198,14 @@ fn map_task(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         task_type: row.get(5)?,
         status: row.get(6)?,
         idempotency_key: row.get(7)?,
-        retry_count: row.get(8)?,
-        max_retries: row.get(9)?,
-        created_at: row.get(10)?,
-        updated_at: row.get(11)?,
+        checkpoint: row.get(8)?,
+        retry_count: row.get(9)?,
+        max_retries: row.get(10)?,
+        cache_ref: row.get(11)?,
+        result_ref: row.get(12)?,
+        error_ref: row.get(13)?,
+        created_at: row.get(14)?,
+        updated_at: row.get(15)?,
     })
 }
 
@@ -203,5 +306,61 @@ mod tests {
         let (mut conn, task) = task_in_db();
         let updated = with_write_tx(&mut conn, |tx| Tasks::record_retry(tx, &task.id)).unwrap();
         assert_eq!(updated.retry_count, 1);
+    }
+
+    #[test]
+    fn checkpoint_result_and_error_refs_round_trip_and_clear() {
+        let (mut conn, task) = task_in_db();
+
+        let with_checkpoint = with_write_tx(&mut conn, |tx| {
+            Tasks::set_checkpoint(tx, &task.id, r#"{"cursor":"page-2"}"#)
+        })
+        .unwrap();
+        assert_eq!(
+            with_checkpoint.checkpoint.as_deref(),
+            Some(r#"{"cursor":"page-2"}"#)
+        );
+        // Setting a reference never changes the task status.
+        assert_eq!(with_checkpoint.status, "PENDING");
+
+        let with_result = with_write_tx(&mut conn, |tx| {
+            Tasks::set_result(tx, &task.id, "vault://out/a.md")
+        })
+        .unwrap();
+        assert_eq!(with_result.result_ref.as_deref(), Some("vault://out/a.md"));
+        assert_eq!(
+            with_result.checkpoint.as_deref(),
+            Some(r#"{"cursor":"page-2"}"#)
+        );
+
+        let with_error = with_write_tx(&mut conn, |tx| {
+            Tasks::set_error(tx, &task.id, "errors/task-1.json")
+        })
+        .unwrap();
+        assert_eq!(with_error.error_ref.as_deref(), Some("errors/task-1.json"));
+
+        let cleared = with_write_tx(&mut conn, |tx| {
+            Tasks::clear_checkpoint(tx, &task.id)?;
+            Tasks::clear_result(tx, &task.id)?;
+            Tasks::clear_error(tx, &task.id)
+        })
+        .unwrap();
+        assert!(cleared.checkpoint.is_none());
+        assert!(cleared.result_ref.is_none());
+        assert!(cleared.error_ref.is_none());
+
+        // Reads through the plain SELECT also expose the columns.
+        let stored = Tasks::get(&conn, &task.id).unwrap().unwrap();
+        assert_eq!(stored, cleared);
+    }
+
+    #[test]
+    fn ref_setters_reject_unknown_tasks() {
+        let (mut conn, _task) = task_in_db();
+        let err = with_write_tx(&mut conn, |tx| {
+            Tasks::set_checkpoint(tx, "ghost", "{}").map(|_| ())
+        })
+        .unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
     }
 }

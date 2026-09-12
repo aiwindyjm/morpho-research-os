@@ -60,8 +60,13 @@ pub struct TaskRecord {
     pub task_type: String,
     pub status: String,
     pub idempotency_key: String,
+    /// JSON task parameters / checkpoint state for resumable execution.
+    pub checkpoint: Option<String>,
     pub retry_count: i64,
     pub max_retries: i64,
+    pub cache_ref: Option<String>,
+    pub result_ref: Option<String>,
+    pub error_ref: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -165,8 +170,12 @@ impl Plans {
                 task_type: new_task.task_type.clone(),
                 status: "PENDING".into(),
                 idempotency_key: new_task.idempotency_key.clone(),
+                checkpoint: None,
                 retry_count: 0,
                 max_retries: 3,
+                cache_ref: None,
+                result_ref: None,
+                error_ref: None,
                 created_at: now,
                 updated_at: now,
             };
@@ -247,7 +256,9 @@ impl Plans {
 fn task_select(suffix: &str) -> String {
     format!(
         "SELECT id, plan_id, section_id, run_id, title, task_type, status, idempotency_key,
-                retry_count, max_retries, created_at, updated_at FROM tasks {suffix}"
+                checkpoint, retry_count, max_retries, cache_ref, result_ref, error_ref,
+                created_at, updated_at
+         FROM tasks {suffix}"
     )
 }
 
@@ -273,10 +284,14 @@ fn map_task(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         task_type: row.get(5)?,
         status: row.get(6)?,
         idempotency_key: row.get(7)?,
-        retry_count: row.get(8)?,
-        max_retries: row.get(9)?,
-        created_at: row.get(10)?,
-        updated_at: row.get(11)?,
+        checkpoint: row.get(8)?,
+        retry_count: row.get(9)?,
+        max_retries: row.get(10)?,
+        cache_ref: row.get(11)?,
+        result_ref: row.get(12)?,
+        error_ref: row.get(13)?,
+        created_at: row.get(14)?,
+        updated_at: row.get(15)?,
     })
 }
 
@@ -358,6 +373,12 @@ mod tests {
         assert_eq!(created.sections.len(), 2);
         assert_eq!(created.tasks.len(), 2);
         assert_eq!(created.tasks[0].status, "PENDING");
+        for task in &created.tasks {
+            assert!(task.checkpoint.is_none());
+            assert!(task.cache_ref.is_none());
+            assert!(task.result_ref.is_none());
+            assert!(task.error_ref.is_none());
+        }
         assert_eq!(
             created.tasks[1].section_id,
             Some(created.sections[1].id.clone())
