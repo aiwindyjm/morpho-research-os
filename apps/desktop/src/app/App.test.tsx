@@ -31,13 +31,25 @@ beforeEach(() => {
 describe("workspace shell", () => {
   it("lands on the projects view with the seeded projects", async () => {
     renderApp();
-    expect(await screen.findByRole("heading", { name: "项目" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "所有研究项目" }),
+    ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getAllByTestId("project-card")).toHaveLength(2);
     });
     // The project name appears in both the switcher and the cards.
     expect(screen.getAllByText("大语言模型推理优化").length).toBeGreaterThan(0);
     expect(screen.getAllByText("脑机接口康复应用").length).toBeGreaterThan(0);
+  });
+
+  it("filters projects with the search box", async () => {
+    renderApp();
+    await screen.findAllByTestId("project-card");
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("搜索我的研究"), "脑机");
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-card")).toHaveLength(1);
+    });
   });
 
   it("moves focus to the skip link first (keyboard order)", async () => {
