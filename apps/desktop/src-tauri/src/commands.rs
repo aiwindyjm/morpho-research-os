@@ -20,14 +20,13 @@ use crate::repositories::relations::RelationRecord;
 use crate::repositories::runs::RunRecord;
 use crate::repositories::services::{ProjectService, VaultExportResult, VaultService};
 use crate::repositories::sources::SourceRecord;
-use crate::secrets::{AppConfig, FakeKeychain, FileConfigStore, SecretRef, WorkerConfig};
+use crate::secrets::{AppConfig, FileConfigStore, SecretRef, WorkerConfig};
 use crate::state::AppState;
 use crate::versions::{
     APP_NAME, APP_VERSION, EVENT_ENVELOPE, IPC_SCHEMA_VERSION, WORKER_PROTOCOL_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::sync::Arc;
 
 /// Static capability information served over IPC. Lets the frontend verify
 /// envelope/protocol compatibility without touching any backend internals.
@@ -326,6 +325,7 @@ pub fn config_put(
 
 fn config_put_impl(state: &AppState, config: AppConfig) -> Result<AppConfig, CoreError> {
     config.worker.validate()?;
+    config.secrets.validate()?;
     let store = FileConfigStore::new(&state.config_path);
     store.save(&config)?;
     store.load()
@@ -521,8 +521,50 @@ pub fn run_get(
 }
 
 fn run_get_impl(state: &AppState, job_id: &str) -> Result<Value, CoreError> {
-    let mut supervisor = state.supervisor.lock().expect("supervisor mutex poisoned");
-    supervisor.job_status(job_id)
+    let mut status = {
+        let mut supervisor = state.supervisor.lock().expect("supervisor mutex poisoned");
+        supervisor.job_status(job_id)?
+    };
+    // Additive rollup from persisted state (PRD §7): when the worker
+    // envelope names its run, attach the core-side per-task view. Locks are
+    // taken sequentially, never nested (see run_start_impl).
+    {
+        let conn = state.conn.lock().expect("database mutex poisoned");
+        attach_task_rollup(&conn, &mut status)?;
+    }
+    Ok(status)
+}
+
+/// Attaches `task_rollup` (run status + per-status task counts) to a worker
+/// job-status envelope when it carries a `job.run_id` that exists locally.
+/// Envelopes without a resolvable run (the hermetic fake worker) pass through
+/// unchanged.
+fn attach_task_rollup(conn: &rusqlite::Connection, status: &mut Value) -> Result<(), CoreError> {
+    let Some(run_id) = status
+        .get("job")
+        .and_then(|job| job.get("run_id"))
+        .and_then(Value::as_str)
+    else {
+        return Ok(());
+    };
+    let Some(run) = crate::repositories::runs::Runs::get(conn, run_id)? else {
+        return Ok(());
+    };
+    let tasks = crate::repositories::tasks::Tasks::list_for_run(conn, run_id)?;
+    let mut counts: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    for task in &tasks {
+        *counts.entry(task.status.clone()).or_insert(0) += 1;
+    }
+    status["task_rollup"] = json!({
+        "run_id": run_id,
+        "run_status": run.status,
+        "task_counts": counts,
+        "tasks": tasks
+            .iter()
+            .map(|task| json!({"task_id": task.id, "status": task.status}))
+            .collect::<Vec<_>>(),
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -804,11 +846,6 @@ fn vault_export_project_impl(
     VaultService::export_project(&mut conn, project_id, &state.vault_root)
 }
 
-/// Production default keychain (FakeKeychain until the OS-keychain task).
-pub fn production_keychain() -> Arc<FakeKeychain> {
-    Arc::new(FakeKeychain::new())
-}
-
 /// Builds the transport factory from the worker config: the hermetic fake by
 /// default, the HTTP/Python launcher when `worker.transport = "http"`.
 pub fn transport_factory_from_config(
@@ -840,7 +877,8 @@ mod tests {
     use crate::repositories::services::{EventService, PlanService};
     use crate::repositories::sources::{NewSource, Sources};
     use crate::repositories::with_write_tx;
-    use crate::secrets::ProviderConfig;
+    use crate::secrets::{FakeKeychain, ProviderConfig};
+    use std::sync::Arc;
     use crate::worker::fake::{FakeClock, FakeSleeper, FakeWorkerScript};
     use crate::worker::{RestartPolicy, Supervisor};
     use serde_json::json;
@@ -1063,6 +1101,70 @@ mod tests {
     }
 
     #[test]
+    fn run_get_attaches_the_persisted_task_rollup() {
+        let state = test_state();
+        let (project_id, plan_id) = seeded_plan(&state);
+        // One run over the plan; project it to completion through the
+        // orchestrator so the rollup has something to count.
+        let run = {
+            let mut conn = state.conn.lock().expect("database mutex poisoned");
+            let run = with_write_tx(&mut conn, |tx| {
+                Runs::insert(
+                    tx,
+                    &crate::repositories::runs::NewRun {
+                        id: None,
+                        project_id: project_id.clone(),
+                        plan_id: plan_id.clone(),
+                        started_at: None,
+                    },
+                )
+            })
+            .unwrap();
+            let task_id = crate::repositories::plans::Plans::tasks_for_plan(&conn, &plan_id)
+                .unwrap()[0]
+                .id
+                .clone();
+            for (task_id, event_type, payload) in [
+                (None::<String>, "run.started", json!({})),
+                (Some(task_id.clone()), "task.started", json!({})),
+                (Some(task_id), "task.completed", json!({})),
+            ] {
+                crate::orchestrator::OrchestratorService::apply_event(
+                    &mut conn,
+                    &crate::orchestrator::CanonicalEvent::new(
+                        &run.id, task_id, event_type, payload,
+                    ),
+                )
+                .unwrap();
+            }
+            run
+        };
+
+        let mut envelope = json!({"job": {"job_id": "job-1", "run_id": run.id}});
+        {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            attach_task_rollup(&conn, &mut envelope).unwrap();
+        }
+        assert_eq!(envelope["task_rollup"]["run_status"], json!("completed"));
+        assert_eq!(
+            envelope["task_rollup"]["task_counts"],
+            json!({"COMPLETED": 1})
+        );
+        assert_eq!(
+            envelope["task_rollup"]["tasks"][0]["status"],
+            json!("COMPLETED")
+        );
+
+        // Envelopes without a resolvable run pass through unchanged.
+        let mut bare = json!({"job": {"job_id": "job-2"}});
+        {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            attach_task_rollup(&conn, &mut bare).unwrap();
+        }
+        assert!(bare.get("task_rollup").is_none());
+    }
+
+    #[test]
     fn listings_are_project_scoped() {
         let state = test_state();
         let first = seeded_project(&state);
@@ -1266,7 +1368,8 @@ mod tests {
         }
 
         let result = vault_export_project_impl(&state, &project_id).unwrap();
-        assert_eq!(result.written, 1);
+        assert_eq!(result.written, 2); // concept note + per-project map MOC
+        assert_eq!(result.maps, 1);
         assert!(state
             .vault_root
             .join(&project_id)
@@ -1276,7 +1379,7 @@ mod tests {
 
         // Re-export of identical content is detected as unchanged.
         let again = vault_export_project_impl(&state, &project_id).unwrap();
-        assert_eq!(again.unchanged, 1);
+        assert_eq!(again.unchanged, 2);
         assert_eq!(again.written, 0);
 
         let err = vault_export_project_impl(&state, "ghost").unwrap_err();

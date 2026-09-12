@@ -4,9 +4,11 @@
 //! SQLite connection, the worker supervisor, the secret store, and the vault
 //! root. Tauri manages one instance; typed commands and the event pump share
 //! it. The pump polls the supervisor's active jobs, persists every forwarded
-//! event through the events repository (monotonic per-run sequence), and
-//! re-emits it to every window as `morpho://events` — payloads are already
-//! redacted by [`crate::redaction`] when the [`ResearchEvent`] is built.
+//! event through the events repository (monotonic per-run sequence), projects
+//! it through [`crate::orchestrator::OrchestratorService`] (task status,
+//! checkpoints, dependency gating, run rollup), and re-emits it to every
+//! window as `morpho://events` — payloads are already redacted by
+//! [`crate::redaction`] when the [`ResearchEvent`] is built.
 
 use crate::error::CoreError;
 use crate::ipc::ResearchEvent;
@@ -98,10 +100,22 @@ impl AppState {
         if !forwarded.is_empty() {
             if let Ok(mut conn) = state.conn.lock() {
                 for event in &forwarded {
-                    // A persistence failure is logged through the error
-                    // return (ignored here) but must not block emission: the
-                    // UI still deserves the live event.
-                    let _ = Self::persist_event(&mut conn, event);
+                    // Persist the canonical event first, then project it
+                    // through the orchestrator (PRD §7: SQLite is
+                    // authoritative, events are projections). A persistence
+                    // failure skips the projection — the state must never run
+                    // ahead of the log — but must not block emission: the UI
+                    // still deserves the live event. Projection failures
+                    // (illegal/out-of-order events, phase-1 worker task ids
+                    // that do not resolve to core tasks) are rejected with
+                    // structured errors and ignored here so a bad event can
+                    // never take the pump down or corrupt state.
+                    if Self::persist_event(&mut conn, event).is_ok() {
+                        let _ = crate::orchestrator::OrchestratorService::apply_event(
+                            &mut conn,
+                            &crate::orchestrator::CanonicalEvent::from(event),
+                        );
+                    }
                 }
             }
         }
@@ -262,6 +276,91 @@ mod tests {
         let err = AppState::persist_event(&mut conn, &ghost).unwrap_err();
         assert_eq!(err.code, crate::error::ErrorCode::DatabaseError);
         assert!(err.developer_detail.contains("FOREIGN KEY"), "{err:?}");
+    }
+
+    /// Mirrors the pump's persist-then-project pipeline (pump_once) for one
+    /// task lifecycle: the canonical events land in the log, and the
+    /// orchestrator projects them onto persisted task/run state.
+    #[test]
+    fn pump_path_persists_events_then_projects_task_state() {
+        let mut conn = migrated_memory_db().unwrap();
+        let run_id = seed_run(&mut conn);
+        // One PENDING task in the plan this run executes (run.started claims
+        // it through `Tasks::claim_for_run`).
+        let plan_id = plan_of_run(&conn, &run_id);
+        let task_id = "task-pump-1".to_string();
+        with_write_tx(&mut conn, |tx| {
+            tx.execute(
+                "INSERT INTO tasks (id, plan_id, run_id, title, task_type, status,
+                                    idempotency_key, retry_count, max_retries,
+                                    created_at, updated_at)
+                 VALUES (?2, ?1, NULL, 'search', 'search', 'PENDING',
+                         'pump-1', 0, 3, 1, 1)",
+                rusqlite::params![plan_id, task_id],
+            )
+            .map_err(CoreError::from)
+        })
+        .unwrap();
+
+        let pipeline = |conn: &mut Connection, event: &ResearchEvent| {
+            AppState::persist_event(conn, event).unwrap();
+            crate::orchestrator::OrchestratorService::apply_event(
+                conn,
+                &crate::orchestrator::CanonicalEvent::from(event),
+            )
+            .unwrap();
+        };
+
+        pipeline(
+            &mut conn,
+            &ResearchEvent::new(&run_id, None, 1, 1, "run.started", json!({})),
+        );
+        pipeline(
+            &mut conn,
+            &ResearchEvent::new(
+                &run_id,
+                Some(task_id.clone()),
+                2,
+                2,
+                "task.started",
+                json!({}),
+            ),
+        );
+        pipeline(
+            &mut conn,
+            &ResearchEvent::new(
+                &run_id,
+                Some(task_id.clone()),
+                3,
+                3,
+                "task.completed",
+                json!({"result_ref": "vault://out/a.md"}),
+            ),
+        );
+
+        let task = crate::repositories::tasks::Tasks::get(&conn, &task_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.status, "COMPLETED");
+        assert_eq!(task.result_ref.as_deref(), Some("vault://out/a.md"));
+        assert_eq!(task.run_id.as_deref(), Some(run_id.as_str()));
+        let run = crate::repositories::runs::Runs::get(&conn, &run_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.status, "completed");
+        assert_eq!(
+            crate::repositories::events::Events::latest_sequence(&conn, &run_id).unwrap(),
+            3
+        );
+    }
+
+    fn plan_of_run(conn: &Connection, run_id: &str) -> String {
+        conn.query_row(
+            "SELECT plan_id FROM runs WHERE id = ?1",
+            rusqlite::params![run_id],
+            |row| row.get(0),
+        )
+        .unwrap()
     }
 
     #[test]

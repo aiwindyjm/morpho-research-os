@@ -12,6 +12,7 @@ pub mod db;
 pub mod error;
 pub mod ids;
 pub mod ipc;
+pub mod orchestrator;
 pub mod redaction;
 pub mod repositories;
 pub mod secrets;
@@ -39,6 +40,7 @@ fn build_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error::Err
     let config_path = config_dir.join("app.json");
     let config = secrets::FileConfigStore::new(&config_path).load()?;
     config.worker.validate()?;
+    config.secrets.validate()?;
 
     let supervisor = worker::Supervisor::new(
         commands::transport_factory_from_config(&config.worker),
@@ -50,7 +52,7 @@ fn build_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error::Err
     Ok(AppState::new(
         conn,
         supervisor,
-        commands::production_keychain(),
+        secrets::build_secret_store(&config)?,
         config_path,
         data_dir.join("vault"),
     ))
