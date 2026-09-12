@@ -53,6 +53,18 @@ impl CorrelationId {
         Self(uuid::Uuid::now_v7().to_string())
     }
 
+    /// Adopts a correlation id minted by another system component (for
+    /// example a worker error envelope) instead of generating a fresh one,
+    /// so a mapped error stays correlated to its origin.
+    pub fn from_existing(value: impl Into<String>) -> Self {
+        let value = value.into();
+        if value.is_empty() {
+            Self::new()
+        } else {
+            Self(value)
+        }
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -229,6 +241,14 @@ mod tests {
         let b = CorrelationId::new();
         assert_ne!(a, b);
         assert!(b.as_str() > a.as_str(), "UUIDv7 ids sort by time");
+    }
+
+    #[test]
+    fn existing_correlation_ids_are_adopted_or_regenerated() {
+        let adopted = CorrelationId::from_existing("worker-abc-123");
+        assert_eq!(adopted.as_str(), "worker-abc-123");
+        // An empty id (worker envelopes default it to "") gets a fresh one.
+        assert!(!CorrelationId::from_existing("").as_str().is_empty());
     }
 
     #[test]

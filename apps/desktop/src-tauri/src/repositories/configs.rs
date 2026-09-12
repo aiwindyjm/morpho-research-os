@@ -135,6 +135,18 @@ impl ResearchConfigs {
         Ok(record)
     }
 
+    pub fn get(conn: &Connection, id: &str) -> Result<Option<ResearchConfigRecord>, CoreError> {
+        let sql = "SELECT id, project_id, schema_version, domain, topic, purpose, audience, depth,
+                          dimensions, time_range_from, time_range_to, geographic_scope, languages,
+                          source_types, source_domains, update_frequency, created_at, updated_at
+                   FROM research_configs WHERE id = ?1";
+        match conn.query_row(sql, params![id], map_row) {
+            Ok(record) => Ok(Some(record)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(CoreError::from(err)),
+        }
+    }
+
     pub fn list_for_project(
         conn: &Connection,
         project_id: &str,
@@ -235,5 +247,10 @@ mod tests {
         assert_eq!(list[0], created);
         assert_eq!(list[0].dimensions, vec!["theory", "experiments"]);
         assert_eq!(list[0].schema_version, "1.0");
+        assert_eq!(
+            ResearchConfigs::get(&conn, &created.id).unwrap().unwrap(),
+            created
+        );
+        assert!(ResearchConfigs::get(&conn, "nope").unwrap().is_none());
     }
 }

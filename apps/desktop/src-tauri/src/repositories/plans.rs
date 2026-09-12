@@ -100,6 +100,12 @@ pub const TASK_STATES: [&str; 9] = [
     "CANCELLED",
 ];
 
+/// Plan statuses allowed by the schema CHECK (`draft` -> `approved` /
+/// `rejected`, with `superseded` for later plan generations). Whether a
+/// specific transition is legal is the plan-review flow's decision, not this
+/// repository's.
+pub const PLAN_STATES: [&str; 4] = ["draft", "approved", "rejected", "superseded"];
+
 pub struct Plans;
 
 impl Plans {
@@ -239,6 +245,52 @@ impl Plans {
             Some(row) => Ok(Some(map_plan(row)?)),
             None => Ok(None),
         }
+    }
+
+    pub fn list_for_project(
+        conn: &Connection,
+        project_id: &str,
+    ) -> Result<Vec<PlanRecord>, CoreError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, project_id, research_config_id, title, status, created_at, updated_at
+                 FROM plans WHERE project_id = ?1 ORDER BY created_at, id",
+            )
+            .map_err(CoreError::from)?;
+        let rows = stmt
+            .query_map(params![project_id], map_plan)
+            .map_err(CoreError::from)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CoreError::from)?;
+        Ok(rows)
+    }
+
+    /// Updates a plan status (the plan-review decision: `approved`,
+    /// `rejected`, or `superseded`). The caller owns transition legality;
+    /// unknown statuses or ids surface as structured errors.
+    pub fn update_status(
+        tx: &Transaction<'_>,
+        id: &str,
+        status: &str,
+    ) -> Result<PlanRecord, CoreError> {
+        if !PLAN_STATES.contains(&status) {
+            return Err(CoreError::database(format!(
+                "unknown plan status '{status}'"
+            )));
+        }
+        let changed = tx
+            .execute(
+                "UPDATE plans SET status = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, status, now_unix_ms()],
+            )
+            .map_err(CoreError::from)?;
+        if changed == 0 {
+            return Err(CoreError::database(format!("plan '{id}' not found")));
+        }
+        let sql = "SELECT id, project_id, research_config_id, title, status, created_at, updated_at
+             FROM plans WHERE id = ?1";
+        tx.query_row(sql, params![id], map_plan)
+            .map_err(CoreError::from)
     }
 
     pub fn tasks_for_plan(conn: &Connection, plan_id: &str) -> Result<Vec<TaskRecord>, CoreError> {
@@ -435,5 +487,41 @@ mod tests {
         let err =
             with_write_tx(&mut conn, |tx| Plans::insert_draft(tx, &draft).map(|_| ())).unwrap_err();
         assert!(err.developer_detail.contains("unknown idempotency key"));
+    }
+
+    #[test]
+    fn list_for_project_and_update_status_work() {
+        let (mut conn, project_id, config_id) = setup();
+        let created = with_write_tx(&mut conn, |tx| {
+            Plans::insert_draft(tx, &sample_draft(&project_id, &config_id))
+        })
+        .unwrap();
+
+        let listed = Plans::list_for_project(&conn, &project_id).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, created.plan.id);
+        assert_eq!(listed[0].status, "draft");
+
+        let approved = with_write_tx(&mut conn, |tx| {
+            Plans::update_status(tx, &created.plan.id, "approved")
+        })
+        .unwrap();
+        assert_eq!(approved.status, "approved");
+        assert_eq!(
+            Plans::get(&conn, &created.plan.id).unwrap().unwrap().status,
+            "approved"
+        );
+
+        let err = with_write_tx(&mut conn, |tx| {
+            Plans::update_status(tx, &created.plan.id, "teleported").map(|_| ())
+        })
+        .unwrap_err();
+        assert!(err.developer_detail.contains("unknown plan status"));
+
+        let err = with_write_tx(&mut conn, |tx| {
+            Plans::update_status(tx, "ghost", "approved").map(|_| ())
+        })
+        .unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
     }
 }

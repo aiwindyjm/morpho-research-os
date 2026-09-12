@@ -27,6 +27,9 @@ pub struct SourceRecord {
     pub source_type: String,
     pub status: String,
     pub retrieved_at: i64,
+    /// Evaluated source quality (0.0-1.0); `None` until the evaluation
+    /// pipeline (RES-04) scores the source.
+    pub quality_score: Option<f64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -73,6 +76,7 @@ impl Sources {
             source_type: new.source_type.clone(),
             status: "discovered".into(),
             retrieved_at: now,
+            quality_score: None,
             created_at: now,
             updated_at: now,
         };
@@ -113,7 +117,7 @@ impl Sources {
         canonical_url: &str,
     ) -> Result<Option<SourceRecord>, CoreError> {
         let sql = "SELECT id, project_id, url, canonical_url, title, source_type, status,
-                          retrieved_at, created_at, updated_at
+                          retrieved_at, quality_score, created_at, updated_at
                    FROM sources WHERE project_id = ?1 AND canonical_url = ?2";
         match tx.query_row(sql, params![project_id, canonical_url], map_source) {
             Ok(record) => Ok(Some(record)),
@@ -127,7 +131,7 @@ impl Sources {
         project_id: &str,
     ) -> Result<Vec<SourceRecord>, CoreError> {
         let sql = "SELECT id, project_id, url, canonical_url, title, source_type, status,
-                          retrieved_at, created_at, updated_at
+                          retrieved_at, quality_score, created_at, updated_at
                    FROM sources WHERE project_id = ?1 ORDER BY created_at, id";
         let mut stmt = conn.prepare(sql).map_err(CoreError::from)?;
         let rows = stmt
@@ -146,7 +150,7 @@ fn select_one(
 ) -> Result<Option<SourceRecord>, CoreError> {
     let sql = format!(
         "SELECT id, project_id, url, canonical_url, title, source_type, status,
-                retrieved_at, created_at, updated_at
+                retrieved_at, quality_score, created_at, updated_at
          FROM sources {suffix}"
     );
     let mut stmt = conn.prepare(&sql).map_err(CoreError::from)?;
@@ -167,8 +171,9 @@ fn map_source(row: &Row<'_>) -> rusqlite::Result<SourceRecord> {
         source_type: row.get(5)?,
         status: row.get(6)?,
         retrieved_at: row.get(7)?,
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
+        quality_score: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
     })
 }
 
@@ -245,5 +250,30 @@ mod tests {
         assert!(Sources::get_by_canonical_url(&conn, &p1, "shared")
             .unwrap()
             .is_some());
+    }
+
+    #[test]
+    fn quality_score_defaults_to_none_and_round_trips() {
+        let mut conn = migrated_memory_db().unwrap();
+        let project_id = project(&mut conn);
+        let (created, _) = with_write_tx(&mut conn, |tx| {
+            Sources::upsert_by_canonical_url(tx, &new_source(&project_id, "q", "Q"))
+        })
+        .unwrap();
+        assert_eq!(created.quality_score, None);
+
+        // The evaluation pipeline writes the score directly; reads surface it.
+        with_write_tx(&mut conn, |tx| {
+            tx.execute(
+                "UPDATE sources SET quality_score = 0.9 WHERE id = ?1",
+                params![created.id],
+            )
+            .map_err(CoreError::from)
+        })
+        .unwrap();
+        let stored = Sources::get_by_canonical_url(&conn, &project_id, "q")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.quality_score, Some(0.9));
     }
 }

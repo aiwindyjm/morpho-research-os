@@ -21,6 +21,9 @@ pub struct NewProject {
     pub description: String,
 }
 
+/// Project statuses allowed by the schema CHECK.
+pub const PROJECT_STATES: [&str; 2] = ["active", "archived"];
+
 pub struct Projects;
 
 const COLS: &str = "id, name, description, status, created_at, updated_at";
@@ -75,6 +78,35 @@ impl Projects {
             .map_err(CoreError::from)?;
         Ok(rows)
     }
+
+    /// Updates a project status (currently `active` <-> `archived`).
+    /// Unknown statuses or ids surface as structured errors.
+    pub fn update_status(
+        tx: &Transaction<'_>,
+        id: &str,
+        status: &str,
+    ) -> Result<ProjectRecord, CoreError> {
+        if !PROJECT_STATES.contains(&status) {
+            return Err(CoreError::database(format!(
+                "unknown project status '{status}'"
+            )));
+        }
+        let changed = tx
+            .execute(
+                "UPDATE projects SET status = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, status, now_unix_ms()],
+            )
+            .map_err(CoreError::from)?;
+        if changed == 0 {
+            return Err(CoreError::database(format!("project '{id}' not found")));
+        }
+        match Self::get(tx, id)? {
+            Some(record) => Ok(record),
+            None => Err(CoreError::database(format!(
+                "project '{id}' disappeared during update"
+            ))),
+        }
+    }
 }
 
 fn map_row(row: &Row<'_>) -> rusqlite::Result<ProjectRecord> {
@@ -118,5 +150,39 @@ mod tests {
     fn get_missing_returns_none() {
         let conn = migrated_memory_db().unwrap();
         assert!(Projects::get(&conn, "nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn update_status_archives_and_rejects_unknown() {
+        let mut conn = migrated_memory_db().unwrap();
+        let created = with_write_tx(&mut conn, |tx| {
+            Projects::insert(
+                tx,
+                &NewProject {
+                    name: "BCI".into(),
+                    description: String::new(),
+                },
+            )
+        })
+        .unwrap();
+
+        let archived = with_write_tx(&mut conn, |tx| {
+            Projects::update_status(tx, &created.id, "archived")
+        })
+        .unwrap();
+        assert_eq!(archived.status, "archived");
+        assert!(archived.updated_at >= created.updated_at);
+
+        let err = with_write_tx(&mut conn, |tx| {
+            Projects::update_status(tx, &created.id, "deleted").map(|_| ())
+        })
+        .unwrap_err();
+        assert!(err.developer_detail.contains("unknown project status"));
+
+        let err = with_write_tx(&mut conn, |tx| {
+            Projects::update_status(tx, "ghost", "archived").map(|_| ())
+        })
+        .unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
     }
 }

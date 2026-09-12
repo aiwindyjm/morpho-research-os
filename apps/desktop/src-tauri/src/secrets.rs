@@ -202,6 +202,53 @@ impl ProviderConfig {
     }
 }
 
+/// Worker launch configuration (the `worker` section of [`AppConfig`]).
+///
+/// `transport` selects which [`crate::worker::WorkerTransport`] the
+/// supervisor uses: `"fake"` (default; hermetic, no process) or `"http"`
+/// (spawns the Python worker and speaks the loopback HTTP protocol). The
+/// remaining fields describe the launch command for the HTTP transport.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WorkerConfig {
+    /// `"fake"` or `"http"`.
+    pub transport: String,
+    /// Python executable used to launch `morpho_worker.serve`.
+    pub python_executable: String,
+    /// Module arguments appended to the executable
+    /// (default `["-m", "morpho_worker.serve"]`).
+    pub module_args: Vec<String>,
+}
+
+impl Default for WorkerConfig {
+    fn default() -> Self {
+        Self {
+            transport: "fake".into(),
+            python_executable: "python".into(),
+            module_args: vec!["-m".into(), "morpho_worker.serve".into()],
+        }
+    }
+}
+
+impl WorkerConfig {
+    pub fn is_http(&self) -> bool {
+        self.transport == "http"
+    }
+
+    /// Validates the transport selector; anything but `"fake"`/`"http"` is a
+    /// configuration error, not a silent fallback.
+    pub fn validate(&self) -> Result<(), CoreError> {
+        if matches!(self.transport.as_str(), "fake" | "http") {
+            Ok(())
+        } else {
+            Err(CoreError::database(format!(
+                "unknown worker transport '{}' (expected \"fake\" or \"http\")",
+                self.transport
+            )))
+        }
+    }
+}
+
 /// Application configuration: provider list plus worker entrypoint. This is
 /// internal Rust-core state persisted as a file under the app config
 /// directory; it crosses no IPC boundary and contains no secret values.
@@ -209,6 +256,10 @@ impl ProviderConfig {
 pub struct AppConfig {
     pub providers: Vec<ProviderConfig>,
     pub worker_entrypoint: Option<String>,
+    /// Worker transport/launch settings; absent in older config files means
+    /// the hermetic fake transport.
+    #[serde(default)]
+    pub worker: WorkerConfig,
 }
 
 impl AppConfig {
@@ -376,6 +427,7 @@ mod tests {
                 max_retries: 2,
             }],
             worker_entrypoint: None,
+            worker: WorkerConfig::default(),
         };
         let exported = config.to_json().unwrap();
         // The reference is present as structured fields; the value is absent.
@@ -415,5 +467,31 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = FileConfigStore::new(dir.path().join("absent.json"));
         assert_eq!(store.load().unwrap(), AppConfig::default());
+    }
+
+    #[test]
+    fn worker_section_defaults_and_back_compatibility() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.json");
+        // A pre-worker-section config file loads with the hermetic default.
+        std::fs::write(&path, r#"{"providers": [], "worker_entrypoint": null}"#).unwrap();
+        let loaded = FileConfigStore::new(&path).load().unwrap();
+        assert_eq!(loaded.worker, WorkerConfig::default());
+        assert!(!loaded.worker.is_http());
+
+        // Round trip keeps the selector.
+        let mut config = loaded;
+        config.worker.transport = "http".into();
+        config.worker.python_executable = "py".into();
+        let store = FileConfigStore::new(&path);
+        store.save(&config).unwrap();
+        assert_eq!(store.load().unwrap(), config);
+        assert!(config.worker.is_http());
+
+        // Unknown selectors are rejected, not silently coerced.
+        let mut bad = config;
+        bad.worker.transport = "grpc".into();
+        assert!(bad.worker.validate().is_err());
+        assert!(WorkerConfig::default().validate().is_ok());
     }
 }

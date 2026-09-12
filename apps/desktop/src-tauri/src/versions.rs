@@ -1,8 +1,8 @@
 //! Version constants shared across IPC, events, and the worker protocol.
 //!
-//! The IPC schema, event envelope, and worker protocol versions here follow
-//! the drafts in `docs/API.md`. They are inputs to the contract freeze tasks
-//! (W2-02/W2-05) owned by workgroup A; changing any of them is a contract
+//! The IPC schema and event envelope follow the drafts in `docs/API.md`; the
+//! worker protocol version follows the frozen contract in
+//! `docs/api/WORKER_PROTOCOL.md` (v1.0). Changing any of these is a contract
 //! change and must be reconciled with the frozen schemas, not done silently.
 
 /// Version tag of the typed Tauri command request/response envelope
@@ -13,12 +13,15 @@ pub const IPC_SCHEMA_VERSION: &str = "1.0";
 /// (`research.event.v1` in `docs/API.md`).
 pub const EVENT_ENVELOPE: &str = "research.event.v1";
 
-/// Worker protocol version this core speaks. DRAFT: the authoritative value is
-/// frozen by W2-02; until then it only governs Fake Worker tests.
-pub const WORKER_PROTOCOL_VERSION: &str = "0.1.0";
+/// Worker protocol version this core speaks. Equals the major.minor of the
+/// frozen `worker-*.v1.json` schemas (`docs/api/WORKER_PROTOCOL.md`); the
+/// Python worker reports the same range through `GET /version`
+/// (`accepted_protocol_versions`, currently `["1"]`).
+pub const WORKER_PROTOCOL_VERSION: &str = "1.0";
 
-/// Minimum worker protocol version this core accepts. DRAFT pending W2-02.
-pub const WORKER_PROTOCOL_MIN: &str = "0.1.0";
+/// Minimum worker protocol version this core accepts. Within major 1 the
+/// protocol is additive-only, so any frozen 1.x worker is acceptable.
+pub const WORKER_PROTOCOL_MIN: &str = "1.0";
 
 /// The app name reported through IPC.
 pub const APP_NAME: &str = "Morpho Research OS";
@@ -36,7 +39,8 @@ mod tests {
     fn versions_are_non_empty_and_stable() {
         assert_eq!(IPC_SCHEMA_VERSION, "1.0");
         assert_eq!(EVENT_ENVELOPE, "research.event.v1");
-        assert!(WORKER_PROTOCOL_VERSION.starts_with("0.1."));
+        assert_eq!(WORKER_PROTOCOL_VERSION, "1.0");
+        assert_eq!(WORKER_PROTOCOL_MIN, "1.0");
         assert_eq!(APP_NAME, "Morpho Research OS");
         assert_eq!(APP_VERSION, "0.0.1");
     }

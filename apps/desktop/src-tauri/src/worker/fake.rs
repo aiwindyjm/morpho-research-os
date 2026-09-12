@@ -230,6 +230,34 @@ impl WorkerTransport for FakeWorker {
         })
     }
 
+    fn job_status(&mut self, job_id: &str) -> Result<Value, CoreError> {
+        self.ensure_alive()?;
+        let state = self.state.lock().expect("fake worker state poisoned");
+        if state.submitted_jobs.iter().any(|id| id == job_id) {
+            Ok(serde_json::json!({
+                "schema_version": "1",
+                "job": {
+                    "job_id": job_id,
+                    "kind": "research_run",
+                    "status": "RUNNING",
+                    "counts": {
+                        "tasks_total": 0,
+                        "tasks_pending": 0,
+                        "tasks_running": 0,
+                        "tasks_completed": 0,
+                    },
+                },
+            }))
+        } else {
+            Err(CoreError::new(
+                ErrorCode::WorkerNotAvailable,
+                "The research worker reported an error.",
+                format!("fake worker has no job '{job_id}'"),
+                false,
+            ))
+        }
+    }
+
     fn cancel_job(&mut self, job_id: &str) -> Result<(), CoreError> {
         self.ensure_alive()?;
         self.state

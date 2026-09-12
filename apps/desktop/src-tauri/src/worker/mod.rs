@@ -1,17 +1,19 @@
-//! Worker supervisor: process lifecycle over the draft worker protocol.
+//! Worker supervisor: process lifecycle over the worker protocol.
 //!
-//! Contract source: `docs/API.md` — the core spawns the worker with an
-//! ephemeral session token and a protocol version, checks `/health` and
-//! `/version` compatibility, restarts with bounded backoff, and reports
-//! `WORKER_NOT_AVAILABLE` after exhaustion. Endpoint shapes here are DRAFT
-//! until W2-02 freezes them; [`FakeWorker`](fake::FakeWorker) is the only
-//! transport used by tests.
+//! Contract source: `docs/API.md` and the frozen `docs/api/WORKER_PROTOCOL.md`
+//! — the core spawns the worker with an ephemeral session token and a
+//! protocol version, checks `/health` and `/version` compatibility, restarts
+//! with bounded backoff, and reports `WORKER_NOT_AVAILABLE` after exhaustion.
+//! [`FakeWorker`](fake::FakeWorker) is the hermetic transport used by tests;
+//! [`HttpWorkerTransport`](http::HttpWorkerTransport) speaks the real loopback
+//! HTTP/1.1 protocol (including the `GET /jobs/{id}/events` SSE stream).
 //!
 //! The supervisor is transport-agnostic and synchronous: time and sleeping
-//! are injected so tests exercise backoff without real delays. The real
-//! HTTP transport is added with the W2-02/W2-05 integration.
+//! are injected so tests exercise backoff without real delays.
 
 pub mod fake;
+pub mod http;
+pub mod process;
 
 use crate::error::{CoreError, ErrorCode};
 use crate::ipc::ResearchEvent;
@@ -20,14 +22,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// Response of `GET /health` (draft shape pending W2-02).
+/// Response of `GET /health`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HealthInfo {
     pub status: String,
     pub protocol_version: String,
 }
 
-/// Response of `GET /version` (draft shape pending W2-02).
+/// Response of `GET /version`, normalized by the transport from the wire
+/// envelope (`worker_version` plus the accepted protocol range).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorkerVersionInfo {
     pub worker_version: String,
@@ -35,26 +38,36 @@ pub struct WorkerVersionInfo {
     pub protocol_max: String,
 }
 
-/// Body of `POST /jobs` (draft shape pending W2-02).
+/// A job to execute. Core-side identity plus the worker wire payload: the
+/// HTTP transport sends `params` as the job `config` and `approve_plan` as
+/// the plan-review decision (`kind` maps 1:1, e.g. `research_run`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JobRequest {
+    /// Core-side job id. The worker mints the authoritative wire id; the
+    /// acknowledged id in [`JobAck`] wins for all follow-up calls.
     pub job_id: String,
     pub run_id: String,
-    pub task_id: String,
+    pub task_id: Option<String>,
     pub kind: String,
     pub params: Value,
+    /// The caller's plan-review decision; without it the worker rejects the
+    /// job (`PLAN_NOT_APPROVED`) and no DAG runs.
+    #[serde(default)]
+    pub approve_plan: bool,
 }
 
-/// Acknowledgement of `POST /jobs` (draft shape pending W2-02).
+/// Acknowledgement of `POST /jobs`. `job_id` is the worker's authoritative
+/// id for the job (it mints its own).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JobAck {
     pub job_id: String,
     pub accepted: bool,
 }
 
-/// One worker event from `GET /jobs/{id}/events` (draft shape pending
-/// W2-02). The supervisor converts these into redacted
-/// [`ResearchEvent`]s for the frontend.
+/// One worker event from `GET /jobs/{id}/events`. The transport normalizes
+/// the wire envelope (canonical `type`/`sequence` names preferred, legacy
+/// `event_type`/`kind`/`seq` tolerated) into this shape; the supervisor
+/// converts these into redacted [`ResearchEvent`]s for the frontend.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorkerEvent {
     pub job_id: String,
@@ -71,6 +84,10 @@ pub trait WorkerTransport {
     fn health(&mut self) -> Result<HealthInfo, CoreError>;
     fn version(&mut self) -> Result<WorkerVersionInfo, CoreError>;
     fn submit_job(&mut self, request: &JobRequest) -> Result<JobAck, CoreError>;
+    /// `GET /jobs/{id}`: the worker's transport-level job status envelope
+    /// (status, counts, run/plan ids), returned as parsed JSON because the
+    /// envelope shape is owned by the worker contract.
+    fn job_status(&mut self, job_id: &str) -> Result<Value, CoreError>;
     fn cancel_job(&mut self, job_id: &str) -> Result<(), CoreError>;
     fn poll_events(&mut self, job_id: &str, cursor: u64) -> Result<Vec<WorkerEvent>, CoreError>;
     fn shutdown(&mut self) -> Result<(), CoreError>;
@@ -80,7 +97,8 @@ pub trait WorkerTransport {
 }
 
 /// Creates one transport per (re)start attempt.
-pub type TransportFactory = dyn FnMut() -> Result<Box<dyn WorkerTransport>, CoreError> + Send;
+pub type TransportFactory =
+    dyn FnMut() -> Result<Box<dyn WorkerTransport + Send>, CoreError> + Send;
 
 /// Wall clock port so tests control time.
 pub trait Clock: Send {
@@ -133,7 +151,7 @@ impl Default for RestartPolicy {
 
 impl RestartPolicy {
     pub fn delay_for_attempt(&self, attempt: u32) -> u64 {
-        let shift = attempt.min(16) as u32;
+        let shift = attempt.min(16);
         self.base_delay_ms
             .saturating_mul(1_u64 << shift)
             .min(self.max_delay_ms)
@@ -157,7 +175,7 @@ struct ActiveJob {
     #[allow(dead_code)]
     job_id: String,
     run_id: String,
-    task_id: String,
+    task_id: Option<String>,
 }
 
 /// Supervises one worker process: start, health/version gating, bounded
@@ -165,7 +183,7 @@ struct ActiveJob {
 /// crash accounting for interrupted jobs.
 pub struct Supervisor {
     transport_factory: Box<TransportFactory>,
-    transport: Option<Box<dyn WorkerTransport>>,
+    transport: Option<Box<dyn WorkerTransport + Send>>,
     policy: RestartPolicy,
     clock: Box<dyn Clock>,
     sleeper: Box<dyn Sleeper>,
@@ -216,6 +234,12 @@ impl Supervisor {
     /// The task layer (RES-02) uses this to mark tasks resumable.
     pub fn interrupted_jobs(&self) -> &[String] {
         &self.interrupted_jobs
+    }
+
+    /// Ids of jobs currently tracked as active (used by the event pump to
+    /// know which SSE streams to poll).
+    pub fn active_job_ids(&self) -> Vec<String> {
+        self.active_jobs.keys().cloned().collect()
     }
 
     /// Ensures a healthy, protocol-compatible worker is attached, restarting
@@ -308,7 +332,8 @@ impl Supervisor {
     }
 
     /// Submits a job, restarting the worker first if needed. The job is
-    /// tracked until cancelled or interrupted.
+    /// tracked (under the worker-acknowledged id) until cancelled or
+    /// interrupted.
     pub fn submit_job(&mut self, request: &JobRequest) -> Result<JobAck, CoreError> {
         self.ensure_started()?;
         let transport = self
@@ -322,15 +347,28 @@ impl Supervisor {
                 true,
             ));
         }
+        // The worker mints the authoritative job id; all follow-up calls
+        // (status/cancel/events) use the acknowledged id.
         self.active_jobs.insert(
-            request.job_id.clone(),
+            ack.job_id.clone(),
             ActiveJob {
-                job_id: request.job_id.clone(),
+                job_id: ack.job_id.clone(),
                 run_id: request.run_id.clone(),
                 task_id: request.task_id.clone(),
             },
         );
         Ok(ack)
+    }
+
+    /// Fetches the worker's transport-level job status envelope
+    /// (`GET /jobs/{id}`), restarting the worker first if needed.
+    pub fn job_status(&mut self, job_id: &str) -> Result<Value, CoreError> {
+        self.ensure_started()?;
+        let transport = self
+            .transport
+            .as_mut()
+            .ok_or_else(|| worker_unavailable("no transport attached", false))?;
+        transport.job_status(job_id)
     }
 
     /// Cancels a job through the protocol (never by killing the process).
@@ -374,7 +412,7 @@ impl Supervisor {
                 .insert(job_id.to_string(), event.sequence);
             forwarded.push(ResearchEvent::new(
                 run_id.clone(),
-                Some(task_id.clone()),
+                task_id.clone(),
                 event.sequence,
                 timestamp_ms,
                 event.event_type,
@@ -474,9 +512,10 @@ mod tests {
         JobRequest {
             job_id: id.into(),
             run_id: "run-1".into(),
-            task_id: "task-1".into(),
+            task_id: Some("task-1".into()),
             kind: "search".into(),
             params: json!({"query": "llm scaling"}),
+            approve_plan: false,
         }
     }
 
@@ -662,10 +701,12 @@ mod tests {
     #[test]
     fn protocol_compatibility_range_check() {
         use crate::versions::WORKER_PROTOCOL_MIN;
-        assert!(protocol_compatible("0.1.0", "0.2.0"));
-        assert!(protocol_compatible("0.1.0", "0.1.0"));
-        assert!(!protocol_compatible("0.2.0", "1.0.0"));
-        assert!(!protocol_compatible("garbage", "0.1.0"));
-        assert_eq!(WORKER_PROTOCOL_MIN, "0.1.0");
+        assert!(protocol_compatible("1.0.0", "1.2.0"));
+        assert!(protocol_compatible("1.0", "1.0"));
+        // The Python worker reports the bare major ("1") — parsed as 1.0.0.
+        assert!(protocol_compatible("1", "1"));
+        assert!(!protocol_compatible("2.0.0", "3.0.0"));
+        assert!(!protocol_compatible("garbage", "1.0.0"));
+        assert_eq!(WORKER_PROTOCOL_MIN, "1.0");
     }
 }
