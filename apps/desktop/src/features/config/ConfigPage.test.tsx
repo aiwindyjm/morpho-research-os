@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createQueryClient } from "@/app/queryClient";
@@ -50,5 +51,43 @@ describe("ConfigPage (prototype numbered sections)", () => {
     const addChip = screen.getByRole("button", { name: "＋ 自定义维度" });
     expect(addChip).toBeDisabled();
     expect(addChip).toHaveAttribute("title", "桌面版提供");
+  });
+
+  it("accepts keystroke-by-keystroke typing in the from-year field", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const fromYear = await screen.findByLabelText("开始年份");
+    expect(fromYear).toHaveValue(2021);
+
+    await user.clear(fromYear);
+    // Regression guard: Date.UTC remaps years 0–99 to 1900+y, so an
+    // unbuffered controlled input used to turn the first "2" into "1902".
+    await user.type(fromYear, "2");
+    expect(fromYear).toHaveValue(2);
+
+    await user.type(fromYear, "015");
+    expect(fromYear).toHaveValue(2015);
+  });
+
+  it("saves a fully typed year as the ISO start of that year", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const fromYear = await screen.findByLabelText("开始年份");
+
+    await user.clear(fromYear);
+    await user.type(fromYear, "2015");
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    // The mutation resolves asynchronously; wait until the mock backend
+    // actually persisted the new value.
+    await waitFor(() => {
+      const stored = mockBackend.handle("config.get", {
+        project_id: PROJECT_B_ID,
+      });
+      expect(stored.time_range.from).toBe("2015-01-01T00:00:00.000Z");
+    });
   });
 });

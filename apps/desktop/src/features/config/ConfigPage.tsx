@@ -34,14 +34,62 @@ function isoToYear(iso: string | null): string {
   return String(new Date(iso).getUTCFullYear());
 }
 
+const FULL_YEAR_PATTERN = /^(19|20)\d{2}$/;
+
+/**
+ * Only complete 19xx/20xx years are converted. Partial input must never
+ * reach Date.UTC: it remaps years 0–99 to 1900+y, which would corrupt a
+ * controlled input's value mid-typing.
+ */
 function yearToIso(year: string, edge: "start" | "end"): string | null {
   const trimmed = year.trim();
-  if (trimmed === "") return null;
+  if (!FULL_YEAR_PATTERN.test(trimmed)) return null;
   const parsed = Number.parseInt(trimmed, 10);
-  if (Number.isNaN(parsed)) return null;
   return edge === "start"
     ? new Date(Date.UTC(parsed, 0, 1)).toISOString()
     : new Date(Date.UTC(parsed, 11, 31, 23, 59, 59, 999)).toISOString();
+}
+
+/**
+ * Year input with a local typing buffer. The draft config only receives
+ * complete years (or an explicit empty), so the visible value follows the
+ * keystrokes exactly; on blur an incomplete value reverts to the stored
+ * config year.
+ */
+function YearInput({
+  label,
+  placeholder,
+  iso,
+  edge,
+  onCommit,
+}: {
+  label: string;
+  placeholder: string;
+  iso: string | null;
+  edge: "start" | "end";
+  onCommit: (iso: string | null) => void;
+}) {
+  const [raw, setRaw] = useState<string | null>(null);
+  const visible = raw ?? isoToYear(iso);
+  return (
+    <Input
+      type="number"
+      aria-label={label}
+      placeholder={placeholder}
+      value={visible}
+      onChange={(e) => {
+        const next = e.target.value;
+        setRaw(next);
+        if (next.trim() === "") {
+          onCommit(null);
+          return;
+        }
+        const parsed = yearToIso(next, edge);
+        if (parsed !== null) onCommit(parsed);
+      }}
+      onBlur={() => setRaw(null)}
+    />
+  );
 }
 
 function toggleValue(list: string[], value: string): string[] {
@@ -311,18 +359,13 @@ export function ConfigPage({ projectId }: { projectId: string }) {
               <div className="flex flex-col gap-xs">
                 <span className="text-label text-text-secondary">时间范围</span>
                 <div className="flex items-center gap-sm">
-                  <Input
-                    type="number"
-                    aria-label="开始年份"
+                  <YearInput
+                    label="开始年份"
                     placeholder="如 2015"
-                    value={isoToYear(current.time_range.from)}
-                    onChange={(e) =>
-                      update({
-                        time_range: {
-                          ...current.time_range,
-                          from: yearToIso(e.target.value, "start"),
-                        },
-                      })
+                    iso={current.time_range.from}
+                    edge="start"
+                    onCommit={(from) =>
+                      update({ time_range: { ...current.time_range, from } })
                     }
                   />
                   <span
@@ -331,18 +374,13 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                   >
                     至
                   </span>
-                  <Input
-                    type="number"
-                    aria-label="结束年份"
+                  <YearInput
+                    label="结束年份"
                     placeholder="如 2026"
-                    value={isoToYear(current.time_range.to)}
-                    onChange={(e) =>
-                      update({
-                        time_range: {
-                          ...current.time_range,
-                          to: yearToIso(e.target.value, "end"),
-                        },
-                      })
+                    iso={current.time_range.to}
+                    edge="end"
+                    onCommit={(to) =>
+                      update({ time_range: { ...current.time_range, to } })
                     }
                   />
                 </div>
