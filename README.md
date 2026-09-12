@@ -31,6 +31,16 @@ pnpm test
 pnpm tauri dev
 ```
 
+### Docker preview
+
+Run the current Mock-backed web workspace without installing Node or Rust:
+
+```bash
+docker compose up --build -d
+```
+
+Open `http://localhost:1420`. This is a static Web Preview; the full Rust Core and Python Research Worker are not exposed through Docker yet. See [Docker deployment](docs/deployment/DOCKER.md).
+
 ## Architecture
 
 React/Vite → Tauri IPC → Rust Core → Python Research Worker → SQLite indexes + Markdown Vault. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

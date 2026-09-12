@@ -1,0 +1,28 @@
+name: morpho-research
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: morpho-research:preview
+    ports:
+      - "${MORPHO_PORT:-1420}:1420"
+    environment:
+      MORPHO_MODE: preview
+    volumes:
+      - morpho-data:/var/lib/morpho/data
+      - morpho-vault:/var/lib/morpho/vault
+      - morpho-cache:/var/lib/morpho/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:1420/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  morpho-data:
+  morpho-vault:
+  morpho-cache:

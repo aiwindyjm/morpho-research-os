@@ -31,6 +31,16 @@ pnpm test
 pnpm tauri dev
 ```
 
+### Docker 预览
+
+无需安装 Node 或 Rust，即可启动当前基于 Mock 的 Web 工作台：
+
+```bash
+docker compose up --build -d
+```
+
+打开 `http://localhost:1420`。当前是静态 Web 预览，Docker 尚未接入完整 Rust Core 和 Python Research Worker。详见 [Docker 部署](docs/deployment/DOCKER.md)。
+
 ## 架构
 
 React/Vite → Tauri IPC → Rust Core → Python Research Worker → SQLite 索引 + Markdown Vault。详见 [架构说明](docs/ARCHITECTURE.md) 和 [产品与技术总纲](docs/PRD.md)。

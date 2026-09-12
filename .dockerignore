@@ -1,0 +1,17 @@
+.git
+.github
+.mimosa
+node_modules
+**/node_modules
+dist
+**/dist
+target
+**/target
+private
+*.db
+*.sqlite
+*.sqlite3
+*.log
+docs/assets/generated
+图标.png
+图标 升级版本.png

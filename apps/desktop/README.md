@@ -20,6 +20,16 @@ pnpm typecheck    # TypeScript 检查
 pnpm build        # 生产构建
 ```
 
+## Docker
+
+仓库根目录提供 Docker Web Preview：
+
+```bash
+docker compose up --build -d
+```
+
+该模式只提供当前 Mock 前端的静态预览，不替代 Tauri，也不启动 Rust Core 或 Python Worker。部署边界见 `docs/deployment/DOCKER.md`。
+
 `@morpho/ui` 通过 pnpm `link:` 协议连接到 `packages/ui`；待工作组 A 建立根
 Workspace（W0-06）后，此关系会并入统一工具链。
 
