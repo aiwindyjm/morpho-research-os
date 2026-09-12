@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from morpho_worker.domain.research import ResearchConfig
+from morpho_worker.interfaces import StageContext
 
 import run_research  # sys.path bootstrap mirrors conftest; run_research.py sits at worker root
 
@@ -154,3 +155,34 @@ def test_main_offline_warns_when_search_provider_ignored(tmp_path, capsys):
     assert code == 0
     err = capsys.readouterr().err
     assert "run_research: warning: --search-provider ignored in offline profile" in err
+
+
+def test_local_profile_without_search_provider_uses_fixture_search_corpus():
+    """Wiring-only: a non-offline profile with no --search-provider must
+    default to the same quantum fixture corpus as the offline branch, not an
+    empty mock (3 raw results -> 2 canonical sources). No HTTP and no LLM:
+    only the search stage is driven directly; the LLM adapters are merely
+    constructed (provider resolution happens before any transport call)."""
+
+    config = run_research.build_config("local", {})
+    assert config.offline_mock is False
+    orchestrator, _sink, _usage, _plan_store = run_research.build_orchestrator(config)
+    try:
+        context = StageContext(
+            run_id="run-wiring-test",
+            task_id="task-wiring-test",
+            section_id="sec-concepts",
+            dimension="concepts",
+            correlation_id="run-wiring-test",
+            params={"source_types": ["paper", "web_page"]},
+        )
+        sources = orchestrator._search_stage.search(
+            "quantum entanglement concepts", context
+        )
+        assert len(sources) == 2  # canonical URL dedup of the 3 fixture hits
+        assert {source.canonical_url for source in sources} == {
+            "https://concepts.test/page",
+            "https://history.test/bell",
+        }
+    finally:
+        orchestrator.shutdown()

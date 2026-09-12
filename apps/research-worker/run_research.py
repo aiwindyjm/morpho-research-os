@@ -248,7 +248,16 @@ def build_orchestrator(
             clock=clock,
         )
         search = SearchStage(
-            factory.search_for(search_provider_id=search_provider_id),
+            # "Mock search unless a real search provider is configured": the
+            # default corpus is the same quantum fixture set the offline
+            # branch uses, never an empty mock. A real --search-provider
+            # selection stays on the live adapter path (no fixtures injected).
+            factory.search_for(
+                fixture_results=(
+                    None if search_provider_id else _offline_search_results()
+                ),
+                search_provider_id=search_provider_id,
+            ),
             provider_id=search_provider_id or "mock",
             cache=cache, usage=usage, clock=clock,
         )
