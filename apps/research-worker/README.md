@@ -95,7 +95,7 @@ deterministic.
 | extraction / summarization / classification | local Ollama `qwen3:8b` (`qwen2.5:7b` fallback entry) | OpenAI-compatible endpoint at `http://127.0.0.1:11434/v1`, no credential |
 | planner / validation | OpenAI-compatible strong model (GLM default) | credential via `env:GLM_API_KEY` reference |
 | embedding | replaceable mock | V0.1 has no vector database |
-| search | mock adapter | V0.1 ships no real search adapter |
+| search | mock adapter | defaults to the mock (offline fixture corpus); an optional SearXNG adapter is available behind explicit config selection (`--search-provider` / factory flag) — see `docs/ai/LOCAL_COMPUTE.md` |
 
 Environment overrides: `MORPHO_WORKER_OFFLINE`, `MORPHO_MAX_CONCURRENCY`,
 `MORPHO_PROMPTS_DIR`, `MORPHO_PROVIDER_<NAME>_*`, `MORPHO_ROLE_<ROLE>`.

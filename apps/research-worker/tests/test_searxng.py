@@ -1,5 +1,4 @@
 """SearxngSearch tests: scripted transports only, never a real instance."""
-import json
 from urllib.parse import parse_qs, urlsplit
 
 import pytest

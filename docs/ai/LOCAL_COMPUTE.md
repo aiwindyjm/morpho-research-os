@@ -91,11 +91,16 @@ python apps/research-worker/run_research.py --profile local \
   --config-file research-config.json --out-dir out/local --approve
 ```
 
-`--config-file` points at a JSON document matching `ResearchConfig`
-(`packages/schemas/research-config.v1.json`). Required fields: `domain`,
-`topic`, `purpose`, `depth` (1–5), `dimensions` (at least one); the inline
-JSON in the demo command is a complete example. `--config-file` and
-`--config-json` are mutually exclusive and exactly one is required.
+`--config-file` points at a JSON document in the user-editable
+`ResearchConfig` form the CLI accepts: `domain`, `topic`, `purpose` (enum),
+`depth` (1–5), `dimensions` (at least one), `languages`, `source_types`, and
+an optional `time_range` with string bounds; the inline JSON in the demo
+command is a complete example. Note that the canonical
+`packages/schemas/research-config.v1.json` describes the *persisted record*
+the Rust core will store (with `config_id`/`project_id`); the CLI's
+validation model rejects those record-only fields, so feed it the plain
+config form, not the persisted record. `--config-file` and `--config-json`
+are mutually exclusive and exactly one is required.
 
 ### Approval gate semantics
 
@@ -136,10 +141,12 @@ config-gated: it is only constructed when you explicitly select a configured
 `kind=search` provider; an unknown id or wrong kind raises a structured
 `PROVIDER_UNAVAILABLE` error instead of silently pretending.
 
-1. Run a SearXNG instance with the **JSON format enabled** (add `json` to
-   `search.formats` in the instance settings — the adapter calls
-   `GET {base_url}/search?...&format=json`, and instances reject that format
-   unless enabled).
+1. Run a SearXNG instance with the **JSON format enabled** — the quick way is
+   `docker run -d --name searxng -p 8888:8080 searxng/searxng`. The default
+   image needs `json` added to `search.formats` in its `settings.yml` (volume
+   it in or edit inside the container), because the adapter calls
+   `GET {base_url}/search?...&format=json` and instances reject that format
+   unless enabled.
 2. Register it as a provider and select it (environment names map to the
    provider id by lower-casing and turning underscores into hyphens:
    `SEARXNG_LOCAL` → `searxng-local`):
@@ -165,7 +172,7 @@ wins there).
 
 ```bash
 curl http://127.0.0.1:11434/v1/models     # Ollama up + which models are pulled
-cd apps/research-worker && python -m pytest tests   # worker suite (192 tests)
+cd apps/research-worker && python -m pytest tests   # worker suite (193 tests)
 ```
 
 Then run the offline demo command above once: exit code 0, a `COMPLETED`
