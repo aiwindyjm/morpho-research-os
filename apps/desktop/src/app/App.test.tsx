@@ -189,9 +189,11 @@ describe("prototype navigation (IA switch)", () => {
     expect(await screen.findByTestId("view-stub-overview")).toBeInTheDocument();
     first.unmount();
 
+    // Journal is fully implemented (no longer a stub).
     useWorkspaceStore.setState({ activeProjectId: PROJECT_A_ID, activeView: "journal" });
     renderApp();
-    expect(await screen.findByTestId("view-stub-journal")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "对话日志" })).toBeInTheDocument();
+    expect(screen.getByTestId("journal-panel")).toBeInTheDocument();
   });
 
   it("renders a real settings page", async () => {
