@@ -1,12 +1,16 @@
 //! Markdown/Obsidian vault writer foundation (RES-07 basis).
 //!
 //! Guarantees (docs/data/VAULT_SCHEMA.md, DO_NOT_BREAK.md):
-//! * notes land in the typed folders with stable slugs and stable node ids
-//!   in the frontmatter;
+//! * notes land in the typed folders (all fifteen PRD §10 folders, including
+//!   Sources, Claims, and Maps) with stable slugs and stable node ids in the
+//!   frontmatter;
 //! * every write goes through a temp file plus atomic rename;
 //! * a file the user changed since our last write is never overwritten —
 //!   the writer returns a merge proposal instead, and files the user chose
-//!   to keep are never auto-overwritten by later generations.
+//!   to keep are never auto-overwritten by later generations;
+//! * rendering is deterministic: identical inputs yield byte-identical
+//!   Markdown (wikilink sections are sorted, map sections follow the
+//!   canonical folder order, and no timestamp is minted at render time).
 //!
 //! Knowledge field semantics come from the W2-06 contract (not yet frozen);
 //! the frontmatter keys below mirror `docs/data/VAULT_SCHEMA.md` directly.
@@ -42,6 +46,15 @@ pub trait ArtifactIndex {
     ) -> Result<(), CoreError>;
 }
 
+/// One outgoing relation of a knowledge note, rendered as a `[[wikilink]]`
+/// in the note body's Related section.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelatedLink {
+    pub relation_type: String,
+    pub target_node_id: String,
+    pub target_title: String,
+}
+
 /// A note to write into the vault. `node_id` and `slug` are stable identities
 /// owned by the knowledge layer; the writer never regenerates them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,6 +72,11 @@ pub struct VaultNote {
     pub claim_ids: Vec<String>,
     pub provenance: String,
     pub body_markdown: String,
+    /// Outgoing relations rendered as `[[wikilinks]]` in a Related section
+    /// appended to the body. Older payloads without the field deserialize to
+    /// "no relations".
+    #[serde(default)]
+    pub related: Vec<RelatedLink>,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
 }
@@ -96,9 +114,11 @@ pub enum Resolution {
     UseOurs,
 }
 
-/// Maps a node type to its vault folder. `Product` and `Dataset` have no
-/// folder in `docs/data/VAULT_SCHEMA.md` yet; writing them is an explicit
-/// error until W2-06 extends the folder contract (see group C handoff).
+/// Maps a note kind to its vault folder. All fifteen folders from PRD §10 /
+/// `docs/data/VAULT_SCHEMA.md` are covered: the twelve knowledge node types
+/// plus the `Source`, `Claim`, and `Map` note kinds. `Product` and `Dataset`
+/// nodes still have no folder; writing them is an explicit error until
+/// W2-06 extends the folder contract (see group C handoff).
 pub fn folder_for_type(node_type: &str) -> Result<&'static str, CoreError> {
     match node_type {
         "Concept" => Ok("Concepts"),
@@ -113,6 +133,9 @@ pub fn folder_for_type(node_type: &str) -> Result<&'static str, CoreError> {
         "Application" => Ok("Applications"),
         "Policy" => Ok("Policies"),
         "Controversy" => Ok("Controversies"),
+        "Source" => Ok("Sources"),
+        "Claim" => Ok("Claims"),
+        "Map" => Ok("Maps"),
         other => Err(CoreError::new(
             ErrorCode::VaultWriteFailed,
             "This knowledge type cannot be written to the vault yet.",
@@ -123,6 +146,25 @@ pub fn folder_for_type(node_type: &str) -> Result<&'static str, CoreError> {
         )),
     }
 }
+
+/// Canonical vault folder order (PRD §10) used for the per-project map note's
+/// sections. `Maps` is excluded because the map never links itself.
+pub const MOC_SECTION_ORDER: [&str; 14] = [
+    "Concepts",
+    "People",
+    "Organizations",
+    "Companies",
+    "Technologies",
+    "Papers",
+    "Books",
+    "Experiments",
+    "Events",
+    "Applications",
+    "Policies",
+    "Claims",
+    "Controversies",
+    "Sources",
+];
 
 /// Stable, filesystem-safe slug derived from a title.
 pub fn slugify(title: &str) -> String {
@@ -150,14 +192,104 @@ pub fn slugify(title: &str) -> String {
     slug
 }
 
-/// Full path of a note inside the vault.
+/// Full path of a note of any kind inside the vault.
+fn typed_note_path(vault_root: &Path, note_kind: &str, slug: &str) -> Result<PathBuf, CoreError> {
+    Ok(vault_root
+        .join(folder_for_type(note_kind)?)
+        .join(format!("{slug}.md")))
+}
+
+/// Full path of a knowledge note inside the vault.
 pub fn note_path(vault_root: &Path, note: &VaultNote) -> Result<PathBuf, CoreError> {
-    let folder = folder_for_type(&note.node_type)?;
-    Ok(vault_root.join(folder).join(format!("{}.md", note.slug)))
+    typed_note_path(vault_root, &note.node_type, &note.slug)
+}
+
+/// A source record exported to `Sources/`. Mirrors
+/// `SourceRecord` (RES-03) faithfully; `slug` derives from the title.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourceNote {
+    pub source_id: String,
+    pub title: String,
+    pub slug: String,
+    pub url: String,
+    pub canonical_url: String,
+    pub source_type: String,
+    pub status: String,
+    /// Evaluated source quality (0.0-1.0); `None` until scored.
+    pub quality_score: Option<f64>,
+    pub retrieved_at_ms: i64,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub provenance: String,
+    pub body_markdown: String,
+}
+
+/// Full path of a source note inside the vault.
+pub fn source_note_path(vault_root: &Path, note: &SourceNote) -> Result<PathBuf, CoreError> {
+    typed_note_path(vault_root, "Source", &note.slug)
+}
+
+/// A claim record exported to `Claims/`. Mirrors `ClaimRecord` plus the
+/// evidence/source cross-links the claim-evidence table provides.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ClaimNote {
+    pub claim_id: String,
+    pub title: String,
+    pub slug: String,
+    pub subject: String,
+    pub predicate: String,
+    pub object_value: String,
+    pub scope: String,
+    pub confidence: String,
+    pub status: String,
+    /// Evidence records backing the claim (DO_NOT_BREAK #7).
+    pub evidence_ids: Vec<String>,
+    /// Distinct sources of the backing evidence, derived server-side.
+    pub source_ids: Vec<String>,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub provenance: String,
+    pub body_markdown: String,
+}
+
+/// Full path of a claim note inside the vault.
+pub fn claim_note_path(vault_root: &Path, note: &ClaimNote) -> Result<PathBuf, CoreError> {
+    typed_note_path(vault_root, "Claim", &note.slug)
+}
+
+/// One section of a map note: a folder heading plus the note titles linked
+/// as wikilinks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MapSection {
+    /// Folder heading (for example "Concepts").
+    pub section: String,
+    /// Titles of the exported notes, linked as `[[wikilinks]]`.
+    pub links: Vec<String>,
+}
+
+/// A per-project MOC-style index note written to `Maps/`, linking every
+/// exported note grouped by folder in the canonical order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MapNote {
+    pub project_id: String,
+    pub title: String,
+    pub slug: String,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub provenance: String,
+    /// Sections in canonical folder order; empty sections are omitted.
+    pub sections: Vec<MapSection>,
+}
+
+/// Full path of a map note inside the vault.
+pub fn map_note_path(vault_root: &Path, note: &MapNote) -> Result<PathBuf, CoreError> {
+    typed_note_path(vault_root, "Map", &note.slug)
 }
 
 /// Renders a note as Obsidian-compatible Markdown: YAML frontmatter with the
-/// keys from `docs/data/VAULT_SCHEMA.md`, then the body.
+/// keys from `docs/data/VAULT_SCHEMA.md`, then the body. Outgoing relations
+/// are appended as a sorted `[[wikilink]]` Related section, so rendering the
+/// same inputs twice yields byte-identical output.
 pub fn render_markdown(note: &VaultNote) -> String {
     let mut out = String::with_capacity(512);
     out.push_str("---\n");
@@ -189,6 +321,159 @@ pub fn render_markdown(note: &VaultNote) -> String {
     }
     out.push_str(&note.body_markdown);
     out.push('\n');
+    append_related_section(&mut out, &note.related);
+    out
+}
+
+/// Appends the Related section: one `- relation: [[Title]]` line per outgoing
+/// relation, sorted deterministically so identical inputs always render to
+/// identical bytes. Notes without relations get no section at all.
+fn append_related_section(out: &mut String, related: &[RelatedLink]) {
+    if related.is_empty() {
+        return;
+    }
+    let mut sorted: Vec<&RelatedLink> = related.iter().collect();
+    sorted.sort_by(|a, b| {
+        (
+            a.relation_type.as_str(),
+            a.target_title.as_str(),
+            a.target_node_id.as_str(),
+        )
+            .cmp(&(
+                b.relation_type.as_str(),
+                b.target_title.as_str(),
+                b.target_node_id.as_str(),
+            ))
+    });
+    out.push_str("\n## Related\n\n");
+    for link in sorted {
+        out.push_str("- ");
+        out.push_str(&link.relation_type);
+        out.push_str(": [[");
+        out.push_str(&link.target_title);
+        out.push_str("]]\n");
+    }
+}
+
+/// Renders a source note: YAML frontmatter mirroring the `sources` table,
+/// then the body.
+pub fn render_source_markdown(note: &SourceNote) -> String {
+    let mut out = String::with_capacity(512);
+    out.push_str("---\n");
+    push_kv(&mut out, "schema_version", &yaml_str(VAULT_SCHEMA_VERSION));
+    push_kv(&mut out, "source_id", &yaml_str(&note.source_id));
+    push_kv(&mut out, "type", &yaml_str("Source"));
+    push_kv(&mut out, "title", &yaml_str(&note.title));
+    push_kv(&mut out, "url", &yaml_str(&note.url));
+    push_kv(&mut out, "canonical_url", &yaml_str(&note.canonical_url));
+    push_kv(&mut out, "source_type", &yaml_str(&note.source_type));
+    push_kv(&mut out, "status", &yaml_str(&note.status));
+    push_kv(&mut out, "quality_score", &yaml_opt_f64(note.quality_score));
+    push_kv(
+        &mut out,
+        "retrieved_at",
+        &yaml_str(&format_rfc3339_utc(note.retrieved_at_ms)),
+    );
+    push_kv(
+        &mut out,
+        "created_at",
+        &yaml_str(&format_rfc3339_utc(note.created_at_ms)),
+    );
+    push_kv(
+        &mut out,
+        "updated_at",
+        &yaml_str(&format_rfc3339_utc(note.updated_at_ms)),
+    );
+    push_kv(&mut out, "provenance", &yaml_str(&note.provenance));
+    out.push_str("---\n\n");
+    if !note.body_markdown.is_empty() {
+        out.push_str(&note.body_markdown);
+        out.push('\n');
+    }
+    out
+}
+
+/// Renders a claim note: YAML frontmatter carrying the claim contract
+/// (claim id, subject/predicate/object, confidence, status, evidence and
+/// source ids, timestamps), then the body.
+pub fn render_claim_markdown(note: &ClaimNote) -> String {
+    let mut out = String::with_capacity(512);
+    out.push_str("---\n");
+    push_kv(&mut out, "schema_version", &yaml_str(VAULT_SCHEMA_VERSION));
+    push_kv(&mut out, "claim_id", &yaml_str(&note.claim_id));
+    push_kv(&mut out, "type", &yaml_str("Claim"));
+    push_kv(&mut out, "title", &yaml_str(&note.title));
+    push_kv(&mut out, "subject", &yaml_str(&note.subject));
+    push_kv(&mut out, "predicate", &yaml_str(&note.predicate));
+    push_kv(&mut out, "object", &yaml_str(&note.object_value));
+    push_kv(&mut out, "scope", &yaml_str(&note.scope));
+    push_kv(&mut out, "confidence", &yaml_str(&note.confidence));
+    push_kv(&mut out, "status", &yaml_str(&note.status));
+    push_kv(&mut out, "evidence_ids", &yaml_list(&note.evidence_ids));
+    push_kv(&mut out, "source_ids", &yaml_list(&note.source_ids));
+    push_kv(
+        &mut out,
+        "created_at",
+        &yaml_str(&format_rfc3339_utc(note.created_at_ms)),
+    );
+    push_kv(
+        &mut out,
+        "updated_at",
+        &yaml_str(&format_rfc3339_utc(note.updated_at_ms)),
+    );
+    push_kv(&mut out, "provenance", &yaml_str(&note.provenance));
+    out.push_str("---\n\n");
+    if !note.body_markdown.is_empty() {
+        out.push_str(&note.body_markdown);
+        out.push('\n');
+    }
+    out
+}
+
+/// Renders a map note: YAML frontmatter plus one wikilink list section per
+/// folder in the order the sections were supplied (callers follow
+/// [`MOC_SECTION_ORDER`]). Links are sorted and de-duplicated so the same
+/// inputs always render to identical bytes.
+pub fn render_map_markdown(note: &MapNote) -> String {
+    let mut out = String::with_capacity(512);
+    out.push_str("---\n");
+    push_kv(&mut out, "schema_version", &yaml_str(VAULT_SCHEMA_VERSION));
+    push_kv(&mut out, "type", &yaml_str("Map"));
+    push_kv(&mut out, "project_id", &yaml_str(&note.project_id));
+    push_kv(&mut out, "title", &yaml_str(&note.title));
+    push_kv(
+        &mut out,
+        "created_at",
+        &yaml_str(&format_rfc3339_utc(note.created_at_ms)),
+    );
+    push_kv(
+        &mut out,
+        "updated_at",
+        &yaml_str(&format_rfc3339_utc(note.updated_at_ms)),
+    );
+    push_kv(&mut out, "provenance", &yaml_str(&note.provenance));
+    out.push_str("---\n\n");
+    for section in &note.sections {
+        let mut links = section.links.clone();
+        links.sort();
+        links.dedup();
+        if links.is_empty() {
+            continue;
+        }
+        out.push_str("## ");
+        out.push_str(&section.section);
+        out.push_str("\n\n");
+        for link in links {
+            out.push_str("- [[");
+            out.push_str(&link);
+            out.push_str("]]\n");
+        }
+        out.push('\n');
+    }
+    // Trim the trailing blank line left by the last section.
+    while out.ends_with("\n\n") {
+        out.pop();
+    }
     out
 }
 
@@ -210,7 +495,7 @@ impl<'a> VaultWriter<'a> {
         &self.root
     }
 
-    /// Writes (or rewrites) a note.
+    /// Writes (or rewrites) a knowledge note.
     ///
     /// The only files this replaces are ones whose on-disk bytes exactly
     /// match the last core-generated content. User-modified files, files
@@ -218,14 +503,53 @@ impl<'a> VaultWriter<'a> {
     /// [`WriteOutcome::Conflict`] and are left untouched.
     pub fn write_note(&mut self, note: &VaultNote) -> Result<WriteOutcome, CoreError> {
         let path = note_path(&self.root, note)?;
-        let path_str = path_string(&path)?;
         let rendered = render_markdown(note);
+        self.write_rendered(Some(&note.node_id), &path, &rendered)
+    }
+
+    /// Writes (or rewrites) a source note under `Sources/`, with the same
+    /// user-modification protection as [`VaultWriter::write_note`]. Source
+    /// ids are not knowledge-node ids, so the artifact index records them
+    /// without a node link.
+    pub fn write_source_note(&mut self, note: &SourceNote) -> Result<WriteOutcome, CoreError> {
+        let path = source_note_path(&self.root, note)?;
+        let rendered = render_source_markdown(note);
+        self.write_rendered(None, &path, &rendered)
+    }
+
+    /// Writes (or rewrites) a claim note under `Claims/`, with the same
+    /// user-modification protection as [`VaultWriter::write_note`].
+    pub fn write_claim_note(&mut self, note: &ClaimNote) -> Result<WriteOutcome, CoreError> {
+        let path = claim_note_path(&self.root, note)?;
+        let rendered = render_claim_markdown(note);
+        self.write_rendered(None, &path, &rendered)
+    }
+
+    /// Writes (or rewrites) the per-project map note under `Maps/`, with the
+    /// same user-modification protection as [`VaultWriter::write_note`].
+    pub fn write_map_note(&mut self, note: &MapNote) -> Result<WriteOutcome, CoreError> {
+        let path = map_note_path(&self.root, note)?;
+        let rendered = render_map_markdown(note);
+        self.write_rendered(None, &path, &rendered)
+    }
+
+    /// Shared write machinery: atomic replace of core-owned bytes, unchanged
+    /// detection through the artifact index, and a merge proposal (never a
+    /// silent overwrite) for anything the user touched. `node_id` links the
+    /// artifact record to a knowledge node when one exists for the file.
+    fn write_rendered(
+        &mut self,
+        node_id: Option<&str>,
+        path: &Path,
+        rendered: &str,
+    ) -> Result<WriteOutcome, CoreError> {
+        let path_str = path_string(path)?;
         let rendered_hash = content_hash(rendered.as_bytes());
 
         if !path.exists() {
-            atomic_write(&path, rendered.as_bytes())?;
+            atomic_write(path, rendered.as_bytes())?;
             self.index.record(
-                Some(&note.node_id),
+                node_id,
                 &path_str,
                 &rendered_hash,
                 rendered.len() as u64,
@@ -237,21 +561,21 @@ impl<'a> VaultWriter<'a> {
             });
         }
 
-        let current = std::fs::read(&path)
+        let current = std::fs::read(path)
             .map_err(|err| vault_error(format!("read {} failed: {err}", path.display())))?;
         let current_hash = content_hash(&current);
 
         let recorded = self.index.recorded(&path_str)?;
         match recorded {
             None => Ok(conflict(
-                note,
+                node_id.unwrap_or(""),
                 path_str,
                 rendered,
                 current_hash,
                 "file exists but was never written by the app",
             )),
             Some(state) if state.content_hash != current_hash => Ok(conflict(
-                note,
+                node_id.unwrap_or(""),
                 path_str,
                 rendered,
                 current_hash,
@@ -262,7 +586,7 @@ impl<'a> VaultWriter<'a> {
                     Ok(WriteOutcome::Unchanged { path: path_str })
                 } else {
                     Ok(conflict(
-                        note,
+                        node_id.unwrap_or(""),
                         path_str,
                         rendered,
                         current_hash,
@@ -275,9 +599,9 @@ impl<'a> VaultWriter<'a> {
                     Ok(WriteOutcome::Unchanged { path: path_str })
                 } else {
                     // Last core write, untouched since: safe to regenerate.
-                    atomic_write(&path, rendered.as_bytes())?;
+                    atomic_write(path, rendered.as_bytes())?;
                     self.index.record(
-                        Some(&note.node_id),
+                        node_id,
                         &path_str,
                         &rendered_hash,
                         rendered.len() as u64,
@@ -338,16 +662,16 @@ impl<'a> VaultWriter<'a> {
 }
 
 fn conflict(
-    note: &VaultNote,
+    node_id: &str,
     path: String,
-    rendered: String,
+    rendered: &str,
     theirs_hash: String,
     reason: &str,
 ) -> WriteOutcome {
     WriteOutcome::Conflict(MergeProposal {
         path,
-        node_id: note.node_id.clone(),
-        ours: rendered,
+        node_id: node_id.into(),
+        ours: rendered.into(),
         theirs_hash,
         reason: reason.into(),
     })
@@ -447,6 +771,14 @@ fn yaml_list(items: &[String]) -> String {
     format!("[{}]", rendered.join(", "))
 }
 
+/// Renders an optional score as a plain YAML scalar (`null` when unset).
+fn yaml_opt_f64(value: Option<f64>) -> String {
+    match value {
+        None => "null".into(),
+        Some(number) => format!("{number}"),
+    }
+}
+
 /// Formats unix epoch milliseconds as an RFC 3339 UTC timestamp without a
 /// calendar dependency (Howard Hinnant's civil-from-days algorithm).
 pub fn format_rfc3339_utc(unix_ms: i64) -> String {
@@ -538,6 +870,7 @@ mod tests {
             claim_ids: vec![],
             provenance: "run-1/task-2".into(),
             body_markdown: "See [[Attention]].".into(),
+            related: vec![],
             created_at_ms: 1_700_000_000_123,
             updated_at_ms: 1_700_000_500_000,
         }
@@ -569,10 +902,42 @@ mod tests {
     }
 
     #[test]
-    fn folder_mapping_follows_vault_schema() {
-        assert_eq!(folder_for_type("Concept").unwrap(), "Concepts");
-        assert_eq!(folder_for_type("Person").unwrap(), "People");
-        assert_eq!(folder_for_type("Technology").unwrap(), "Technologies");
+    fn folder_mapping_covers_all_fifteen_prd_folders() {
+        // PRD §10: Concepts, People, Organizations, Companies, Technologies,
+        // Papers, Books, Experiments, Events, Applications, Policies,
+        // Claims, Controversies, Sources, Maps.
+        let all = [
+            ("Concept", "Concepts"),
+            ("Person", "People"),
+            ("Organization", "Organizations"),
+            ("Company", "Companies"),
+            ("Technology", "Technologies"),
+            ("Paper", "Papers"),
+            ("Book", "Books"),
+            ("Experiment", "Experiments"),
+            ("Event", "Events"),
+            ("Application", "Applications"),
+            ("Policy", "Policies"),
+            ("Controversy", "Controversies"),
+            ("Claim", "Claims"),
+            ("Source", "Sources"),
+            ("Map", "Maps"),
+        ];
+        for (kind, folder) in all {
+            assert_eq!(folder_for_type(kind).unwrap(), folder, "kind {kind}");
+        }
+        // The MOC section order covers every folder except Maps itself.
+        let mut moc: Vec<&str> = MOC_SECTION_ORDER.to_vec();
+        moc.sort_unstable();
+        let mut expected: Vec<&str> = all
+            .iter()
+            .map(|(_, folder)| *folder)
+            .filter(|folder| *folder != "Maps")
+            .collect();
+        expected.sort_unstable();
+        assert_eq!(moc, expected);
+
+        // Unmapped knowledge types stay an explicit error.
         let err = folder_for_type("Product").unwrap_err();
         assert_eq!(err.code, ErrorCode::VaultWriteFailed);
         assert!(err.developer_detail.contains("pending W2-06"));
@@ -726,5 +1091,317 @@ mod tests {
         bad.node_type = "Product".into();
         let err = writer.write_note(&bad).unwrap_err();
         assert_eq!(err.code, ErrorCode::VaultWriteFailed);
+    }
+
+    #[test]
+    fn related_section_renders_sorted_wikilinks_deterministically() {
+        let links = |order: usize| -> Vec<RelatedLink> {
+            let mut all = vec![
+                RelatedLink {
+                    relation_type: "derives_from".into(),
+                    target_node_id: "node-2".into(),
+                    target_title: "Attention".into(),
+                },
+                RelatedLink {
+                    relation_type: "used_by".into(),
+                    target_node_id: "node-3".into(),
+                    target_title: "BERT".into(),
+                },
+                RelatedLink {
+                    relation_type: "derives_from".into(),
+                    target_node_id: "node-4".into(),
+                    target_title: "RNN".into(),
+                },
+            ];
+            if order % 2 == 1 {
+                all.reverse();
+            }
+            all
+        };
+
+        let mut with_relations = note("transformer");
+        with_relations.related = links(0);
+        let rendered = render_markdown(&with_relations);
+
+        // Byte-identical on re-render, and independent of input order.
+        assert_eq!(rendered, render_markdown(&with_relations));
+        let mut shuffled = note("transformer");
+        shuffled.related = links(1);
+        assert_eq!(rendered, render_markdown(&shuffled));
+
+        let section = &rendered[rendered.find("## Related").unwrap()..];
+        assert!(section.contains("- derives_from: [[Attention]]"));
+        assert!(section.contains("- derives_from: [[RNN]]"));
+        assert!(section.contains("- used_by: [[BERT]]"));
+        let attention = section.find("[[Attention]]").unwrap();
+        let rnn = section.find("[[RNN]]").unwrap();
+        let bert = section.find("[[BERT]]").unwrap();
+        assert!(attention < rnn && rnn < bert, "links must be sorted");
+
+        // The section sits after the body, and notes without relations have
+        // no Related section at all.
+        assert!(rendered.ends_with("- used_by: [[BERT]]\n"));
+        assert!(!render_markdown(&note("plain")).contains("## Related"));
+    }
+
+    #[test]
+    fn source_note_renders_source_contract_frontmatter() {
+        let note = SourceNote {
+            source_id: "src-0001".into(),
+            title: "Attention Is All You Need".into(),
+            slug: "attention-is-all-you-need".into(),
+            url: "https://arxiv.org/abs/1706.03762".into(),
+            canonical_url: "arxiv.org/abs/1706.03762".into(),
+            source_type: "paper".into(),
+            status: "retrieved".into(),
+            quality_score: Some(0.9),
+            retrieved_at_ms: 1_700_000_000_123,
+            created_at_ms: 1_700_000_000_123,
+            updated_at_ms: 1_700_000_500_000,
+            provenance: "core/export/project/p-1".into(),
+            body_markdown: "[Attention Is All You Need](https://arxiv.org/abs/1706.03762)".into(),
+        };
+        let rendered = render_source_markdown(&note);
+        let expected_prefix = "---\n\
+            schema_version: \"1.0\"\n\
+            source_id: \"src-0001\"\n\
+            type: \"Source\"\n\
+            title: \"Attention Is All You Need\"\n\
+            url: \"https://arxiv.org/abs/1706.03762\"\n\
+            canonical_url: \"arxiv.org/abs/1706.03762\"\n\
+            source_type: \"paper\"\n\
+            status: \"retrieved\"\n\
+            quality_score: 0.9\n\
+            retrieved_at: \"2023-11-14T22:13:20.123Z\"\n\
+            created_at: \"2023-11-14T22:13:20.123Z\"\n\
+            updated_at: \"2023-11-14T22:21:40.000Z\"\n\
+            provenance: \"core/export/project/p-1\"\n\
+            ---\n\n";
+        assert!(rendered.starts_with(expected_prefix), "got:\n{rendered}");
+        assert!(rendered.ends_with("(https://arxiv.org/abs/1706.03762)\n"));
+
+        // Unscored sources serialize the quality as null.
+        let unscored = SourceNote {
+            quality_score: None,
+            body_markdown: String::new(),
+            ..note
+        };
+        let rendered = render_source_markdown(&unscored);
+        assert!(rendered.contains("quality_score: null\n"));
+        assert!(rendered.ends_with("---\n\n"));
+    }
+
+    #[test]
+    fn claim_note_renders_claim_contract_frontmatter() {
+        let note = ClaimNote {
+            claim_id: "claim-0001".into(),
+            title: "Transformer uses attention".into(),
+            slug: "transformer-uses-attention".into(),
+            subject: "Transformer".into(),
+            predicate: "uses".into(),
+            object_value: "attention".into(),
+            scope: String::new(),
+            confidence: "high".into(),
+            status: "draft".into(),
+            evidence_ids: vec!["ev-1".into(), "ev-2".into()],
+            source_ids: vec!["src-0001".into()],
+            created_at_ms: 1_700_000_000_123,
+            updated_at_ms: 1_700_000_500_000,
+            provenance: "core/export/project/p-1".into(),
+            body_markdown: "Transformer uses attention.".into(),
+        };
+        let rendered = render_claim_markdown(&note);
+        let expected_prefix = "---\n\
+            schema_version: \"1.0\"\n\
+            claim_id: \"claim-0001\"\n\
+            type: \"Claim\"\n\
+            title: \"Transformer uses attention\"\n\
+            subject: \"Transformer\"\n\
+            predicate: \"uses\"\n\
+            object: \"attention\"\n\
+            scope: \"\"\n\
+            confidence: \"high\"\n\
+            status: \"draft\"\n\
+            evidence_ids: [\"ev-1\", \"ev-2\"]\n\
+            source_ids: [\"src-0001\"]\n\
+            created_at: \"2023-11-14T22:13:20.123Z\"\n\
+            updated_at: \"2023-11-14T22:21:40.000Z\"\n\
+            provenance: \"core/export/project/p-1\"\n\
+            ---\n\n";
+        assert!(rendered.starts_with(expected_prefix), "got:\n{rendered}");
+        assert!(rendered.ends_with("Transformer uses attention.\n"));
+    }
+
+    #[test]
+    fn map_note_renders_moc_sections_in_canonical_order() {
+        let note = MapNote {
+            project_id: "p-1".into(),
+            title: "BCI Map".into(),
+            slug: "bci-map".into(),
+            created_at_ms: 1_700_000_000_000,
+            updated_at_ms: 1_700_000_500_000,
+            provenance: "core/export/project/p-1".into(),
+            sections: vec![
+                MapSection {
+                    section: "Concepts".into(),
+                    links: vec!["BERT".into(), "Attention".into(), "Attention".into()],
+                },
+                MapSection {
+                    section: "Claims".into(),
+                    links: vec!["Transformer uses attention".into()],
+                },
+                MapSection {
+                    section: "Sources".into(),
+                    links: vec!["Attention Is All You Need".into()],
+                },
+            ],
+        };
+        let rendered = render_map_markdown(&note);
+        let expected_prefix = "---\n\
+            schema_version: \"1.0\"\n\
+            type: \"Map\"\n\
+            project_id: \"p-1\"\n\
+            title: \"BCI Map\"\n\
+            created_at: \"2023-11-14T22:13:20.000Z\"\n\
+            updated_at: \"2023-11-14T22:21:40.000Z\"\n\
+            provenance: \"core/export/project/p-1\"\n\
+            ---\n\n";
+        assert!(rendered.starts_with(expected_prefix), "got:\n{rendered}");
+        // Links are sorted and de-duplicated inside each section.
+        assert!(rendered.contains("## Concepts\n\n- [[Attention]]\n- [[BERT]]\n"));
+        assert!(rendered.contains("## Claims\n\n- [[Transformer uses attention]]\n"));
+        assert!(rendered.contains("## Sources\n\n- [[Attention Is All You Need]]\n"));
+        // Rendering is byte-stable and sections keep their supplied order.
+        assert_eq!(rendered, render_map_markdown(&note));
+        let concepts = rendered.find("## Concepts").unwrap();
+        let claims = rendered.find("## Claims").unwrap();
+        let sources = rendered.find("## Sources").unwrap();
+        assert!(concepts < claims && claims < sources);
+
+        // Sections without links are omitted entirely.
+        let empty = MapNote {
+            sections: vec![MapSection {
+                section: "Events".into(),
+                links: vec![],
+            }],
+            ..note
+        };
+        assert!(!render_map_markdown(&empty).contains("## Events"));
+    }
+
+    #[test]
+    fn source_claim_and_map_notes_write_with_merge_protection() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut index = MemoryIndex::new();
+        let root = dir.path().join("vault");
+
+        let source = SourceNote {
+            source_id: "src-0001".into(),
+            title: "Attention Is All You Need".into(),
+            slug: "attention-is-all-you-need".into(),
+            url: "https://arxiv.org/abs/1706.03762".into(),
+            canonical_url: "arxiv.org/abs/1706.03762".into(),
+            source_type: "paper".into(),
+            status: "retrieved".into(),
+            quality_score: None,
+            retrieved_at_ms: 1_700_000_000_123,
+            created_at_ms: 1_700_000_000_123,
+            updated_at_ms: 1_700_000_000_123,
+            provenance: "core/export/project/p-1".into(),
+            body_markdown: String::new(),
+        };
+        let claim = ClaimNote {
+            claim_id: "claim-0001".into(),
+            title: "Transformer uses attention".into(),
+            slug: "transformer-uses-attention".into(),
+            subject: "Transformer".into(),
+            predicate: "uses".into(),
+            object_value: "attention".into(),
+            scope: String::new(),
+            confidence: "high".into(),
+            status: "draft".into(),
+            evidence_ids: vec![],
+            source_ids: vec!["src-0001".into()],
+            created_at_ms: 1_700_000_000_123,
+            updated_at_ms: 1_700_000_000_123,
+            provenance: "core/export/project/p-1".into(),
+            body_markdown: String::new(),
+        };
+        let map = MapNote {
+            project_id: "p-1".into(),
+            title: "BCI Map".into(),
+            slug: "bci-map".into(),
+            created_at_ms: 1_700_000_000_000,
+            updated_at_ms: 1_700_000_000_000,
+            provenance: "core/export/project/p-1".into(),
+            sections: vec![MapSection {
+                section: "Concepts".into(),
+                links: vec!["Transformer".into()],
+            }],
+        };
+
+        let source_file = root.join("Sources").join("attention-is-all-you-need.md");
+        let claim_file = root.join("Claims").join("transformer-uses-attention.md");
+        let map_file = root.join("Maps").join("bci-map.md");
+
+        {
+            let mut writer = VaultWriter::new(&root, &mut index);
+            assert!(matches!(
+                writer.write_source_note(&source).unwrap(),
+                WriteOutcome::Written { .. }
+            ));
+            assert!(matches!(
+                writer.write_claim_note(&claim).unwrap(),
+                WriteOutcome::Written { .. }
+            ));
+            assert!(matches!(
+                writer.write_map_note(&map).unwrap(),
+                WriteOutcome::Written { .. }
+            ));
+        }
+        assert!(source_file.exists() && claim_file.exists() && map_file.exists());
+
+        // Identical content is detected as unchanged, not rewritten.
+        {
+            let mut writer = VaultWriter::new(&root, &mut index);
+            assert!(matches!(
+                writer.write_source_note(&source).unwrap(),
+                WriteOutcome::Unchanged { .. }
+            ));
+            assert!(matches!(
+                writer.write_claim_note(&claim).unwrap(),
+                WriteOutcome::Unchanged { .. }
+            ));
+            assert!(matches!(
+                writer.write_map_note(&map).unwrap(),
+                WriteOutcome::Unchanged { .. }
+            ));
+        }
+
+        // A user edit yields a merge proposal, never a silent overwrite.
+        let user_bytes = "user's own source notes\n";
+        std::fs::write(&source_file, user_bytes).unwrap();
+        {
+            let mut writer = VaultWriter::new(&root, &mut index);
+            match writer.write_source_note(&source).unwrap() {
+                WriteOutcome::Conflict(proposal) => {
+                    // Source ids are not knowledge-node ids, so proposals
+                    // for them carry no node id.
+                    assert_eq!(proposal.node_id, "");
+                }
+                other => panic!("expected Conflict, got {other:?}"),
+            }
+            assert_eq!(std::fs::read_to_string(&source_file).unwrap(), user_bytes);
+        }
+
+        // No temp files are left behind in the new folders.
+        for folder in ["Sources", "Claims", "Maps"] {
+            let leftovers: Vec<_> = std::fs::read_dir(root.join(folder))
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().contains("morpho-tmp"))
+                .collect();
+            assert!(leftovers.is_empty());
+        }
     }
 }

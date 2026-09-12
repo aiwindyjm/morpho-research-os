@@ -24,6 +24,7 @@ fn note(node_id: String, slug: &str) -> VaultNote {
         claim_ids: vec![],
         provenance: "run-9/task-9".into(),
         body_markdown: "Body with [[Link]].".into(),
+        related: vec![],
         created_at_ms: 1_700_000_000_000,
         updated_at_ms: 1_700_000_000_000,
     }

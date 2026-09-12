@@ -14,7 +14,7 @@ use crate::error::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// A reference to a secret stored in the OS secure storage. Its `Display`
 /// (and therefore every log, error, or event that includes it) only ever
@@ -40,9 +40,12 @@ impl std::fmt::Display for SecretRef {
     }
 }
 
-/// Storage port for secret values. Production uses the OS keychain adapter;
-/// tests use [`FakeKeychain`]. Implementations must never log values.
-pub trait SecretStore: Send + Sync {
+/// Storage port for secret values. Production uses the OS keychain adapter
+/// ([`KeychainSecretStore`]); tests use [`FakeKeychain`] or keyring's mock
+/// credential builder. Implementations must never log values. The `Debug`
+/// bound exists so state holders can be debug-formatted safely: every
+/// implementation's `Debug` output must hide values.
+pub trait SecretStore: Send + Sync + std::fmt::Debug {
     /// Stores a value under a reference.
     fn set(&self, reference: &SecretRef, value: &str) -> Result<(), CoreError>;
     /// Reads a value. `Ok(None)` means the reference is not set.
@@ -178,6 +181,163 @@ impl SecretStore for FakeKeychain {
     }
 }
 
+/// Production [`SecretStore`] over the real OS secure storage via the
+/// `keyring` crate: Windows Credential Manager, macOS Keychain, or the Linux
+/// keyutils/Secret Service pair (feature-selected per target).
+///
+/// Entries are addressed as (service = `dev.morpho.researchos`,
+/// account = `<provider>/<key_name>`). Entry handles are created lazily and
+/// cached: for the real OS stores an [`keyring::Entry`] is a plain stateless
+/// handle, and for keyring's `EntryOnly` mock credential (used by unit tests)
+/// caching is what makes values observable across operations. Secret values
+/// never enter any error path, log line, or `Debug` output.
+pub struct KeychainSecretStore {
+    service: String,
+    entries: Mutex<HashMap<String, keyring::Entry>>,
+}
+
+impl KeychainSecretStore {
+    /// Service name every Morpho credential is stored under.
+    pub const DEFAULT_SERVICE: &'static str = "dev.morpho.researchos";
+
+    pub fn new() -> Self {
+        Self::with_service(Self::DEFAULT_SERVICE)
+    }
+
+    /// Store bound to an explicit service name (used to isolate tests).
+    pub fn with_service(service: impl Into<String>) -> Self {
+        Self {
+            service: service.into(),
+            entries: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn service(&self) -> &str {
+        &self.service
+    }
+
+    /// The OS keychain account name for a reference.
+    fn account(reference: &SecretRef) -> String {
+        format!("{}/{}", reference.provider, reference.key_name)
+    }
+
+    /// Runs one operation against the cached entry handle for a reference,
+    /// creating the handle on first use.
+    fn with_entry<T>(
+        &self,
+        reference: &SecretRef,
+        op: impl FnOnce(&keyring::Entry) -> std::result::Result<T, keyring::Error>,
+    ) -> std::result::Result<T, keyring::Error> {
+        let key = reference.to_string();
+        let mut cache = self.entries.lock().expect("keychain mutex poisoned");
+        if !cache.contains_key(&key) {
+            let entry = keyring::Entry::new(&self.service, &Self::account(reference))?;
+            cache.insert(key.clone(), entry);
+        }
+        let entry = cache.get(&key).expect("entry inserted above");
+        op(entry)
+    }
+}
+
+impl Default for KeychainSecretStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for KeychainSecretStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Never formats entries: keyring's mock credential Debug output
+        // contains the stored bytes, and real stores may expose metadata.
+        let count = self.entries.lock().expect("keychain mutex poisoned").len();
+        write!(
+            f,
+            "KeychainSecretStore(service={}, {count} entries, values hidden)",
+            self.service
+        )
+    }
+}
+
+/// Maps a keyring failure onto the shared failure model. The returned tag is
+/// a static variant description only: keyring payloads are deliberately not
+/// stringified (`BadEncoding` in particular carries the raw stored bytes,
+/// which may be the secret itself).
+fn classify_keyring_error(err: &keyring::Error) -> (KeychainFailure, &'static str) {
+    match err {
+        keyring::Error::NoEntry => (KeychainFailure::NotFound, "no entry in keychain"),
+        keyring::Error::NoStorageAccess(_) => (
+            KeychainFailure::BackendUnavailable,
+            "secure storage inaccessible",
+        ),
+        keyring::Error::PlatformFailure(_) => {
+            (KeychainFailure::AccessDenied, "platform storage failure")
+        }
+        keyring::Error::Ambiguous(_) => (KeychainFailure::AccessDenied, "ambiguous credential"),
+        keyring::Error::BadEncoding(_) => (
+            KeychainFailure::AccessDenied,
+            "stored value is not valid UTF-8",
+        ),
+        keyring::Error::TooLong(_, _) => (KeychainFailure::AccessDenied, "attribute too long"),
+        keyring::Error::Invalid(_, _) => (KeychainFailure::AccessDenied, "invalid attribute"),
+        // The enum is non-exhaustive upstream; unknown failures are treated
+        // as access problems rather than retryable unavailability.
+        _ => (
+            KeychainFailure::AccessDenied,
+            "unclassified keyring failure",
+        ),
+    }
+}
+
+fn keychain_backend_error(reference: &SecretRef, err: &keyring::Error) -> CoreError {
+    let (failure, tag) = classify_keyring_error(err);
+    let mut error = keychain_error(reference, failure);
+    error.developer_detail.push_str(&format!(" ({tag})"));
+    error
+}
+
+impl SecretStore for KeychainSecretStore {
+    fn set(&self, reference: &SecretRef, value: &str) -> Result<(), CoreError> {
+        self.with_entry(reference, |entry| entry.set_password(value))
+            .map_err(|err| keychain_backend_error(reference, &err))
+    }
+
+    fn get(&self, reference: &SecretRef) -> Result<Option<String>, CoreError> {
+        match self.with_entry(reference, |entry| entry.get_password()) {
+            Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(err) => Err(keychain_backend_error(reference, &err)),
+        }
+    }
+
+    fn delete(&self, reference: &SecretRef) -> Result<(), CoreError> {
+        match self.with_entry(reference, |entry| entry.delete_credential()) {
+            Ok(()) => Ok(()),
+            // Deleting a reference that is not set is fine, mirroring
+            // FakeKeychain's contract.
+            Err(keyring::Error::NoEntry) => Ok(()),
+            Err(err) => Err(keychain_backend_error(reference, &err)),
+        }
+    }
+}
+
+/// Constructs the process-wide secret store from the app configuration
+/// (PRD §11: keys live in the OS keychain; `fake` keeps CI hermetic).
+///
+/// Backend selection is explicit: `"keychain"` routes through the real OS
+/// secure storage, `"fake"` (the default when the `secrets` section is
+/// absent) uses the in-memory [`FakeKeychain`], and anything else is a
+/// configuration error — never a silent fallback. This is the constructor
+/// `state.rs`/`commands.rs` wire into the app state in place of
+/// `production_keychain()`.
+pub fn build_secret_store(config: &AppConfig) -> Result<Arc<dyn SecretStore>, CoreError> {
+    config.secrets.validate()?;
+    if config.secrets.is_keychain() {
+        Ok(Arc::new(KeychainSecretStore::new()))
+    } else {
+        Ok(Arc::new(FakeKeychain::new()))
+    }
+}
+
 /// Provider configuration. Field set mirrors the planned W2-03 provider
 /// contract (base URL, key reference, model, timeout, retry); crucially it
 /// holds a [`SecretRef`], never a value.
@@ -249,6 +409,46 @@ impl WorkerConfig {
     }
 }
 
+/// Secrets backend selection (the `secrets` section of [`AppConfig`]).
+///
+/// `backend` picks the compiled [`SecretStore`] adapter: `"keychain"` (the
+/// real OS secure storage via [`KeychainSecretStore`]) or `"fake"` (the
+/// hermetic in-memory [`FakeKeychain`], the default so CI and offline runs
+/// never touch a real keychain).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SecretsConfig {
+    /// `"keychain"` or `"fake"`.
+    pub backend: String,
+}
+
+impl Default for SecretsConfig {
+    fn default() -> Self {
+        Self {
+            backend: "fake".into(),
+        }
+    }
+}
+
+impl SecretsConfig {
+    pub fn is_keychain(&self) -> bool {
+        self.backend == "keychain"
+    }
+
+    /// Validates the backend selector; anything but `"keychain"`/`"fake"` is
+    /// a configuration error, not a silent fallback.
+    pub fn validate(&self) -> Result<(), CoreError> {
+        if matches!(self.backend.as_str(), "keychain" | "fake") {
+            Ok(())
+        } else {
+            Err(CoreError::database(format!(
+                "unknown secrets backend '{}' (expected \"keychain\" or \"fake\")",
+                self.backend
+            )))
+        }
+    }
+}
+
 /// Application configuration: provider list plus worker entrypoint. This is
 /// internal Rust-core state persisted as a file under the app config
 /// directory; it crosses no IPC boundary and contains no secret values.
@@ -260,6 +460,10 @@ pub struct AppConfig {
     /// the hermetic fake transport.
     #[serde(default)]
     pub worker: WorkerConfig,
+    /// Secrets backend selection; absent in older config files means the
+    /// hermetic fake keychain.
+    #[serde(default)]
+    pub secrets: SecretsConfig,
 }
 
 impl AppConfig {
@@ -428,6 +632,7 @@ mod tests {
             }],
             worker_entrypoint: None,
             worker: WorkerConfig::default(),
+            secrets: SecretsConfig::default(),
         };
         let exported = config.to_json().unwrap();
         // The reference is present as structured fields; the value is absent.
@@ -493,5 +698,152 @@ mod tests {
         bad.worker.transport = "grpc".into();
         assert!(bad.worker.validate().is_err());
         assert!(WorkerConfig::default().validate().is_ok());
+    }
+
+    /// Installs keyring's in-memory mock credential store for the current
+    /// test. The call is global but idempotent: every mock-based test
+    /// installs the same builder, so parallel test threads observe a stable
+    /// store. Only the #[ignore]d manual test restores the platform builder.
+    fn install_mock_keyring() {
+        keyring::set_default_credential_builder(keyring::mock::default_credential_builder());
+    }
+
+    #[test]
+    fn keychain_backend_round_trips_through_the_mock_credential_builder() {
+        install_mock_keyring();
+        let store = KeychainSecretStore::new();
+        assert_eq!(store.service(), KeychainSecretStore::DEFAULT_SERVICE);
+
+        let first = SecretRef::new("glm", "api_key");
+        let second = SecretRef::new("openai", "api_key");
+        assert_eq!(store.get(&first).unwrap(), None);
+        assert_eq!(store.get(&second).unwrap(), None);
+
+        store.set(&first, &test_value()).unwrap();
+        store.set(&second, &test_value()).unwrap();
+        assert_eq!(
+            store.get(&first).unwrap().as_deref(),
+            Some(test_value().as_str())
+        );
+        assert_eq!(
+            store.get(&second).unwrap().as_deref(),
+            Some(test_value().as_str())
+        );
+
+        store.delete(&first).unwrap();
+        assert_eq!(store.get(&first).unwrap(), None);
+        // References are isolated entries.
+        assert_eq!(
+            store.get(&second).unwrap().as_deref(),
+            Some(test_value().as_str())
+        );
+        store.delete(&first).unwrap(); // deleting a missing ref is fine
+    }
+
+    #[test]
+    fn keychain_backend_missing_key_maps_to_non_retryable_auth_error() {
+        install_mock_keyring();
+        let store = KeychainSecretStore::new();
+        let config = ProviderConfig {
+            name: "openai".into(),
+            base_url: "https://api.example.com".into(),
+            model: "gpt-test".into(),
+            api_key_ref: SecretRef::new("openai", "api_key"),
+            timeout_ms: 30_000,
+            max_retries: 2,
+        };
+        let err = config.resolve_api_key(&store).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ProviderAuthFailed);
+        assert!(!err.retryable);
+        assert!(err
+            .developer_detail
+            .contains("keychain://morpho/openai/api_key"));
+    }
+
+    #[test]
+    fn keychain_store_debug_never_exposes_values() {
+        install_mock_keyring();
+        let store = KeychainSecretStore::new();
+        let reference = SecretRef::new("openai", "api_key");
+        let value = test_value();
+        store.set(&reference, &value).unwrap();
+
+        let debug_text = format!("{store:?}");
+        assert!(
+            !debug_text.contains(&value),
+            "secret leaked via debug output: {debug_text}"
+        );
+        assert!(debug_text.contains("values hidden"));
+    }
+
+    #[test]
+    fn build_secret_store_selects_the_configured_backend() {
+        // Default (and legacy configs without a secrets section): fake.
+        let fake_config = AppConfig::default();
+        assert!(!fake_config.secrets.is_keychain());
+        let fake_store = build_secret_store(&fake_config).unwrap();
+        assert!(format!("{fake_store:?}").contains("FakeKeychain"));
+
+        // Explicit keychain selection builds the OS-keychain adapter; the
+        // mock builder installed here keeps this hermetic.
+        let mut keychain_config = fake_config.clone();
+        keychain_config.secrets.backend = "keychain".into();
+        install_mock_keyring();
+        let keychain_store = build_secret_store(&keychain_config).unwrap();
+        assert!(format!("{keychain_store:?}").contains("KeychainSecretStore"));
+
+        // Unknown selectors are a configuration error, not a fallback.
+        let mut bad = keychain_config;
+        bad.secrets.backend = "env".into();
+        let err = build_secret_store(&bad).unwrap_err();
+        assert!(
+            err.developer_detail.contains("unknown secrets backend"),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn secrets_section_defaults_and_back_compatibility() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy-secrets.json");
+        // A pre-secrets-section config file loads with the hermetic default.
+        std::fs::write(&path, r#"{"providers": [], "worker_entrypoint": null}"#).unwrap();
+        let loaded = FileConfigStore::new(&path).load().unwrap();
+        assert_eq!(loaded.secrets, SecretsConfig::default());
+        assert!(!loaded.secrets.is_keychain());
+
+        // Round trip keeps the selector.
+        let mut config = loaded;
+        config.secrets.backend = "keychain".into();
+        let store = FileConfigStore::new(&path);
+        store.save(&config).unwrap();
+        assert_eq!(store.load().unwrap(), config);
+        assert!(config.secrets.is_keychain());
+
+        // Unknown selectors are rejected, not silently coerced.
+        let mut bad = config;
+        bad.secrets.backend = "wincred".into();
+        assert!(bad.secrets.validate().is_err());
+        assert!(SecretsConfig::default().validate().is_ok());
+    }
+
+    #[test]
+    #[ignore = "touches the real OS keychain; run manually with `cargo test -q -- --ignored` (alone, so the platform builder is not raced by mock-based tests)"]
+    fn real_os_keychain_manual_round_trip() {
+        // Restore the platform credential builder (mock-based unit tests
+        // replace it globally) and exercise the real adapter end to end.
+        keyring::set_default_credential_builder(keyring::default::default_credential_builder());
+        let store = KeychainSecretStore::new();
+        let reference = SecretRef::new("morpho-selftest", "roundtrip");
+        // Runtime-generated throwaway value; never a real credential.
+        let value = format!("morpho-keychain-selftest-{}", uuid::Uuid::new_v4());
+
+        store.set(&reference, &value).unwrap();
+        assert_eq!(
+            store.get(&reference).unwrap().as_deref(),
+            Some(value.as_str())
+        );
+        store.delete(&reference).unwrap();
+        assert_eq!(store.get(&reference).unwrap(), None);
     }
 }
