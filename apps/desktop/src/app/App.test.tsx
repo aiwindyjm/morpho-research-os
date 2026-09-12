@@ -134,6 +134,8 @@ describe("assistant panel", () => {
     useWorkspaceStore.setState({ activeProjectId: PROJECT_B_ID, activeView: "projects" });
     renderApp();
 
+    const launcher = await screen.findByRole("button", { name: "打开 AI 助手" });
+    await user.click(launcher);
     const panel = await screen.findByTestId("assistant-panel");
     await waitFor(() => {
       expect(within(panel).getByText("脑机接口康复应用")).toBeInTheDocument();
@@ -160,9 +162,12 @@ describe("assistant panel", () => {
   });
 
   it("switches context when the active project changes", async () => {
+    const user = userEvent.setup();
     useWorkspaceStore.setState({ activeProjectId: PROJECT_A_ID, activeView: "projects" });
     const { rerender } = render(<App client={createQueryClient()} />);
 
+    const launcher = await screen.findByRole("button", { name: "打开 AI 助手" });
+    await user.click(launcher);
     const panel = await screen.findByTestId("assistant-panel");
     await waitFor(() => {
       expect(within(panel).getByText("大语言模型推理优化")).toBeInTheDocument();

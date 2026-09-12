@@ -66,7 +66,7 @@ export function AssistantPanel() {
     <section
       aria-label="AI 研究助手"
       className="flex h-full flex-col gap-md overflow-y-auto p-md"
-      data-testid="assistant-panel"
+      data-testid="assistant-panel-body"
     >
       <header>
         <h2 className="text-h3 text-text-primary">AI 研究助手</h2>
