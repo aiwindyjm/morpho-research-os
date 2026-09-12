@@ -16,7 +16,12 @@ safety_constraints = """
 """
 
 [notes]
-golden_cases = "Registered under examples/fixtures by the integration workgroup."
+output_contract = "Sections skeleton assertions live in golden_cases/quantum-entanglement.case.md."
+
+[[golden_cases]]
+case_id = "planner.plan-draft.quantum-entanglement"
+fixture_ref = "quantum-entanglement"
+case_file = "golden_cases/quantum-entanglement.case.md"
 
 +++
 
