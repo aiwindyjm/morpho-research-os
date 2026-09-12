@@ -1,0 +1,19 @@
+{
+  "fixture_envelope_version": "1.0",
+  "fixture_id": "some-other-id",
+  "kind": "research-config",
+  "input": {
+    "schema": "https://morpho.dev/schemas/research-config.v1.json",
+    "payload": {
+      "schema_version": "1.0",
+      "domain": "physics",
+      "topic": "identity",
+      "purpose": "research",
+      "depth": 1,
+      "dimensions": ["concepts"],
+      "languages": ["en"],
+      "source_types": ["encyclopedia"]
+    }
+  },
+  "provenance": { "origin": "synthetic", "synthetic": true }
+}

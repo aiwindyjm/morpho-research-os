@@ -1,0 +1,38 @@
+name: Contracts
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Contract check
+        shell: pwsh
+        run: ./scripts/check-contracts.ps1
+      - name: Architecture boundary check
+        shell: pwsh
+        run: ./scripts/check-architecture.ps1
+      - name: Architecture detector self-test
+        shell: pwsh
+        run: ./scripts/check-architecture.ps1 -SelfTest
+      - name: Public boundary check
+        shell: pwsh
+        run: ./scripts/check-public-boundary.ps1
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: TypeScript fixture loader tests
+        run: node --test tests/fixtures-support/loaders/fixture-envelope.test.ts
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python fixture loader tests
+        run: python tests/fixtures-support/loaders/test_fixture_envelope.py
+      - name: Cross-language fixture checks (Node, Python, Rust)
+        shell: pwsh
+        run: ./tests/fixtures-support/run-fixture-checks.ps1

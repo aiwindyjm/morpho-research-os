@@ -1,0 +1,8 @@
+[package]
+name = "morpho-fixture-loader"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde_json = "1"

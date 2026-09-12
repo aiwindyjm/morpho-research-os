@@ -48,9 +48,9 @@
 | `PY-03` | `Planned` | — | — | — |
 | `PY-04` | `Planned` | — | — | — |
 | `PY-05` | `Planned` | — | — | — |
-| `TEST-01` | `Planned` | — | — | — |
+| `TEST-01` | `Review` | `f878c6c` | 三组 Golden Fixture（quantum-entanglement / brain-computer-interface / large-language-model）输入侧通过 Node/Python/Rust 三语言 Loader 离线校验，summary 一致；7 组非法用例按规则码明确失败 | expected_outputs 待 W2-01/W2-06 冻结后补充；envelope 契约见 examples/fixtures/README.md |
 | `TEST-02` | `Planned` | — | — | — |
-| `TEST-03` | `Planned` | — | — | — |
+| `TEST-03` | `Review` | `9c6e3ac` | check-contracts/check-architecture 本地全绿；红灯验证确认前端越界、真实 Provider、fixture 漂移均可发现；检测器自测 9 用例通过 | contracts.yml 已加入，首次 CI 运行待合并推送后确认 |
 | `TEST-04` | `Planned` | — | — | — |
 | **W2** |  |  |  |  |
 | `W2-01` | `Planned` | — | — | — |

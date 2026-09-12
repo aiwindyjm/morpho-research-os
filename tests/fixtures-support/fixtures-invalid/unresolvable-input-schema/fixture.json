@@ -1,0 +1,10 @@
+{
+  "fixture_envelope_version": "1.0",
+  "fixture_id": "unresolvable-input-schema",
+  "kind": "not-registered",
+  "input": {
+    "schema": "https://morpho.dev/schemas/not-registered.v9.json",
+    "payload": {}
+  },
+  "provenance": { "origin": "synthetic", "synthetic": true }
+}
