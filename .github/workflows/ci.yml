@@ -85,3 +85,39 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy -p morpho-schemas --all-targets -- -D warnings
       - run: cargo test --workspace --locked
+
+  frontend-e2e:
+    # Playwright E2E against the in-process mock backend (docs/TESTING.md,
+    # PRD §16). No build step: playwright.config.ts starts the desktop Vite
+    # dev server itself; the mock transport means no provider/network access.
+    if: hashFiles('pnpm-lock.yaml') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium (matches the locked @playwright/test)
+        run: pnpm --filter @morpho/desktop exec playwright install --with-deps chromium
+      - run: pnpm --filter @morpho/desktop test:e2e
+
+  worker-tests:
+    # Python worker pytest suite. tests/conftest.py puts the worker src tree on
+    # sys.path, so plain pytest runs without installing the package; only the
+    # declared runtime/test deps (pydantic, pytest) are installed.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/research-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --quiet "pytest>=8" "pydantic>=2.7"
+      - run: python -m pytest tests/ -q

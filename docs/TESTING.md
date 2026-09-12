@@ -17,11 +17,12 @@ Gates are offline: no test may call a real provider, use an API key, or require 
 | Architecture boundary | `powershell -File scripts/check-architecture.ps1` and `... -SelfTest` | Frontend/worker boundary detector and its self-test | Active (`contracts.yml`) |
 | Cross-language fixture loaders | `powershell -File tests/fixtures-support/run-fixture-checks.ps1` (Node `--test`, pytest, and cargo loader suites) | Tri-language loader parity on the golden fixtures | Active (`contracts.yml`) |
 | Frontend Vitest | `pnpm -r run test` | Every workspace package with a `test` script, including the desktop frontend's Vitest suites, runs in CI via the same `pnpm -r run test` invocation as the contract leg | Active (`ci.yml` schemas-typescript job) |
+| Worker pytest | `python -m pytest tests/ -q` (in `apps/research-worker`) | Python research-worker suites (config, DAG, pipeline, claims, events, HTTP jobs — offline/mock providers only) | Active (`ci.yml` worker-tests job) |
 | Migration checks | `cargo test --workspace --locked` (covers `apps/desktop/src-tauri/tests/migrations.rs`) | Numbered SQLite migration validity | Active (`ci.yml` schemas-rust job) |
-| Playwright E2E | — | E2E against the mock worker/providers | Future (TEST-04) |
+| Playwright E2E | `pnpm --filter @morpho/desktop test:e2e` | E2E journeys (first research journey, navigation, journal save, project switch states) against the desktop app served by its Vite dev server; the default mock transport stands in for the worker/providers, so no network or keys | Active (`ci.yml` frontend-e2e job) |
 | Whitespace hygiene | `git diff --check` | No trailing whitespace / conflict markers before commits | Active (local, per task) |
 
-Local commands match CI exactly; CI is the same invocation, not a stricter variant. Playwright E2E is added by TEST-04 under the same rules; any new gate names its workflow and job here when it lands.
+Local commands match CI exactly; CI is the same invocation, not a stricter variant. Any new gate names its workflow and job here when it lands.
 
 ## Mocks and fixtures
 
