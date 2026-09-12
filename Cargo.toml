@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["packages/schemas/rust", "apps/desktop/src-tauri"]
+# Standalone test support crates live outside the product/binding workspace
+# (PROJECT_SETUP.md scopes the workspace to binding + product crates).
+exclude = ["tests/fixtures-support/loaders/rust-loader"]

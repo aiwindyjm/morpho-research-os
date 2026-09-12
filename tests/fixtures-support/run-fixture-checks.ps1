@@ -28,9 +28,17 @@ try {
         & cargo test --quiet --manifest-path 'tests/fixtures-support/loaders/rust-loader/Cargo.toml'
     }
 
+    # Native tools legitimately write warnings/progress to stderr (node's
+    # MODULE_TYPELESS_PACKAGE_JSON, cargo's "Compiling..." notes). Under
+    # Windows PowerShell 5.1 with $ErrorActionPreference='Stop', redirecting
+    # stderr via 2>&1 turns the first warning into a terminating
+    # NativeCommandError and aborts the script. Capture outside Stop preference.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     $nodeOutput = (& node 'tests/fixtures-support/loaders/summarize.ts' 2>&1) -join "`n"
     $pythonOutput = (& python 'tests/fixtures-support/loaders/fixture_envelope.py' --summary 2>&1) -join "`n"
     $rustOutput = (& cargo run --quiet --manifest-path 'tests/fixtures-support/loaders/rust-loader/Cargo.toml' --bin summarize 2>&1) -join "`n"
+    $ErrorActionPreference = $previousPreference
 
     function Get-Summary([string]$text) {
         foreach ($line in ($text -split "`n")) {
