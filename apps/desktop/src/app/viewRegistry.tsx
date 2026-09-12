@@ -9,7 +9,7 @@ import { GraphPage } from "@/features/graph/GraphPage";
 import { OverviewPage } from "@/features/overview/OverviewPage";
 import { JournalPage } from "@/features/journal/JournalPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
-import { PlaceholderPage } from "@/features/misc/PlaceholderPage";
+import { ReportsPage } from "@/features/reports/ReportsPage";
 
 /**
  * Typed view registry (PRD §13 views). Navigation swaps this registry —
@@ -38,7 +38,7 @@ export function viewContent(view: ViewId, projectId: string) {
     case "settings":
       return <SettingsPage />;
     case "reports":
-      return <PlaceholderPage view={view} />;
+      return <ReportsPage projectId={projectId} />;
     default: {
       const exhaustive: never = view;
       throw new Error(`unknown view: ${String(exhaustive)}`);
