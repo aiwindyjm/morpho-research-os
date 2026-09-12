@@ -24,11 +24,10 @@ export function Sidebar({ variant }: { variant: "docked" | "drawer" }) {
   }, [variant, drawerOpen, setDrawerOpen]);
 
   const hasProject = activeProjectId !== "";
-  const items = WORKSPACE_VIEWS.filter((view) => {
-    // Project-scoped views stay reachable so their Empty states can teach
-    // the user what to do next; only the projects list is always present.
-    return hasProject || view.id === "projects";
-  });
+  const items = WORKSPACE_VIEWS.filter(
+    (view) =>
+      view.id !== "reports" && view.id !== "settings" && (hasProject || view.id === "projects"),
+  );
 
   const nav = (
     <nav

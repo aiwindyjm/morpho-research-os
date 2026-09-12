@@ -12,17 +12,18 @@ import { create } from "zustand";
  */
 
 export const WORKSPACE_VIEWS = [
-  { id: "projects", label: "项目" },
-  { id: "config", label: "研究配置" },
-  { id: "plan", label: "研究计划" },
-  { id: "tasks", label: "任务" },
-  { id: "sources", label: "来源" },
-  { id: "knowledge", label: "知识库" },
-  { id: "graph", label: "图谱" },
-  { id: "timeline", label: "时间线" },
-  { id: "gaps", label: "覆盖与缺口" },
-  { id: "reports", label: "报告" },
-  { id: "settings", label: "设置" },
+  { id: "projects", label: "我的研究", icon: "▦" },
+  { id: "overview", label: "概览", icon: "⌂" },
+  { id: "config", label: "研究配置", icon: "＋" },
+  { id: "plan", label: "研究计划", icon: "☷" },
+  { id: "tasks", label: "任务", icon: "✓" },
+  { id: "sources", label: "来源", icon: "◌" },
+  { id: "knowledge", label: "知识", icon: "◇" },
+  { id: "graph", label: "图谱", icon: "⌘" },
+  { id: "journal", label: "对话日志", icon: "▤" },
+  { id: "settings", label: "设置", icon: "⚙" },
+  // PRD §13 保留注册,不进侧栏导航(ADR-013)。
+  { id: "reports", label: "报告", icon: "◫" },
 ] as const;
 
 export type ViewId = (typeof WORKSPACE_VIEWS)[number]["id"];
@@ -35,13 +36,11 @@ interface WorkspaceState {
   activeProjectId: string;
   activeView: ViewId;
   assistantOpen: boolean;
-  inspectorOpen: boolean;
   sidebarDrawerOpen: boolean;
   setActiveProject: (projectId: string) => void;
   setActiveView: (view: ViewId) => void;
   setAssistantOpen: (open: boolean) => void;
   toggleAssistant: () => void;
-  setInspectorOpen: (open: boolean) => void;
   setSidebarDrawerOpen: (open: boolean) => void;
 }
 
@@ -49,13 +48,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   activeProjectId: "",
   activeView: "projects",
   assistantOpen: false,
-  inspectorOpen: true,
   sidebarDrawerOpen: false,
   setActiveProject: (projectId) =>
     set({ activeProjectId: projectId, sidebarDrawerOpen: false }),
   setActiveView: (view) => set({ activeView: view, sidebarDrawerOpen: false }),
   setAssistantOpen: (open) => set({ assistantOpen: open }),
   toggleAssistant: () => set((s) => ({ assistantOpen: !s.assistantOpen })),
-  setInspectorOpen: (open) => set({ inspectorOpen: open }),
   setSidebarDrawerOpen: (open) => set({ sidebarDrawerOpen: open }),
 }));

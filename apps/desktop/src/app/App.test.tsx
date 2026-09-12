@@ -24,7 +24,6 @@ beforeEach(() => {
     activeProjectId: "",
     activeView: "projects",
     assistantOpen: false,
-    inspectorOpen: true,
     sidebarDrawerOpen: false,
   });
 });
@@ -175,5 +174,25 @@ describe("assistant panel", () => {
       expect(within(screen.getByTestId("assistant-panel")).getByText("脑机接口康复应用"))
         .toBeInTheDocument();
     });
+  });
+});
+
+describe("prototype navigation (IA switch)", () => {
+  it("registers overview and journal views", async () => {
+    useWorkspaceStore.setState({ activeProjectId: PROJECT_A_ID, activeView: "overview" });
+    const first = renderApp();
+    expect(await screen.findByTestId("view-stub-overview")).toBeInTheDocument();
+    first.unmount();
+
+    useWorkspaceStore.setState({ activeProjectId: PROJECT_A_ID, activeView: "journal" });
+    renderApp();
+    expect(await screen.findByTestId("view-stub-journal")).toBeInTheDocument();
+  });
+
+  it("renders a real settings page", async () => {
+    useWorkspaceStore.setState({ activeProjectId: PROJECT_A_ID, activeView: "settings" });
+    renderApp();
+    expect(await screen.findByRole("heading", { name: "本地工作区设置" })).toBeInTheDocument();
+    expect(screen.getByText("私有对话日志")).toBeInTheDocument();
   });
 });

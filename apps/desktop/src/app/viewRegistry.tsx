@@ -6,8 +6,9 @@ import { TasksPage } from "@/features/tasks/TasksPage";
 import { SourcesPage } from "@/features/sources/SourcesPage";
 import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
 import { GraphPage } from "@/features/graph/GraphPage";
-import { TimelinePage } from "@/features/timeline/TimelinePage";
-import { GapsPage } from "@/features/gaps/GapsPage";
+import { OverviewPage } from "@/features/overview/OverviewPage";
+import { JournalPage } from "@/features/journal/JournalPage";
+import { SettingsPage } from "@/features/settings/SettingsPage";
 import { PlaceholderPage } from "@/features/misc/PlaceholderPage";
 
 /**
@@ -18,6 +19,8 @@ export function viewContent(view: ViewId, projectId: string) {
   switch (view) {
     case "projects":
       return <ProjectsPage />;
+    case "overview":
+      return <OverviewPage />;
     case "config":
       return <ConfigPage projectId={projectId} />;
     case "plan":
@@ -30,12 +33,11 @@ export function viewContent(view: ViewId, projectId: string) {
       return <KnowledgePage projectId={projectId} />;
     case "graph":
       return <GraphPage projectId={projectId} />;
-    case "timeline":
-      return <TimelinePage projectId={projectId} />;
-    case "gaps":
-      return <GapsPage projectId={projectId} />;
-    case "reports":
+    case "journal":
+      return <JournalPage />;
     case "settings":
+      return <SettingsPage />;
+    case "reports":
       return <PlaceholderPage view={view} />;
     default: {
       const exhaustive: never = view;
