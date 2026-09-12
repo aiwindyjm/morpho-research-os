@@ -128,3 +128,29 @@ def test_main_missing_config_source_exits_2(tmp_path):
     with pytest.raises(SystemExit) as excinfo:
         run_research.main(["--profile", "offline", "--out-dir", str(tmp_path)])
     assert excinfo.value.code == 2
+
+
+def test_main_provider_misconfiguration_is_clean_error(tmp_path, capsys):
+    """A bogus --search-provider under a real (non-offline) profile must be
+    a clean one-line error with exit code 2, not a traceback. The error
+    raises during provider resolution in build_orchestrator, before any
+    HTTP, so this stays network-free."""
+
+    argv = ["--profile", "local", "--search-provider", "bogus",
+            "--config-json", json.dumps(CONFIG), "--out-dir", str(tmp_path / "o")]
+    code = run_research.main(argv)
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "run_research: error:" in err
+    assert "bogus" in err
+    assert "Traceback" not in err
+
+
+def test_main_offline_warns_when_search_provider_ignored(tmp_path, capsys):
+    argv = ["--profile", "offline", "--search-provider", "searxng",
+            "--config-json", json.dumps(CONFIG), "--out-dir", str(tmp_path / "o"),
+            "--approve"]
+    code = run_research.main(argv)
+    assert code == 0
+    err = capsys.readouterr().err
+    assert "run_research: warning: --search-provider ignored in offline profile" in err

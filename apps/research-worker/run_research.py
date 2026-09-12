@@ -50,6 +50,7 @@ from morpho_worker.config import (
 )
 from morpho_worker.dag.states import RunStatus
 from morpho_worker.domain.research import ResearchConfig
+from morpho_worker.errors import MorphoError
 from morpho_worker.events import EventLog
 from morpho_worker.interfaces import InMemoryResultSink
 from morpho_worker.orchestrator import ResearchOrchestrator
@@ -408,11 +409,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
 
-    orchestrator, sink, usage, _plan_store = build_orchestrator(
-        config,
-        search_provider_id=args.search_provider,
-        max_workers=args.max_workers,
-    )
+    if args.search_provider and config.offline_mock:
+        print(
+            "run_research: warning: --search-provider ignored in offline profile",
+            file=sys.stderr,
+        )
+
+    try:
+        orchestrator, sink, usage, _plan_store = build_orchestrator(
+            config,
+            search_provider_id=args.search_provider,
+            max_workers=args.max_workers,
+        )
+    except MorphoError as exc:
+        print(f"run_research: error: {exc.user_message}", file=sys.stderr)
+        return 2
     try:
         out_dir = Path(args.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -438,7 +449,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{RUN_TIMEOUT_SECONDS:.0f}s",
                 file=sys.stderr,
             )
-            status = "TIMEOUT"
 
         write_results(out_dir, plan, run_id, orchestrator, sink, usage)
         print(
