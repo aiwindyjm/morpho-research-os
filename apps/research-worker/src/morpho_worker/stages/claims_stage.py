@@ -7,11 +7,17 @@ Structure (docs/data/CLAIM_SCHEMA.md, EVIDENCE_SCHEMA.md):
 - Claim ids are deterministic over (subject, predicate, object value): the
   same assertion extracted again merges into the same claim; evidence
   accumulates. Later claims never overwrite earlier ones - conflicting
-  claims coexist and enter ``NEEDS_REVIEW``.
+  claims coexist and enter review.
 - Every claim keeps its evidence: source reference, verbatim quote or
   precise locator, extraction method, and a support/contradict direction.
-- A claim without located evidence can never reach ``confirmed`` status
+- A claim without located evidence can never reach ``confirmed`` confidence
   (RES-06 acceptance).
+- Status vs confidence follow claim.v1.1 (ADR-016): ``status`` is the
+  review lifecycle (freshly built claims are ``draft``) and ``confidence``
+  carries the six evidence-strength states. A contradiction marks
+  ``confidence=conflicting`` and ``status=needs_review`` together (see
+  :func:`apply_review_flags`); the numeric extraction confidences survive on
+  the evidence records.
 - The contradiction judge is a port: the draft implementation is a
   deterministic rule (same subject+predicate, different object); a strong
   model judge can be injected later through the validation role.
@@ -24,6 +30,7 @@ from dataclasses import dataclass, field
 from morpho_worker.clock import Clock
 from morpho_worker.domain.claims import (
     Claim,
+    ClaimConfidence,
     ClaimStatus,
     ConflictRecord,
     DroppedRecord,
@@ -45,14 +52,22 @@ def _now(clock: Clock | None) -> str:
     return clock.now_utc().isoformat() if clock else utc_now_iso()
 
 
-def _status_from_confidence(numeric: float, located_sources: int) -> ClaimStatus:
+def _confidence_state(numeric: float, located_sources: int) -> ClaimConfidence:
+    """Evidence-strength aggregation (confidence, not lifecycle).
+
+    Agreement from >= 2 independent located sources confirms; numeric
+    extraction confidence maps onto high/medium/low. ``unverified`` is the
+    model default when nothing is known; this builder always has a numeric
+    extraction confidence, so built claims land in low..confirmed.
+    """
+
     if located_sources >= 2 and numeric >= 0.75:
-        return ClaimStatus.CONFIRMED
+        return ClaimConfidence.CONFIRMED
     if numeric >= 0.75:
-        return ClaimStatus.HIGH
+        return ClaimConfidence.HIGH
     if numeric >= 0.5:
-        return ClaimStatus.MEDIUM
-    return ClaimStatus.LOW
+        return ClaimConfidence.MEDIUM
+    return ClaimConfidence.LOW
 
 
 @dataclass
@@ -76,6 +91,10 @@ class ClaimBuilder:
         bundle = ClaimEvidenceBundle()
         claims: dict[str, Claim] = {}
         evidence_by_id: dict[str, Evidence] = {}
+        #: Best numeric extraction confidence per claim id (the Claim model
+        #: keeps only the enumerated confidence state; the merge arithmetic
+        #: stays local to this build pass).
+        numeric_by_claim: dict[str, float] = {}
 
         for extraction in sorted(extractions, key=lambda item: item.url_dedup_key):
             for raw in extraction.claims:
@@ -122,6 +141,8 @@ class ClaimBuilder:
                     )
                 located = 1 if locator.has_locator else 0
                 existing = claims.get(claim_id)
+                numeric = max(numeric_by_claim.get(claim_id, 0.0), raw.confidence)
+                numeric_by_claim[claim_id] = numeric
                 if existing is None:
                     object_node_id = resolver.resolve(raw.object_value)
                     claims[claim_id] = Claim(
@@ -131,8 +152,8 @@ class ClaimBuilder:
                         object_value=raw.object_value,
                         object_node_id=object_node_id,
                         scope=context.dimension,
-                        status=_status_from_confidence(raw.confidence, located),
-                        confidence=raw.confidence,
+                        status=ClaimStatus.DRAFT,
+                        confidence=_confidence_state(numeric, located),
                         evidence_ids=[evidence_id],
                         provenance=[
                             _provenance(extraction, context)
@@ -161,9 +182,8 @@ class ClaimBuilder:
                         update={
                             "evidence_ids": evidence_ids,
                             "provenance": provenance,
-                            "status": _status_from_confidence(
-                                max(existing.confidence or 0.0, raw.confidence),
-                                len(located_sources),
+                            "confidence": _confidence_state(
+                                numeric, len(located_sources)
                             ),
                             "updated_at": now,
                         }
@@ -265,7 +285,12 @@ class ValidationStage:
 
 
 def apply_review_flags(claims: list[Claim], report: ValidationReport) -> list[Claim]:
-    """Return claims with conflict/review flags applied from the report."""
+    """Return claims with conflict/review flags applied from the report.
+
+    Conflicts touch both dimensions at once (claim.v1.1 / ADR-016): the
+    evidence strength becomes ``conflicting`` and the review lifecycle moves
+    to ``needs_review``. Nothing is deleted; the claim keeps its evidence.
+    """
 
     flagged = set(report.needs_review_claim_ids)
     updated: list[Claim] = []
@@ -274,7 +299,8 @@ def apply_review_flags(claims: list[Claim], report: ValidationReport) -> list[Cl
             updated.append(
                 claim.model_copy(
                     update={
-                        "status": ClaimStatus.CONFLICTING,
+                        "status": ClaimStatus.NEEDS_REVIEW,
+                        "confidence": ClaimConfidence.CONFLICTING,
                         "review_state": ReviewState.NEEDS_REVIEW,
                     }
                 )

@@ -26,8 +26,8 @@ CONFIG = {
 
 WHITELIST = {
     "plan.json", "run.json", "sources.json", "knowledge_nodes.json",
-    "relations.json", "claims.json", "validation_report.json",
-    "usage_totals.json",
+    "relations.json", "claims.json", "validation_report.json", "notes.json",
+    "incremental_report.json", "usage_totals.json",
 }
 
 
@@ -90,6 +90,17 @@ def test_main_offline_approved_runs_to_completion(tmp_path):
         (out / "validation_report.json").read_text(encoding="utf-8")
     )
     assert reports and reports[0]["run_id"] == run["run"]["run_id"]
+    # Writer role: one vault-ready note projection per knowledge node.
+    notes = json.loads((out / "notes.json").read_text(encoding="utf-8"))
+    assert notes and {note["node_id"] for note in notes} == {
+        node["node_id"] for node in nodes
+    }
+    # Incremental diff against the (empty) prior baseline.
+    incremental = json.loads(
+        (out / "incremental_report.json").read_text(encoding="utf-8")
+    )
+    assert incremental and incremental[0]["run_id"] == run["run"]["run_id"]
+    assert incremental[0]["prior_run_id"] is None
     totals = json.loads((out / "usage_totals.json").read_text(encoding="utf-8"))
     assert totals["records"] > 0
 

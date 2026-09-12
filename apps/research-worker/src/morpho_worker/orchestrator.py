@@ -16,11 +16,19 @@ Hard rules enforced here:
 - the worker never persists directly - every validated record goes to the
   injected sink (Rust-backed via the worker protocol later);
 - dynamic extract tasks are created through idempotency keys, so search
-  retries or crash recoveries never duplicate work.
+  retries or crash recoveries never duplicate work;
+- incremental research (PRD section 14): when a run completes, its records
+  are diffed against the prior completed run of the same project. The
+  report is persisted through the sink (``incremental-report``), announced
+  with a ``run.incremental_report`` event, summarized on the run record's
+  ``result``, and the run's snapshot becomes the project's next baseline.
+  A project's first run compares against an empty baseline (everything
+  new). Only COMPLETED runs update the baseline.
 """
 
 from __future__ import annotations
 
+import threading
 from typing import Any, Callable
 
 from morpho_worker.clock import Clock
@@ -37,14 +45,21 @@ from morpho_worker.domain.research import (
 from morpho_worker.errors import ErrorCode, MorphoError
 from morpho_worker.events import EventLog
 from morpho_worker.ids import new_id, stable_id
+from morpho_worker.incremental import (
+    IncrementalBaseline,
+    IncrementalReport,
+    compute_incremental_report,
+)
 from morpho_worker.interfaces import (
     PlannerPort,
     ResultSink,
     StageContext,
 )
 from morpho_worker.providers.retry import RetryPolicy
+from morpho_worker.providers.usage import utc_now_iso
 from morpho_worker.stages.claims_stage import ClaimBuilder, ValidationStage
 from morpho_worker.stages.normalization_stage import EntityNormalizer, RelationNormalizer
+from morpho_worker.stages.writer_stage import WriterStage
 
 
 class ResearchOrchestrator:
@@ -60,6 +75,7 @@ class ResearchOrchestrator:
         relation_normalizer: RelationNormalizer | None = None,
         claim_builder: ClaimBuilder | None = None,
         validation_stage: ValidationStage | None = None,
+        writer_stage: WriterStage | None = None,
         sink: ResultSink,
         event_log: EventLog | None = None,
         clock: Clock | None = None,
@@ -75,6 +91,7 @@ class ResearchOrchestrator:
         self._relations = relation_normalizer or RelationNormalizer()
         self._claims = claim_builder or ClaimBuilder()
         self._validation = validation_stage or ValidationStage(clock=clock)
+        self._writer = writer_stage or WriterStage()
         self._sink = sink
         self._event_log = event_log
         self._clock = clock
@@ -87,20 +104,47 @@ class ResearchOrchestrator:
             retry=retry or RetryPolicy(max_attempts=3, backoff_seconds=0.0),
             readiness_hook=self._readiness,
         )
+        # Incremental research bookkeeping: latest completed-run baseline
+        # per project (empty string key = runs without a project id) and
+        # the baseline snapshot each in-flight run was started against.
+        self._incremental_lock = threading.Lock()
+        self._baselines: dict[str, IncrementalBaseline] = {}
+        self._prior_by_run: dict[str, IncrementalBaseline | None] = {}
 
     # Plan lifecycle (RES-01) ------------------------------------------------
 
     def create_plan(self, config: ResearchConfig, *, project_id: str = "") -> ResearchPlan:
         plan = self._planner.draft_plan(config, project_id=project_id)
         saved = self._plan_store.save(plan)
-        self._emit(f"plan:{saved.plan_id}", "plan.created", {"status": saved.status.value})
+        # Canonical event.v1 type: the draft plan lifecycle starts here
+        # (legacy "plan.created" renames onto "plan.drafted" at append).
+        self._emit(
+            f"plan:{saved.plan_id}",
+            "plan.created",
+            {"status": saved.status.value},
+            project_id=saved.project_id,
+        )
         return saved
 
     def approve_plan(self, plan_id: str, note: str = "") -> ResearchPlan:
-        return self._plan_store.approve(plan_id, note)
+        approved = self._plan_store.approve(plan_id, note)
+        self._emit(
+            f"plan:{approved.plan_id}",
+            "plan.approved",
+            {"plan_version": approved.plan_version},
+            project_id=approved.project_id,
+        )
+        return approved
 
     def reject_plan(self, plan_id: str, note: str = "") -> ResearchPlan:
-        return self._plan_store.reject(plan_id, note)
+        rejected = self._plan_store.reject(plan_id, note)
+        self._emit(
+            f"plan:{rejected.plan_id}",
+            "plan.rejected",
+            {"plan_version": rejected.plan_version},
+            project_id=rejected.project_id,
+        )
+        return rejected
 
     def regenerate_plan(self, plan_id: str) -> ResearchPlan:
         """Re-run the planner over the stored config; restarts review."""
@@ -113,7 +157,14 @@ class ResearchOrchestrator:
                 retryable=False,
             )
         draft = self._planner.draft_plan(latest.config, project_id=latest.project_id)
-        return self._plan_store.revise(plan_id, draft)
+        revised = self._plan_store.revise(plan_id, draft)
+        self._emit(
+            f"plan:{revised.plan_id}",
+            "plan.superseded",
+            {"plan_version": revised.plan_version},
+            project_id=revised.project_id,
+        )
+        return revised
 
     def get_plan(self, plan_id: str) -> ResearchPlan | None:
         return self._plan_store.get(plan_id)
@@ -133,7 +184,11 @@ class ResearchOrchestrator:
         """
 
         plan = self._plan_store.require_approved(plan_id)
+        with self._incremental_lock:
+            prior_baseline = self._baselines.get(plan.project_id)
         run_id = new_id()
+        with self._incremental_lock:
+            self._prior_by_run[run_id] = prior_baseline
         self._store.create_run(
             RunRecord(
                 run_id=run_id,
@@ -146,8 +201,14 @@ class ResearchOrchestrator:
             on_run_created(run_id)
         for task in self._static_tasks(run_id, plan):
             self._store.add_task(task)
-        self._emit(run_id, "run.created", {"plan_id": plan.plan_id})
+        # No "run.created" here: the canonical event.v1 vocabulary starts a
+        # run with "run.started", which the DAG runner emits once the run
+        # loop begins (the legacy draft's run.created is folded into it).
         self._runner.run(run_id)
+        # A run that finished NEEDS_REVIEW is not terminal: the writer task
+        # stays gated behind the review and the report lands when
+        # resolve_review completes the run.
+        self._record_incremental(run_id, plan.project_id)
         return run_id
 
     def resume_run(self, run_id: str) -> str:
@@ -195,11 +256,23 @@ class ResearchOrchestrator:
             validate_task.task_id,
             TaskStatus.RUNNING if not approve else TaskStatus.COMPLETED,
         )
-        status = self._store.update_run_status(
-            run_id, RunStatus.RUNNING if not approve else RunStatus.COMPLETED
-        )
-        self._emit(run_id, "run.review_resolved", {"approved": approve})
-        return status.status
+        if not approve:
+            # Rework: the validate task reopens; the writer stays blocked
+            # behind it until validation succeeds again.
+            status = self._store.update_run_status(run_id, RunStatus.RUNNING)
+            self._emit(run_id, "run.review_resolved", {"approved": False})
+            return status.status
+        # Approving completes validation and releases the writer task that
+        # was gated behind the review (same idempotency machinery: the task
+        # runs once per run through its idempotency key). The run's
+        # incremental report lands once this drive reaches COMPLETED.
+        self._store.update_run_status(run_id, RunStatus.RUNNING)
+        final_status = self._runner.run(run_id)
+        run = self._store.get_run(run_id)
+        self._record_incremental(run_id, run.project_id if run else "")
+        # Canonical event.v1 review resolution (legacy "run.review_resolved").
+        self._emit(run_id, "run.review_resolved", {"approved": True})
+        return final_status
 
     def run_status(self, run_id: str):
         return self._store.get_run(run_id)
@@ -209,6 +282,64 @@ class ResearchOrchestrator:
 
     def shutdown(self) -> None:
         self._runner.shutdown()
+
+    # Incremental research (PRD section 14) -----------------------------------
+
+    def _record_incremental(
+        self,
+        run_id: str,
+        project_id: str,
+    ) -> IncrementalReport | None:
+        """Diff a completed run against the project's prior baseline.
+
+        Only COMPLETED runs produce a report and become the next baseline;
+        failed/cancelled/paused/needs-review runs leave the baseline
+        untouched. The report is persisted through the sink
+        (``incremental-report``), announced via ``run.incremental_report``,
+        and summarized on the run record's ``result`` field.
+        """
+
+        run = self._store.get_run(run_id)
+        if run is None or run.status is not RunStatus.COMPLETED:
+            return None
+        with self._incremental_lock:
+            prior = self._prior_by_run.pop(run_id, None)
+        sources = self._all_records(run_id, "source")
+        contents = self._all_records(run_id, "source-content")
+        claims = self._all_records(run_id, "claim")
+        evidence_sources: dict[str, list[str]] = {}
+        for evidence in self._all_records(run_id, "evidence"):
+            evidence_sources.setdefault(evidence.claim_id, []).append(
+                evidence.source_id
+            )
+        report = compute_incremental_report(
+            run_id=run_id,
+            project_id=project_id,
+            prior=prior,
+            sources=sources,
+            contents=contents,
+            claims=claims,
+            evidence_sources_by_claim=evidence_sources,
+            computed_at=(
+                self._clock.now_utc().isoformat() if self._clock else utc_now_iso()
+            ),
+        )
+        self._sink.persist("incremental-report", report)
+        self._emit(
+            run_id, "run.incremental_report", dict(report.summary()),
+            project_id=project_id,
+        )
+        self._store.set_run_result(run_id, {"incremental": report.summary()})
+        baseline = IncrementalBaseline.from_run(
+            run_id,
+            project_id=project_id,
+            sources=sources,
+            contents=contents,
+            claims=claims,
+        )
+        with self._incremental_lock:
+            self._baselines[project_id] = baseline
+        return report
 
     # DAG construction ---------------------------------------------------------
 
@@ -276,6 +407,20 @@ class ResearchOrchestrator:
                 idempotency_key=f"{run_id}:validate",
             )
         )
+        # Writer fan-in: vault-ready note projections after validation,
+        # under the same idempotency machinery as every other task. The
+        # writer only composes already-validated material deterministically.
+        tasks.append(
+            TaskRecord(
+                task_id=self._task_id(run_id, "writer", "run"),
+                run_id=run_id,
+                task_type=RuntimeTaskType.WRITER,
+                title="Write vault notes",
+                params=dict(params_base),
+                depends_on=[self._task_id(run_id, "validate", "run")],
+                idempotency_key=f"{run_id}:writer",
+            )
+        )
         validate_dag(tasks)  # reject bad plans up front
         return tasks
 
@@ -320,6 +465,8 @@ class ResearchOrchestrator:
             return self._run_claims(task, context, ctx)
         if task.task_type is RuntimeTaskType.VALIDATE:
             return self._run_validate(task, context)
+        if task.task_type is RuntimeTaskType.WRITER:
+            return self._run_writer(task, context)
         raise dependency_error(f"unknown task type {task.task_type}")  # pragma: no cover
 
     def _run_search(self, task: TaskRecord, context: StageContext, ctx) -> TaskOutcome:
@@ -434,6 +581,23 @@ class ResearchOrchestrator:
             },
         )
 
+    def _run_writer(self, task: TaskRecord, context: StageContext) -> TaskOutcome:
+        # Deterministic composition of the run's validated material; the
+        # notes are projections handed to the sink, never written to disk.
+        nodes = self._run_nodes(task.run_id)
+        claims = self._run_records(task.run_id, RuntimeTaskType.CLAIMS, "claim_ids", "claim")
+        relations = self._all_records(task.run_id, "relation")
+        evidence = self._all_records(task.run_id, "evidence")
+        notes = self._writer.build_notes(
+            nodes, relations, claims, evidence, clock=self._clock
+        )
+        for note in notes:
+            self._sink.persist("note", note)
+        return TaskOutcome(
+            status=TaskStatus.COMPLETED,
+            result={"note_ids": [note.node_id for note in notes]},
+        )
+
     # Cross-task record gathering ------------------------------------------------
 
     def _section_extractions(self, task: TaskRecord, context: StageContext, ctx):
@@ -486,10 +650,17 @@ class ResearchOrchestrator:
                 ids.extend(task.result.get(result_key, []))
         return sorted(set(ids))
 
-    def _emit(self, job_id: str, event_type: str, payload: dict) -> None:
+    def _emit(
+        self,
+        job_id: str,
+        event_type: str,
+        payload: dict,
+        *,
+        project_id: str = "",
+    ) -> None:
         if self._event_log is None:
             return
-        self._event_log.append(job_id, event_type, payload)
+        self._event_log.append(job_id, event_type, payload, project_id=project_id)
 
 
 def apply_review_flags_if_needed(claims, report):

@@ -28,11 +28,11 @@ def log(clock):
 
 def test_append_assigns_ordered_sequences_and_utc_timestamps(log, clock):
     first = log.append("job-1", "run.started", {"plan": "p1"})
-    second = log.append("job-1", "task.status_changed", {"task_id": "t1"})
+    second = log.append("job-1", "task.progress", {"task_id": "t1"})
     assert first.sequence == 1 and second.sequence == 2
     # Timestamps are non-decreasing; strict ordering comes from the sequence.
-    assert first.timestamp <= second.timestamp
-    assert clock.now_utc().isoformat() == second.timestamp
+    assert first.occurred_at <= second.occurred_at
+    assert clock.now_utc().isoformat() == second.occurred_at
     assert first.event_id != second.event_id
 
 
@@ -102,12 +102,12 @@ def test_redact_walks_nested_structures():
 
 def test_jsonl_round_trip(log):
     log.append("job-1", "run.started", {"plan": "p1"}, task_id=None)
-    log.append("job-1", "task.status_changed", {"to": "RUNNING"}, task_id="t1")
+    log.append("job-1", "task.progress", {"to": "RUNNING"}, task_id="t1")
     text = log.to_jsonl("job-1")
     lines = [line for line in text.splitlines() if line]
     assert len(lines) == 2
     decoded = [event_from_jsonl(line) for line in lines]
-    assert [event.type for event in decoded] == ["run.started", "task.status_changed"]
+    assert [event.type for event in decoded] == ["run.started", "task.progress"]
     assert decoded[1].task_id == "t1"
     assert decoded[0].to_dict()["schema_version"] == EVENT_SCHEMA
 
@@ -122,10 +122,10 @@ def test_malformed_jsonl_is_rejected():
 
 
 def test_sse_format_and_round_trip(log):
-    log.append("job-1", "task.status_changed", {"to": "RUNNING"}, task_id="t1")
+    log.append("job-1", "task.progress", {"to": "RUNNING"}, task_id="t1")
     event = log.replay("job-1")[0]
     chunk = event.to_sse()
-    assert chunk.startswith("id: 1\nevent: task.status_changed\ndata: ")
+    assert chunk.startswith("id: 1\nevent: task.progress\ndata: ")
     assert chunk.endswith("\n\n")
     parsed = parse_sse(chunk)
     assert len(parsed) == 1
@@ -187,9 +187,10 @@ def test_concurrent_appends_keep_total_order(log):
 def test_envelope_to_dict_shape():
     envelope = EventEnvelope(
         event_id="e1",
-        job_id="job-1",
+        run_id="run-1",
         sequence=1,
-        timestamp="2026-01-01T00:00:00+00:00",
+        occurred_at="2026-01-01T00:00:00+00:00",
+        project_id="proj-1",
         type="run.started",
         task_id=None,
         payload={},
@@ -197,10 +198,102 @@ def test_envelope_to_dict_shape():
     assert envelope.to_dict() == {
         "schema_version": EVENT_SCHEMA,
         "event_id": "e1",
-        "job_id": "job-1",
         "sequence": 1,
-        "timestamp": "2026-01-01T00:00:00+00:00",
+        "occurred_at": "2026-01-01T00:00:00+00:00",
+        "run_id": "run-1",
+        "project_id": "proj-1",
         "type": "run.started",
-        "task_id": None,
         "payload": {},
     }
+
+
+def test_envelope_emits_canonical_event_v1_wire_shape(log):
+    log.append("job-1", "run.started", {"plan_id": "p1"})
+    data = log.replay("job-1")[0].to_dict()
+    # Frozen event.v1 field set: run_id is emitted (nullable for
+    # project-level events), optional fields are omitted when unset.
+    assert set(data) == {
+        "schema_version",
+        "event_id",
+        "sequence",
+        "occurred_at",
+        "run_id",
+        "project_id",
+        "type",
+        "payload",
+    }
+    assert data["schema_version"] == "1.0"
+
+
+def test_project_level_events_carry_null_run_id_and_optional_fields():
+    envelope = EventEnvelope(
+        event_id="e9",
+        run_id=None,
+        sequence=3,
+        occurred_at="2026-01-01T00:00:00+00:00",
+        project_id="proj-1",
+        type="plan.approved",
+        summary="Plan approved",
+    )
+    data = envelope.to_dict()
+    # run_id is emitted as null for project-level events (event.v1 allows
+    # both null and absent); task_id is omitted entirely (not nullable).
+    assert data["run_id"] is None
+    assert "task_id" not in data
+    assert data["summary"] == "Plan approved"
+    plain = EventEnvelope(
+        event_id="e10",
+        run_id="run-1",
+        sequence=4,
+        occurred_at="2026-01-01T00:00:00+00:00",
+        project_id="proj-1",
+        type="run.started",
+    )
+    assert "summary" not in plain.to_dict()
+
+
+def test_reading_accepts_legacy_draft_names_and_schema_marker():
+    from morpho_worker.events import event_from_dict
+
+    legacy = event_from_dict(
+        {
+            "schema_version": "research.event.v1",
+            "event_id": "e1",
+            "job_id": "job-1",
+            "sequence": 4,
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "type": "run.started",
+            "task_id": "t1",
+            "payload": {"a": 1},
+        }
+    )
+    assert legacy.run_id == "job-1"
+    assert legacy.occurred_at == "2026-01-01T00:00:00+00:00"
+    assert legacy.project_id == ""  # legacy events carry no project
+    assert event_from_dict(
+        {
+            "schema_version": "1.0",
+            "id": "e2",
+            "seq": 2,
+            "occurred_at": "2026-01-01T00:00:00+00:00",
+            "event_type": "task.completed",
+            "payload": {},
+        }
+    ).type == "task.completed"
+
+
+def test_legacy_event_types_are_canonicalized_on_emit(log):
+    log.append("run-1", "plan.created", {"status": "pending_review"})
+    log.append("run-1", "task.needs_review", {})
+    log.append("run-1", "task.cancelled", {})
+    log.append("run-1", "task.requeued", {})
+    types = [event.type for event in log.replay("run-1")]
+    assert types == ["plan.drafted", "review.requested", "task.skipped", "task.progress"]
+    payload = log.replay("run-1")[2].payload
+    assert payload["outcome"] == "cancelled"
+    assert log.replay("run-1")[3].payload["phase"] == "requeued"
+
+
+def test_transport_job_event_types_pass_through_unchanged(log):
+    log.append("job-1", "job.completed", {"status": "COMPLETED"})
+    assert log.replay("job-1")[0].type == "job.completed"

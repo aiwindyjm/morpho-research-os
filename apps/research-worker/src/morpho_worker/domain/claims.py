@@ -5,6 +5,19 @@ evidence (docs/data/CLAIM_SCHEMA.md, EVIDENCE_SCHEMA.md). Conflicting claims
 coexist with their evidence and review state; later claims never overwrite
 earlier ones. Evidence links a claim to a source with a precise locator and
 a support/contradict direction.
+
+Status vs confidence (claim.v1.1, ADR-016): ``status`` is the *review
+lifecycle* (draft → needs_review → confirmed/superseded) and ``confidence``
+is the *evidence strength* with the six PRD §6 states (confirmed, high,
+medium, low, unverified — the default — and conflicting). Where ``conflicting``
+now lives: it is a confidence state, not a lifecycle state. The validation
+flow marks both dimensions at once — a claim involved in a contradiction gets
+``confidence=conflicting`` *and* ``status=needs_review`` — so the coexistence
+semantics are preserved while the fields stay single-purpose. The
+pre-conflict evidence strength remains recoverable from the claim's evidence
+records, which keep their own numeric confidences.
+
+Both fields keep their JSON keys ``status`` and ``confidence``.
 """
 
 from __future__ import annotations
@@ -16,16 +29,24 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from morpho_worker.domain.knowledge import Confidence, ProvenanceRef
 
+#: Evidence-strength states for claims. Identical to the knowledge-node
+#: contract (PRD §6 defines one shared state set); the alias keeps claim
+#: code reading "claim confidence" instead of "node confidence".
+ClaimConfidence = Confidence
+
 
 class ClaimStatus(str, Enum):
-    """Claim confidence/lifecycle states mirror the documented states."""
+    """Review lifecycle (claim.v1.1): only ``confirmed`` is a human verdict.
 
+    ``draft`` claims are freshly extracted and unreviewed; ``needs_review``
+    flags review-pending claims (conflicts among them); ``superseded`` claims
+    were replaced and are kept for history.
+    """
+
+    DRAFT = "draft"
+    NEEDS_REVIEW = "needs_review"
     CONFIRMED = "confirmed"
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-    UNVERIFIED = "unverified"
-    CONFLICTING = "conflicting"
+    SUPERSEDED = "superseded"
 
 
 class ReviewState(str, Enum):
@@ -44,9 +65,11 @@ class Claim(BaseModel):
     object_value: str
     object_node_id: str | None = None
     scope: str = ""
-    status: ClaimStatus = ClaimStatus.UNVERIFIED
-    #: Optional numeric confidence alongside the enumerated state.
-    confidence: float | None = Field(default=None, ge=0, le=1)
+    #: Review lifecycle (draft by default for freshly extracted claims).
+    status: ClaimStatus = ClaimStatus.DRAFT
+    #: Evidence strength (six PRD §6 states; unverified when nothing is
+    #: known). Numeric extraction confidences live on evidence records.
+    confidence: ClaimConfidence = ClaimConfidence.UNVERIFIED
     evidence_ids: list[str] = Field(default_factory=list)
     provenance: list[ProvenanceRef] = Field(default_factory=list)
     review_state: ReviewState = ReviewState.NONE

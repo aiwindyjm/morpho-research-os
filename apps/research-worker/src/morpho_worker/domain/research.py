@@ -72,6 +72,9 @@ class RuntimeTaskType(str, Enum):
     NORMALIZE = "normalize"
     CLAIMS = "claims"
     VALIDATE = "validate"
+    #: Vault-ready note projections from the run's knowledge nodes
+    #: (deterministic composition; no LLM call required).
+    WRITER = "writer"
 
 
 class PlannerTaskDraft(BaseModel):

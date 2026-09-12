@@ -5,7 +5,11 @@ Rules (workgroup D first round):
 - ``offline_mock`` mode or the reserved ``mock`` provider id always yields
   deterministic mock adapters - the offline pipeline must run without any
   network or credential.
-- LLM roles resolve to the configured OpenAI-compatible adapter.
+- LLM roles resolve to the adapter matching the provider's ``protocol``:
+  the OpenAI-compatible adapter by default, the native Claude adapter for
+  ``protocol=anthropic`` (conventional provider id ``anthropic``), and the
+  native Gemini adapter for ``protocol=gemini`` (conventional provider id
+  ``gemini``).
 - Search defaults to the mock adapter in V0.1; explicitly selecting a
   configured ``kind=search`` provider via ``search_for(search_provider_id=...)``
   yields the SearXNG adapter, and a wrong/unknown selection raises a clear
@@ -26,6 +30,8 @@ from typing import Mapping
 from morpho_worker.clock import Clock, SystemClock
 from morpho_worker.config import ProviderConfig, ProviderKind, ProviderRole, WorkerConfig
 from morpho_worker.errors import ErrorCode, MorphoError
+from morpho_worker.providers.anthropic import AnthropicLLM
+from morpho_worker.providers.gemini import GeminiLLM
 from morpho_worker.providers.mock import (
     MockEmbeddingProvider,
     MockLLMProvider,
@@ -39,6 +45,21 @@ from morpho_worker.providers.ports import (
 from morpho_worker.providers.openai_compat import HttpTransport, OpenAICompatibleLLM
 from morpho_worker.providers.retry import RetryPolicy, RetryingProvider
 from morpho_worker.providers.searxng import SearxngSearch
+
+
+def _llm_adapter(
+    provider: ProviderConfig,
+    *,
+    env: Mapping[str, str],
+    transport: HttpTransport | None,
+) -> LLMProvider:
+    """Select the native adapter for the provider's declared protocol."""
+
+    if provider.protocol == "anthropic":
+        return AnthropicLLM(provider, env=env, transport=transport)
+    if provider.protocol == "gemini":
+        return GeminiLLM(provider, env=env, transport=transport)
+    return OpenAICompatibleLLM(provider, env=env, transport=transport)
 
 
 class ProviderFactory:
@@ -74,7 +95,7 @@ class ProviderFactory:
                 f"The {role.value} role requires an LLM provider, but {provider_id!r} is a {provider.kind.value} provider.",
                 retryable=False,
             )
-        adapter = OpenAICompatibleLLM(provider, env=self._env, transport=self._transport)
+        adapter = _llm_adapter(provider, env=self._env, transport=self._transport)
         return provider, adapter
 
     # Search ----------------------------------------------------------------

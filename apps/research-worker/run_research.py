@@ -83,6 +83,10 @@ RESULT_FILES: dict[str, str] = {
     "relations.json": "relation",
     "claims.json": "claim",
     "validation_report.json": "validation-report",
+    # Writer role: vault-ready note projections (PRD section 10).
+    "notes.json": "note",
+    # Incremental research diff against the prior completed run (PRD 14).
+    "incremental_report.json": "incremental-report",
 }
 PLAN_FILE = "plan.json"
 RUN_FILE = "run.json"

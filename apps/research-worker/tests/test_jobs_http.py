@@ -354,7 +354,7 @@ def test_conflicting_claims_surface_as_needs_review():
 
         events = parse_stream(stream_text(client, f"/jobs/{job_id}/events"))
         types = [event.type for event in events]
-        assert "task.needs_review" in types
+        assert "review.requested" in types
         assert types[-1] == "job.needs_review"
 
 
@@ -371,11 +371,11 @@ def test_job_events_stream_is_ordered_and_ends_with_sentinel():
         events = parse_stream(raw)
         sequences = [event.sequence for event in events]
         assert sequences == list(range(1, len(events) + 1))
-        assert all(event.job_id == job_id for event in events)
+        assert all(event.run_id == job_id for event in events)
         types = [event.type for event in events]
-        assert types[0] == "plan.created"
+        assert types[0] == "plan.drafted"
         for expected in (
-            "run.created",
+            "plan.approved",
             "run.started",
             "task.started",
             "task.completed",

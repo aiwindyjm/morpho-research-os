@@ -92,8 +92,8 @@ class _JobScopedEventLog(EventLog):
     sequence space so consumers reconnect on one cursor per job.
     """
 
-    def __init__(self, job_id: str, clock: Clock | None) -> None:
-        super().__init__(clock or SystemClock())
+    def __init__(self, job_id: str, clock: Clock | None, project_id: str = "") -> None:
+        super().__init__(clock or SystemClock(), project_id=project_id)
         self._job_key = job_id
 
     def append(
@@ -105,6 +105,7 @@ class _JobScopedEventLog(EventLog):
         task_id: str | None = None,
         dedup_key: str | None = None,
         redact_payload: bool = True,
+        project_id: str = "",
     ):
         return super().append(
             self._job_key,
@@ -113,6 +114,7 @@ class _JobScopedEventLog(EventLog):
             task_id=task_id,
             dedup_key=dedup_key,
             redact_payload=redact_payload,
+            project_id=project_id,
         )
 
     def replay(self, job_id: str, after_sequence: int = 0, limit: int | None = None):
@@ -345,7 +347,9 @@ class JobService:
 
         config = _validate_job_request(request)
         job_id = new_id()
-        event_log = _JobScopedEventLog(job_id, self._clock)
+        event_log = _JobScopedEventLog(
+            job_id, self._clock, project_id=config.project_id
+        )
         orchestrator = self._factory(event_log)
         job = JobRecord(
             job_id=job_id,

@@ -28,6 +28,10 @@ class ProviderKind(str, Enum):
     EMBEDDING = "embedding"
 
 
+#: Wire protocol an LLM provider speaks; selects the adapter in the factory.
+PROVIDER_PROTOCOLS = ("openai", "anthropic", "gemini")
+
+
 class ProviderConfig(BaseModel):
     """One provider endpoint. Provider/model are config, not domain enums."""
 
@@ -40,6 +44,11 @@ class ProviderConfig(BaseModel):
     #: provider needs no credential (for example a local Ollama endpoint).
     key_reference: str = Field(default="", pattern=_KEY_REFERENCE_PATTERN)
     model: str = ""
+    #: LLM wire protocol: ``openai`` (default, the OpenAI-compatible
+    #: adapter), ``anthropic`` (native Claude Messages API), or ``gemini``
+    #: (native Google generateContent API). Conventional provider ids:
+    #: ``anthropic`` and ``gemini``.
+    protocol: str = Field(default="openai")
     timeout_seconds: float = Field(default=60.0, gt=0, le=600)
     max_retries: int = Field(default=2, ge=0, le=10)
     retry_backoff_seconds: float = Field(default=1.0, ge=0, le=60)
@@ -47,6 +56,16 @@ class ProviderConfig(BaseModel):
     #: records. None means cost is unknown, never zero.
     cost_per_1k_input: float | None = Field(default=None, ge=0)
     cost_per_1k_output: float | None = Field(default=None, ge=0)
+
+    @field_validator("protocol")
+    @classmethod
+    def _known_protocol(cls, value: str) -> str:
+        normalized = (value or "openai").strip().lower()
+        if normalized not in PROVIDER_PROTOCOLS:
+            raise ValueError(
+                f"protocol must be one of {PROVIDER_PROTOCOLS}, got {value!r}"
+            )
+        return normalized
 
 
 class ProviderRole(str, Enum):
@@ -113,8 +132,11 @@ def default_worker_config() -> WorkerConfig:
     Per the workgroup D prompt: extraction/summarization/classification run on
     a local Ollama model (qwen3:8b, qwen2.5:7b fallback); planner/validation
     run on a strong OpenAI-compatible model (GLM); embeddings stay on a
-    replaceable mock in V0.1. Everything here is a *default* and is
-    overridable through environment variables.
+    replaceable mock in V0.1. The native Claude (``anthropic``) and Gemini
+    (``gemini``) adapters are registered but *unrouted and model-less* by
+    default: opting in is an explicit configuration change (set the model
+    and route a role), never a silent call to a real endpoint. Everything
+    here is a *default* and is overridable through environment variables.
     """
 
     return WorkerConfig(
@@ -142,6 +164,22 @@ def default_worker_config() -> WorkerConfig:
                 model="glm-4.6",
                 timeout_seconds=120.0,
                 max_retries=2,
+            ),
+            "anthropic": ProviderConfig(
+                provider_id="anthropic",
+                kind=ProviderKind.LLM,
+                base_url="https://api.anthropic.com",
+                key_reference="env:ANTHROPIC_API_KEY",
+                model="",
+                protocol="anthropic",
+            ),
+            "gemini": ProviderConfig(
+                provider_id="gemini",
+                kind=ProviderKind.LLM,
+                base_url="https://generativelanguage.googleapis.com",
+                key_reference="env:GEMINI_API_KEY",
+                model="",
+                protocol="gemini",
             ),
         },
         roles=ProviderRoles(
@@ -176,7 +214,7 @@ def apply_profile(config: WorkerConfig, profile: str) -> WorkerConfig:
 
 
 _PROVIDER_ENV_PREFIX = "MORPHO_PROVIDER_"
-_PROVIDER_ENV_FIELDS = ("BASE_URL", "KEY_REF", "KIND", "MODEL", "RETRIES", "TIMEOUT")
+_PROVIDER_ENV_FIELDS = ("BASE_URL", "KEY_REF", "KIND", "MODEL", "PROTOCOL", "RETRIES", "TIMEOUT")
 
 
 def _split_provider_env(name: str) -> tuple[str, str] | None:
@@ -212,6 +250,7 @@ def from_env(
         MORPHO_PROVIDER_<NAME>_BASE_URL=https://...
         MORPHO_PROVIDER_<NAME>_MODEL=model-name
         MORPHO_PROVIDER_<NAME>_KEY_REF=env:NAME     (reference, never a value)
+        MORPHO_PROVIDER_<NAME>_PROTOCOL=openai|anthropic|gemini
         MORPHO_PROVIDER_<NAME>_TIMEOUT=120
         MORPHO_PROVIDER_<NAME>_RETRIES=2
         MORPHO_ROLE_<ROLE>=<provider-name>
@@ -251,6 +290,7 @@ def from_env(
                 "base_url": "",
                 "key_reference": "",
                 "model": "",
+                "protocol": "openai",
                 "timeout_seconds": 60.0,
                 "max_retries": 2,
                 "retry_backoff_seconds": 1.0,
@@ -266,6 +306,8 @@ def from_env(
             entry["model"] = raw
         if raw := fields.get("KEY_REF", ""):
             entry["key_reference"] = raw
+        if raw := fields.get("PROTOCOL", ""):
+            entry["protocol"] = raw.lower()
         if raw := fields.get("TIMEOUT", ""):
             entry["timeout_seconds"] = float(raw)
         if raw := fields.get("RETRIES", ""):

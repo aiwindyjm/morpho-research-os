@@ -61,6 +61,9 @@ class RunRecord(BaseModel):
     project_id: str = ""
     config_fingerprint: str = ""
     status: RunStatus = RunStatus.PENDING
+    #: Run-level result summary attached at run end (e.g. the incremental
+    #: research report summary); task results stay on their task records.
+    result: dict | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -72,6 +75,7 @@ class StateStore:
     def create_run(self, run: RunRecord) -> RunRecord: ...
     def get_run(self, run_id: str) -> RunRecord | None: ...
     def update_run_status(self, run_id: str, status: RunStatus) -> RunRecord: ...
+    def set_run_result(self, run_id: str, result: dict) -> RunRecord: ...
 
     # tasks
     def add_task(self, task: TaskRecord) -> TaskRecord: ...
@@ -137,6 +141,20 @@ class InMemoryStateStore(StateStore):
                     retryable=False,
                 )
             run.status = status
+            run.updated_at = self._now()
+            return run.model_copy(deep=True)
+
+    def set_run_result(self, run_id: str, result: dict) -> RunRecord:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                raise MorphoError(
+                    ErrorCode.DATABASE_ERROR,
+                    "The run does not exist.",
+                    developer_detail=f"run_id={run_id}",
+                    retryable=False,
+                )
+            run.result = dict(result)
             run.updated_at = self._now()
             return run.model_copy(deep=True)
 

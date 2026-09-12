@@ -8,6 +8,7 @@ job via the worker protocol.
 
 from morpho_worker.domain.claims import (
     Claim,
+    ClaimConfidence,
     ClaimStatus,
     ConflictRecord,
     DroppedRecord,
@@ -43,6 +44,7 @@ from morpho_worker.domain.source import (
 
 __all__ = [
     "Claim",
+    "ClaimConfidence",
     "ClaimStatus",
     "ConflictRecord",
     "Confidence",

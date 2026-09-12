@@ -217,6 +217,7 @@ def test_full_offline_pipeline_end_to_end():
             RuntimeTaskType.NORMALIZE,
             RuntimeTaskType.CLAIMS,
             RuntimeTaskType.VALIDATE,
+            RuntimeTaskType.WRITER,
         } <= types
         assert all(
             task.status is TaskStatus.COMPLETED
@@ -248,6 +249,16 @@ def test_full_offline_pipeline_end_to_end():
             backing = [e for e in evidence if e.evidence_id in claim.evidence_ids]
             assert backing and any(e.locator.has_locator for e in backing)
 
+        # Writer stage (fan-in after validation): one vault-ready note
+        # projection per knowledge node, persisted through the sink.
+        notes = sink.all("note")
+        assert notes
+        assert {note.node_id for note in notes} == node_ids
+        for note in notes:
+            frontmatter = note.frontmatter()
+            assert frontmatter["claim_ids"] or True  # field always present
+            assert "## " in note.body
+
         # Validation report persisted and coherent.
         reports = sink.all("validation-report")
         assert len(reports) == 1
@@ -267,10 +278,12 @@ def test_full_offline_pipeline_end_to_end():
         assert usage.totals()["cache_hits"] > 0
 
         # Events are ordered, task-scoped, and contain no raw LLM text.
+        # (Canonical event.v1 vocabulary: the legacy "run.created" draft
+        # emission folded into the runner's "run.started"; the incremental
+        # report event lands after the runner's "run.completed".)
         events = event_log.replay(run_id)
-        assert events[0].type == "run.created"
-        assert events[-1].type == "run.completed"
-        assert "run.started" in [event.type for event in events]
+        assert events[0].type == "run.started"
+        assert events[-1].type == "run.incremental_report"
         for event in events:
             assert "raw_response" not in event.payload
             serialized = json.dumps(event.to_dict())
@@ -340,7 +353,10 @@ def test_conflicting_claims_coexist_and_run_waits_for_review():
             if claim.predicate.casefold() == "produces correlations":
                 by_key[claim.object_value.casefold()] = claim
         assert len(by_key) >= 2  # BOTH sides coexist
-        assert all(claim.status.value == "conflicting" for claim in by_key.values())
+        # claim.v1.1: conflicting is the confidence state, needs_review the
+        # lifecycle state (both applied to every conflicting claim).
+        assert all(claim.confidence.value == "conflicting" for claim in by_key.values())
+        assert all(claim.status.value == "needs_review" for claim in by_key.values())
         assert all(
             claim.review_state.value == "needs_review" for claim in by_key.values()
         )
@@ -353,9 +369,17 @@ def test_conflicting_claims_coexist_and_run_waits_for_review():
             assert conflict.claim_a_id in {c.claim_id for c in by_key.values()}
             assert conflict.claim_b_id in {c.claim_id for c in by_key.values()}
 
-        # User approves the review: the run closes, claims keep coexisting.
+        # User approves the review: the run closes, claims keep coexisting,
+        # and the writer task - gated behind the review - now composes the
+        # vault notes.
         status = orchestrator.resolve_review(run_id, approve=True)
         assert status is RunStatus.COMPLETED
+        writer_task = [
+            task for task in orchestrator.task_status(run_id)
+            if task.task_type is RuntimeTaskType.WRITER
+        ][0]
+        assert writer_task.status is TaskStatus.COMPLETED
+        assert sink.all("note")
         assert {c.object_value for c in by_key.values()} == {
             c.object_value
             for c in sink.all("claim")

@@ -1,6 +1,7 @@
 from morpho_worker.clock import FakeClock
 from morpho_worker.domain.claims import (
     Claim,
+    ClaimConfidence,
     ClaimStatus,
     EvidenceDirection,
     ReviewState,
@@ -66,7 +67,9 @@ def test_claims_link_to_nodes_and_located_evidence():
     assert len(bundle.claims) == 1
     claim = bundle.claims[0]
     assert claim.subject_node_id == nodes[0].node_id
-    assert claim.status is ClaimStatus.HIGH
+    # claim.v1.1 split: lifecycle starts as draft; evidence strength is high.
+    assert claim.status is ClaimStatus.DRAFT
+    assert claim.confidence is ClaimConfidence.HIGH
     assert claim.scope == "history"
     assert len(claim.evidence_ids) == 1
     evidence = evidence_for_claim(claim, bundle)
@@ -96,7 +99,10 @@ def test_same_claim_from_two_sources_merges_evidence_and_can_confirm():
 
     assert len(bundle.claims) == 1  # merged, not duplicated, not overwritten
     claim = bundle.claims[0]
-    assert claim.status is ClaimStatus.CONFIRMED  # 2 located independent sources
+    # 2 located independent sources confirm the evidence strength; the
+    # lifecycle stays draft until a human reviews it.
+    assert claim.confidence is ClaimConfidence.CONFIRMED
+    assert claim.status is ClaimStatus.DRAFT
     assert len(claim.evidence_ids) == 2
     assert {ref.source_id for ref in claim.provenance} == {"s1", "s2"}
 
@@ -130,8 +136,12 @@ def test_conflicting_claims_coexist_and_enter_review():
     assert {claim.claim_id for claim in flagged} == {
         conflict.claim_a_id, conflict.claim_b_id
     }
+    # claim.v1.1: "conflicting" is the confidence state; the lifecycle
+    # marks both claims needs_review.
+    confidences = {claim.confidence for claim in flagged}
+    assert confidences == {ClaimConfidence.CONFLICTING}
     statuses = {claim.status for claim in flagged}
-    assert statuses == {ClaimStatus.CONFLICTING}
+    assert statuses == {ClaimStatus.NEEDS_REVIEW}
     reviews = {claim.review_state for claim in flagged}
     assert reviews == {ReviewState.NEEDS_REVIEW}
 
@@ -147,7 +157,7 @@ def test_claim_without_locator_never_confirmed():
     bundle = ClaimBuilder().build_claims([ext, ext2], nodes, context(), clock=FakeClock())
     claim = bundle.claims[0]
     # Two sources, but no located evidence: confirmation is impossible.
-    assert claim.status is not ClaimStatus.CONFIRMED
+    assert claim.confidence is not ClaimConfidence.CONFIRMED
 
 
 def test_unresolvable_claims_are_dropped_with_reason():

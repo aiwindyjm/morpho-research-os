@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from morpho_worker.domain import (
     Claim,
+    ClaimConfidence,
     ClaimStatus,
     Evidence,
     EvidenceDirection,
@@ -85,7 +86,10 @@ def test_claim_and_evidence_are_independent_records():
         predicate="has_property",
         object_value="nonlocal correlation",
     )
-    assert claim.status is ClaimStatus.UNVERIFIED
+    # claim.v1.1: status is the review lifecycle, confidence the evidence
+    # strength; both default for a freshly extracted claim.
+    assert claim.status is ClaimStatus.DRAFT
+    assert claim.confidence is ClaimConfidence.UNVERIFIED
     evidence = Evidence(
         evidence_id="e1",
         claim_id="c1",
@@ -97,6 +101,32 @@ def test_claim_and_evidence_are_independent_records():
     assert evidence.claim_id == claim.claim_id
     assert evidence.direction is EvidenceDirection.SUPPORTS
     assert claim.evidence_ids == []  # linkage is maintained above, not inline
+
+
+def test_claim_status_and_confidence_enums_match_claim_v1_1():
+    # ADR-016 / claim.v1.1: lifecycle vs evidence strength are separate.
+    assert {member.value for member in ClaimStatus} == {
+        "draft", "needs_review", "confirmed", "superseded",
+    }
+    assert {member.value for member in ClaimConfidence} == {
+        "confirmed", "high", "medium", "low", "unverified", "conflicting",
+    }
+    with pytest.raises(ValidationError):
+        Claim(
+            claim_id="c2",
+            subject_node_id="n1",
+            predicate="p",
+            object_value="v",
+            status="high",  # legacy conflated value: rejected in 1.1
+        )
+    with pytest.raises(ValidationError):
+        Claim(
+            claim_id="c3",
+            subject_node_id="n1",
+            predicate="p",
+            object_value="v",
+            confidence="draft",  # lifecycle value: not a confidence state
+        )
 
 
 def test_evidence_locator_requires_position_information_for_confirmation_paths():
@@ -128,7 +158,7 @@ def test_source_defaults_and_dedup_key_field():
 
 def test_runtime_task_types_cover_pipeline():
     assert {member.value for member in RuntimeTaskType} == {
-        "search", "extract", "normalize", "claims", "validate",
+        "search", "extract", "normalize", "claims", "validate", "writer",
     }
 
 
