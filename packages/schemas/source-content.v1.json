@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/source-content.v1.json",
+  "title": "SourceContent",
+  "description": "Extracted, cacheable content of a source. The full text lives in the cache layer; this record carries identity and integrity facts.",
+  "type": "object",
+  "required": ["schema_version", "content_id", "source_id", "format", "content_hash", "fetched_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "content_id": { "type": "string", "minLength": 1 },
+    "source_id": { "type": "string", "minLength": 1 },
+    "format": { "enum": ["html", "pdf", "markdown", "plain", "json"] },
+    "content_hash": { "type": "string", "minLength": 8, "description": "Hash over the normalized extracted text; part of the dedup fingerprint." },
+    "language": { "type": "string" },
+    "fetched_at": { "type": "string" },
+    "cache_ref": { "type": "string", "description": "Cache-layer reference to the full extracted text; replaceable." }
+  }
+}

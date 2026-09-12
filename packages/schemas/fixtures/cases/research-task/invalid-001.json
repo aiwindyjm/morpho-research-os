@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "task_id": "018f6b38-3a66-7106-4d7e-0e3c8b6a2c53",
+  "plan_id": "018f6b35-9e33-7e03-1a4c-7b0f5e3d9f21",
+  "project_id": "018f6b2e-a3d1-7c01-9e2a-5f8d3a1b7c02",
+  "type": "teleportation",
+  "status": "RUNNING",
+  "idempotency_key": "plan:018f6b35:section:018f6b36:search:concepts",
+  "created_at": "2026-01-15T09:05:00Z",
+  "updated_at": "2026-01-15T09:05:00Z"
+}

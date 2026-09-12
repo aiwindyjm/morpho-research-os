@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/fixture-envelope.v1.json",
+  "title": "Offline fixture envelope",
+  "description": "Versioned envelope for deterministic offline fixtures shared by Rust, Python, and TypeScript tests. TEST-01 loaders must read this format; they must not invent a second envelope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "fixture_id", "description", "contract", "provenance", "input", "stability"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "fixture_id": {
+      "type": "string",
+      "minLength": 3,
+      "description": "Globally unique, kebab-case: '<dataset>.<case>', e.g. 'minimal.research-config-basic'."
+    },
+    "description": { "type": "string", "minLength": 1 },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "schema_version"],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Contract name matching a packages/schemas/<name>.v<major>.json file stem."
+        },
+        "schema_version": {
+          "type": "string",
+          "description": "Major.minor of the embedded contract; the envelope loader resolves it to <name>.v<major>.json."
+        }
+      }
+    },
+    "prompt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt_id", "prompt_version"],
+      "description": "Present when the expected output was produced by a prompt pipeline; the version participates in cache keys and golden case selection.",
+      "properties": {
+        "prompt_id": { "type": "string", "minLength": 3 },
+        "prompt_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["synthetic", "public-domain", "licensed-excerpt"]
+        },
+        "notes": { "type": "string" },
+        "source_url": { "type": "string" }
+      }
+    },
+    "input": {
+      "type": "object",
+      "description": "Deterministic input instance; must satisfy the contract named above."
+    },
+    "expected": {
+      "type": "object",
+      "description": "Golden expected output; optional for input-only fixtures. Must satisfy the same contract family when present."
+    },
+    "stability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stable_fields", "volatile_fields"],
+      "properties": {
+        "stable_fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Fields compared byte-for-byte in golden checks."
+        },
+        "volatile_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fields normalized (dropped or placeholdered) before golden comparison; e.g. timestamps and generated IDs."
+        }
+      }
+    }
+  }
+}

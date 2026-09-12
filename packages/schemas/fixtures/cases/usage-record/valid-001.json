@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "usage_id": "018f6c10-4d44-7601-7e8f-1a9b0c1d2e34",
+  "task_id": "018f6b38-4b77-7107-5e8f-1f4d9c7b3d64",
+  "run_id": "018f6b40-5c88-7208-6f9a-2a5e0d8c4e75",
+  "provider_id": "glm-main",
+  "kind": "llm",
+  "model": "glm-4.7",
+  "input_tokens": 1820,
+  "output_tokens": 640,
+  "duration_ms": 8450,
+  "estimated_cost_usd": { "amount": 0.0071, "currency": "USD" },
+  "cache_hit": false,
+  "retries": 1,
+  "created_at": "2026-01-15T09:08:00Z"
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/research-section.v1.json",
+  "title": "ResearchSection",
+  "description": "One section of a research plan, grouping tasks by dimension or sub-topic.",
+  "type": "object",
+  "required": ["schema_version", "section_id", "plan_id", "title", "order"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "section_id": { "type": "string" },
+    "plan_id": { "type": "string" },
+    "title": { "type": "string", "minLength": 1 },
+    "dimension": { "type": "string", "description": "Research dimension this section covers, when applicable." },
+    "rationale": { "type": "string" },
+    "order": { "type": "integer", "minimum": 0 },
+    "task_ids": { "type": "array", "items": { "type": "string" } },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  }
+}

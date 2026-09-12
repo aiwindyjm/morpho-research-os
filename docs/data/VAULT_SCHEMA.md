@@ -1,2 +1,4 @@
 # Vault Schema
 Markdown folders are Concepts, People, Organizations, Companies, Technologies, Papers, Books, Experiments, Events, Applications, Policies, Claims, Controversies, Sources, and Maps. Frontmatter includes schema_version, node_id, type, title, aliases, tags, confidence, status, source_ids, claim_ids, created_at, updated_at, and provenance. Writes use temp files plus atomic rename and detect user edits.
+
+The knowledge-layer records serialized into frontmatter and wikilinks are frozen by [`packages/schemas/knowledge-node.v1.json`](../../packages/schemas/knowledge-node.v1.json), `claim.v1.json`, `evidence.v1.json`, `relation.v1.json`, and `source.v1.json` (W2-06); exported vault bundles are tracked as `artifact.v1.json` records. `node_id` in frontmatter must equal the KnowledgeNode's stable `node_id`, and the vault `schema_version` follows the version policy in `docs/development/VERSIONS.md`.

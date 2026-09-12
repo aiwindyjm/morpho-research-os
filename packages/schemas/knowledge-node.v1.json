@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/knowledge-node.v1.json",
+  "title": "KnowledgeNode",
+  "description": "A knowledge node in the project graph. Claims and evidence are separate records and are never folded into node summaries (PRD section 6).",
+  "type": "object",
+  "required": ["schema_version", "node_id", "project_id", "type", "title", "confidence", "created_at", "updated_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "node_id": { "type": "string", "minLength": 1, "description": "Stable ID; the vault note's node_id must match." },
+    "project_id": { "type": "string", "minLength": 1 },
+    "type": {
+      "enum": ["concept", "person", "organization", "company", "paper", "book", "experiment", "event", "technology", "product", "application", "policy", "dataset", "controversy"]
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "aliases": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "summary": { "type": "string" },
+    "status": { "enum": ["active", "merged", "superseded"] },
+    "confidence": { "enum": ["confirmed", "high", "medium", "low", "unverified", "conflicting"] },
+    "source_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "claim_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "metadata": {
+      "type": "object",
+      "description": "Bounded type-specific metadata (docs/data/KNOWLEDGE_SCHEMA.md); JSON is allowed here by the data model."
+    },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  }
+}

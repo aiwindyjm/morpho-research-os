@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/worker-cancel-response.v1.json",
+  "title": "WorkerCancelResponse",
+  "description": "POST /jobs/{id}/cancel response. Cancellation is cooperative: the worker stops at the next checkpoint boundary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "job_id", "status"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "job_id": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["cancelling", "cancelled"] },
+    "previous_status": {
+      "enum": ["queued", "running"],
+      "description": "Status at cancellation time; cancelling an already-finished job is rejected with the error envelope."
+    },
+    "requested_at": { "type": "string" }
+  }
+}

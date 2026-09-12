@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/source.v1.json",
+  "title": "Source",
+  "description": "A discovered external source. Quality metadata describes authority and fitness for purpose; it never declares content truth (PRD section 6).",
+  "type": "object",
+  "required": ["schema_version", "source_id", "project_id", "url", "title", "kind", "dedup_key", "retrieved_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "source_id": { "type": "string", "minLength": 1 },
+    "project_id": { "type": "string", "minLength": 1 },
+    "url": { "type": "string", "minLength": 1, "description": "Canonical URL after normalization; origin URL is preserved in provenance notes." },
+    "title": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["web", "paper", "book", "github", "dataset", "news", "other"] },
+    "published_at": { "type": "string" },
+    "retrieved_at": { "type": "string" },
+    "languages": { "type": "array", "items": { "type": "string", "minLength": 2 } },
+    "dedup_key": { "type": "string", "minLength": 1, "description": "Stable deduplication key over canonical URL and content fingerprint." },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authority": { "enum": ["high", "medium", "low", "unevaluated"] },
+        "fitness": { "enum": ["high", "medium", "low", "unevaluated"] },
+        "evaluated_at": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

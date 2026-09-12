@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "fixture_id": "minimal.research-config-basic",
+  "description": "Envelope valid case mirroring the shipped minimal fixture.",
+  "contract": {
+    "schema": "research-config",
+    "schema_version": "1.0"
+  },
+  "provenance": {
+    "kind": "synthetic",
+    "notes": "Hand-written for contract tests."
+  },
+  "input": {
+    "schema_version": "1.0",
+    "config_id": "018f6b31-4c22-7d02-8f3b-6a9e4d2c8e11",
+    "project_id": "018f6b2e-a3d1-7c01-9e2a-5f8d3a1b7c02",
+    "domain": "physics",
+    "topic": "superconducting qubits",
+    "purpose": "learning",
+    "depth": 2,
+    "dimensions": ["concepts", "experiments"],
+    "languages": ["en"],
+    "source_types": ["web"]
+  },
+  "stability": {
+    "stable_fields": ["schema_version", "domain", "topic"],
+    "volatile_fields": []
+  }
+}

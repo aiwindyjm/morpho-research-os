@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/claim.v1.json",
+  "title": "Claim",
+  "description": "A claim about a knowledge node. Claims are never treated as entities; conflicting claims coexist with their review state (docs/data/CLAIM_SCHEMA.md).",
+  "type": "object",
+  "required": ["schema_version", "claim_id", "project_id", "subject_node_id", "predicate", "object", "status", "created_at", "updated_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "claim_id": { "type": "string", "minLength": 1 },
+    "project_id": { "type": "string", "minLength": 1 },
+    "subject_node_id": { "type": "string", "minLength": 1 },
+    "predicate": { "type": "string", "minLength": 1 },
+    "object": { "type": "string", "minLength": 1, "description": "Object or value of the claim." },
+    "scope": { "type": "string", "description": "Qualifier, e.g. 'as of 2025' or 'in superconducting platforms'." },
+    "status": { "enum": ["confirmed", "high", "medium", "low", "unverified", "conflicting"] },
+    "evidence_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "created_by": { "enum": ["user", "ai"] },
+        "prompt_id": { "type": "string" },
+        "prompt_version": { "type": "string" },
+        "task_id": { "type": "string" }
+      }
+    },
+    "review_state": { "enum": ["unreviewed", "needs-review", "reviewed"] },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  }
+}

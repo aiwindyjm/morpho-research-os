@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "config_id": "018f6b31-4c22-7d02-8f3b-6a9e4d2c8e11",
+  "project_id": "018f6b2e-a3d1-7c01-9e2a-5f8d3a1b7c02",
+  "domain": "physics",
+  "topic": "superconducting qubits",
+  "purpose": "learning",
+  "audience": "self",
+  "depth": 2,
+  "dimensions": ["concepts", "experiments", "people"],
+  "time_range": { "from": "2015-01-01", "to": "2026-01-01" },
+  "geographic_scope": "global",
+  "languages": ["en"],
+  "source_types": ["web", "paper"],
+  "source_domains": ["arxiv.org"],
+  "update_frequency": "manual",
+  "created_at": "2026-01-15T08:31:00Z",
+  "updated_at": "2026-01-15T08:31:00Z"
+}

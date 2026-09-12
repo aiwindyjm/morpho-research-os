@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/relation.v1.json",
+  "title": "Relation",
+  "description": "A typed, directed connection between two knowledge nodes with confidence, provenance, and lifecycle (docs/data/RELATION_SCHEMA.md). Contradiction between claims is stored as claim-level state, visualized for review.",
+  "type": "object",
+  "required": ["schema_version", "relation_id", "from_node_id", "to_node_id", "predicate", "confidence", "created_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "relation_id": { "type": "string", "minLength": 1 },
+    "from_node_id": { "type": "string", "minLength": 1 },
+    "to_node_id": { "type": "string", "minLength": 1 },
+    "predicate": { "type": "string", "minLength": 1, "description": "Typed predicate from the registered relation vocabulary maintained by the normalization stage." },
+    "direction": { "enum": ["directed", "undirected"] },
+    "confidence": { "enum": ["confirmed", "high", "medium", "low", "unverified"] },
+    "status": { "enum": ["active", "merged", "superseded"] },
+    "source_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "claim_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "created_by": { "enum": ["user", "ai"] },
+        "prompt_id": { "type": "string" },
+        "prompt_version": { "type": "string" }
+      }
+    },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  }
+}

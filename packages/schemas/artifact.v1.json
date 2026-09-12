@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/artifact.v1.json",
+  "title": "Artifact",
+  "description": "A durable produced asset belonging to a project (vault export, report, graph snapshot).",
+  "type": "object",
+  "required": ["schema_version", "artifact_id", "project_id", "kind", "created_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "artifact_id": { "type": "string", "minLength": 1 },
+    "project_id": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["vault-export", "report", "graph-snapshot", "coverage-report", "other"] },
+    "run_id": { "type": "string" },
+    "path": { "type": "string", "description": "Vault-relative or artifact-store path managed by the Rust filesystem service." },
+    "format": { "enum": ["markdown", "json", "png", "svg"] },
+    "note": { "type": "string" },
+    "created_at": { "type": "string" }
+  }
+}

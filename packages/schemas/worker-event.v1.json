@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/worker-event.v1.json",
+  "title": "WorkerEvent",
+  "description": "One SSE event from GET /jobs/{id}/events. Events are ordered, append-only, reconnectable via seq, and redacted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "seq", "job_id", "timestamp", "type"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "event_id": { "type": "string", "minLength": 1, "description": "Stable event identifier; identical across replays." },
+    "seq": { "type": "integer", "minimum": 1, "description": "Strictly increasing per job; reconnect cursors use Last-Event-ID / from_seq." },
+    "job_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string" },
+    "task_id": { "type": "string" },
+    "timestamp": { "type": "string" },
+    "type": {
+      "enum": ["job.accepted", "job.started", "job.progress", "job.checkpoint", "job.completed", "job.failed", "job.cancelled"]
+    },
+    "payload": { "type": "object", "description": "Redacted progress/result metadata. Must not contain secrets, raw LLM responses, or user vault content." },
+    "error": { "type": "object", "description": "Structured error block for job.failed events." }
+  }
+}

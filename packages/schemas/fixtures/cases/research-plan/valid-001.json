@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plan_id": "018f6b35-9e33-7e03-1a4c-7b0f5e3d9f21",
+  "project_id": "018f6b2e-a3d1-7c01-9e2a-5f8d3a1b7c02",
+  "config_id": "018f6b31-4c22-7d02-8f3b-6a9e4d2c8e11",
+  "title": "Superconducting qubits orientation plan",
+  "status": "pending-approval",
+  "section_ids": [
+    "018f6b36-1f44-7f04-2b5d-8c1a6f4e0a31",
+    "018f6b36-2f55-7f05-3c6e-9d2b7a5f1b42"
+  ],
+  "generated_by": {
+    "prompt_id": "planner.plan-draft",
+    "prompt_version": "1.0.0"
+  },
+  "created_at": "2026-01-15T09:00:00Z",
+  "updated_at": "2026-01-15T09:00:00Z"
+}

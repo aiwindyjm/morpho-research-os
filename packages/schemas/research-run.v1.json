@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/research-run.v1.json",
+  "title": "ResearchRun",
+  "description": "One execution of an approved plan. Snapshots the configuration and plan it ran with (PRD section 14).",
+  "type": "object",
+  "required": ["schema_version", "run_id", "project_id", "plan_id", "status", "started_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "run_id": { "type": "string" },
+    "project_id": { "type": "string" },
+    "plan_id": { "type": "string" },
+    "status": { "enum": ["running", "paused", "completed", "failed", "cancelled"] },
+    "config_snapshot": { "type": "object", "description": "Inline copy of the ResearchConfig at run start." },
+    "plan_snapshot_ref": { "type": "string", "description": "Reference to the immutable plan snapshot used by this run." },
+    "stats": { "type": "object", "description": "Aggregated counters (tasks completed, sources found, usage totals) maintained by the core." },
+    "started_at": { "type": "string" },
+    "finished_at": { "type": "string" }
+  }
+}

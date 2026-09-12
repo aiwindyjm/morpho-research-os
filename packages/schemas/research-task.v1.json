@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/research-task.v1.json",
+  "title": "ResearchTask",
+  "description": "A durable task in a research run (PRD section 7). Only the Orchestrator transitions status; dependencies live in TaskDependency records.",
+  "type": "object",
+  "required": ["schema_version", "task_id", "plan_id", "project_id", "type", "status", "idempotency_key", "created_at", "updated_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "task_id": { "type": "string" },
+    "plan_id": { "type": "string" },
+    "run_id": { "type": "string", "description": "Set once a run picks the task up." },
+    "section_id": { "type": "string" },
+    "project_id": { "type": "string" },
+    "type": {
+      "enum": ["search", "source-evaluation", "extraction", "entity", "relation", "validation", "writer", "synthesis"]
+    },
+    "status": {
+      "enum": ["PENDING", "PLANNING", "RUNNING", "VALIDATING", "NEEDS_REVIEW", "COMPLETED", "FAILED", "PAUSED", "CANCELLED"]
+    },
+    "idempotency_key": { "type": "string", "minLength": 1, "description": "Stable key preventing duplicate execution of the same logical work." },
+    "checkpoint": { "type": "object", "description": "Opaque resumable checkpoint written by the worker before crash points." },
+    "retry_count": { "type": "integer", "minimum": 0 },
+    "max_retries": { "type": "integer", "minimum": 0 },
+    "cache_refs": { "type": "array", "items": { "type": "string" }, "description": "Cache entries this task depends on or produced." },
+    "result_ref": { "type": "string", "description": "Reference to the normalized result record." },
+    "error_ref": { "type": "string", "description": "Reference to the structured error record." },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  }
+}

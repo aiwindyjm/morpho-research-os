@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/project.v1.json",
+  "title": "Project",
+  "description": "A single isolated research project. All configurations, plans, tasks, sources, knowledge, assistant context, and vault artifacts belong to exactly one project.",
+  "type": "object",
+  "required": ["schema_version", "project_id", "name", "created_at", "updated_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "project_id": { "type": "string", "description": "UUIDv7 assigned by the Rust Core at creation." },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "vault_path": { "type": "string", "description": "Vault root for this project, managed by the Rust filesystem service." },
+    "archived": { "type": "boolean" },
+    "created_at": { "type": "string", "description": "RFC 3339 UTC timestamp." },
+    "updated_at": { "type": "string", "description": "RFC 3339 UTC timestamp." }
+  }
+}

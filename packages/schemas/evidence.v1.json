@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morpho.dev/schemas/evidence.v1.json",
+  "title": "Evidence",
+  "description": "Links a claim to a source with a precise locator and a support/contradict direction (docs/data/EVIDENCE_SCHEMA.md). Auditable; revisions supersede instead of deleting.",
+  "type": "object",
+  "required": ["schema_version", "evidence_id", "claim_id", "source_id", "direction", "locator", "retrieved_at"],
+  "properties": {
+    "schema_version": { "enum": ["1.0"] },
+    "evidence_id": { "type": "string", "minLength": 1 },
+    "claim_id": { "type": "string", "minLength": 1 },
+    "source_id": { "type": "string", "minLength": 1, "description": "Every evidence record references a Source, never raw content." },
+    "direction": { "enum": ["support", "contradict"] },
+    "locator": {
+      "type": "object",
+      "description": "Precise locator. The contract requires the block to be present; carrying at least one locating field (quote/page/section/fragment) is a writer obligation verified in golden cases, not a v1 schema assertion.",
+      "properties": {
+        "quote": { "type": "string" },
+        "page": { "type": "string" },
+        "section": { "type": "string" },
+        "fragment": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "extraction_method": { "enum": ["ai", "user"] },
+    "retrieved_at": { "type": "string" },
+    "revised_at": { "type": "string" },
+    "superseded_by": { "type": "string", "description": "evidence_id of the revising record; history is preserved." }
+  }
+}

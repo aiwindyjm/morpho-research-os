@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "section_id": "018f6b36-1f44-7f04-2b5d-8c1a6f4e0a31",
+  "plan_id": "018f6b35-9e33-7e03-1a4c-7b0f5e3d9f21",
+  "title": "Core concepts and platforms",
+  "dimension": "concepts",
+  "rationale": "Establish shared vocabulary before experiments.",
+  "order": 0,
+  "task_ids": [
+    "018f6b38-3a66-7106-4d7e-0e3c8b6a2c53",
+    "018f6b38-4b77-7107-5e8f-1f4d9c7b3d64"
+  ],
+  "created_at": "2026-01-15T09:01:00Z",
+  "updated_at": "2026-01-15T09:01:00Z"
+}

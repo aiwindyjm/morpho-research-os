@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "source_id": "018f6c20-5e55-7701-8f9a-2b0c1d3e4f56",
+  "project_id": "018f6b2e-a3d1-7c01-9e2a-5f8d3a1b7c02",
+  "url": "https://example.com/notes/superconducting-qubits-review",
+  "title": "A review of superconducting qubit platforms",
+  "kind": "web",
+  "published_at": "2025-06-01T00:00:00Z",
+  "retrieved_at": "2026-01-15T09:10:00Z",
+  "languages": ["en"],
+  "dedup_key": "sha256:9f2c8e21ab",
+  "quality": {
+    "authority": "medium",
+    "fitness": "high",
+    "evaluated_at": "2026-01-15T09:12:00Z",
+    "notes": "Personal technical blog; corroborated by two papers."
+  }
+}

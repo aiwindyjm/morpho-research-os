@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "node_id": "018f6c30-7a77-7901-0b1c-4d2e3f4a5b78",
+  "project_id": "018f6b2e-a3d1-7c01-9e2a-5f8d3a1b7c02",
+  "type": "technology",
+  "title": "Transmon qubit",
+  "aliases": ["transmon"],
+  "summary": "A superconducting charge qubit with reduced charge-noise sensitivity.",
+  "status": "active",
+  "confidence": "high",
+  "source_ids": ["018f6c20-5e55-7701-8f9a-2b0c1d3e4f56"],
+  "claim_ids": ["018f6c40-8b88-7a02-1c2d-5e3f4a5b6c89"],
+  "metadata": { "introduced_year": "2007" },
+  "created_at": "2026-01-15T09:15:00Z",
+  "updated_at": "2026-01-15T09:20:00Z"
+}

@@ -1,7 +1,9 @@
 name: CI
+
 on:
   push:
   pull_request:
+
 jobs:
   docs:
     runs-on: ubuntu-latest
@@ -26,3 +28,60 @@ jobs:
         run: |
           private_files=$(git ls-files private | grep -v '^private/conversations/.gitkeep$' || true)
           test -z "$private_files" || { echo "Private files must not be tracked:"; echo "$private_files"; exit 1; }
+      - name: Check task status tracking
+        shell: pwsh
+        run: ./scripts/check-task-status.ps1
+
+  fixture-envelope:
+    # Offline fixture envelope validation; activates once the validator exists.
+    if: hashFiles('scripts/validate-fixture.py') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Validate offline fixtures against envelope schema
+        run: uv run --with jsonschema python scripts/validate-fixture.py --all
+
+  schemas-typescript:
+    # Zod bindings + canonical JSON Schema validation; activates with the root pnpm workspace.
+    if: hashFiles('pnpm-lock.yaml') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r run typecheck
+      - run: pnpm -r run test
+
+  schemas-python:
+    # Pydantic bindings + canonical JSON Schema validation; activates with the root uv workspace.
+    if: hashFiles('uv.lock') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --all-packages
+      - run: uv run --package morpho-schemas pytest packages/schemas/py/tests -q
+
+  schemas-rust:
+    # Serde bindings; activates with the root Cargo workspace. clippy gates the
+    # schemas package only: every workspace member owns its own lint gate when
+    # it joins (the desktop core crate carries its own review, see TASK_STATUS).
+    if: hashFiles('Cargo.toml') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo fmt --all --check
+      - run: cargo clippy -p morpho-schemas --all-targets -- -D warnings
+      - run: cargo test --workspace --locked
