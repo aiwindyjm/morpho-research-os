@@ -1,12 +1,14 @@
-import { useState } from "react";
-import { Alert, Button, Textarea } from "@morpho/ui";
+import { useEffect, useState } from "react";
+import { Alert, Button, Textarea, useToast } from "@morpho/ui";
 import { ASSISTANT_ACTION_LABELS } from "@/types/labels";
 import type { AssistantAction, AssistantResponse } from "@/types/domain";
+import type { JournalAuthor } from "@/types/journal";
 import {
   useAssistantActions,
   useAssistantContext,
   useAssistantDecisions,
 } from "@/services/queries";
+import { addEntry, todayIso } from "@/services/journal";
 import { isMorphoError } from "@/services/errors";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 
@@ -16,12 +18,24 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
  * Recording a decision requires an explicit save; nothing is persisted
  * automatically, and switching projects swaps the whole context.
  *
+ * Saving the conversation to the journal (PRD §12, DO_NOT_BREAK #12) is an
+ * explicit two-step action: 保存到日志 arms a confirmation, and only 确认保存
+ * writes the transcript (user + assistant messages, save timestamp, project
+ * id) into the local journal store used by the journal view. Nothing is ever
+ * captured silently.
+ *
  * Prototype alignment (spec §8): popup shell with a Morpho AI header, an
  * accent context strip, and a footer that jumps to the conversation journal.
  */
 
 /** Prototype card style shared by the response and decision cards. */
-const PANEL_CARD_CLASS = "rounded-md border border-border bg-white/[0.03] p-sm";
+const PANEL_CARD_CLASS = "rounded-md border border-border bg-overlay-soft p-sm";
+
+/** One exchanged message of the current panel conversation. */
+interface TranscriptMessage {
+  author: JournalAuthor;
+  content: string;
+}
 
 const CONTEXT_ACTIONS: Array<{
   action: "explain_progress" | "suggest_next_task" | "list_pending_reviews";
@@ -38,11 +52,28 @@ export function AssistantPanel() {
   const { data: context, isLoading } = useAssistantContext(projectId);
   const { data: decisions } = useAssistantDecisions(projectId);
   const { act, saveDecision } = useAssistantActions(projectId);
+  const { showToast } = useToast();
 
   const [response, setResponse] = useState<AssistantResponse | null>(null);
   const [decisionDraft, setDecisionDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState(false);
+  const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
+  const [journalSaveState, setJournalSaveState] = useState<
+    "idle" | "confirming" | "saved"
+  >("idle");
+
+  // The dock stays mounted across project switches, so local state must be
+  // cleared when the project changes: a response or draft from the old
+  // project must never leak into the new one.
+  useEffect(() => {
+    setResponse(null);
+    setDecisionDraft("");
+    setError(null);
+    setSavedNotice(false);
+    setTranscript([]);
+    setJournalSaveState("idle");
+  }, [projectId]);
 
   async function runAction(action: AssistantAction) {
     setError(null);
@@ -61,11 +92,37 @@ export function AssistantPanel() {
       }
       const result = await act.mutateAsync(action);
       setResponse(result);
+      // The exchange becomes part of the savable conversation transcript.
+      setTranscript((prev) => [
+        ...prev,
+        { author: "user", content: ASSISTANT_ACTION_LABELS[action] },
+        { author: "morpho", content: result.summary },
+      ]);
+      setJournalSaveState("idle");
     } catch (err) {
       setError(
         isMorphoError(err) ? err.userMessage : "助手暂时不可用，请重试。",
       );
     }
+  }
+
+  /** Explicit save (second click) — see DO_NOT_BREAK #12. */
+  function confirmSaveToJournal() {
+    if (transcript.length === 0) return;
+    const projectName = context?.project_name ?? "未知项目";
+    const content = [
+      `从 AI 助手保存的对话（项目：${projectName} · ID ${projectId}）`,
+      ...transcript.map(
+        (message) => `[${message.author === "user" ? "用户" : "Morpho"}] ${message.content}`,
+      ),
+    ].join("\n");
+    addEntry(todayIso(), "morpho", content);
+    setJournalSaveState("saved");
+    showToast({
+      title: "已保存到对话日志",
+      detail: `共 ${transcript.length} 条消息（仅本机）`,
+      variant: "success",
+    });
   }
 
   return (
@@ -89,7 +146,7 @@ export function AssistantPanel() {
         </Button>
       </header>
 
-      <div className="bg-accent-soft px-md py-sm text-[10px] text-text-muted">
+      <div className="bg-accent-soft px-md py-sm text-nano text-text-muted">
         {isLoading ? (
           <p role="status">正在加载项目上下文…</p>
         ) : context ? (
@@ -135,6 +192,55 @@ export function AssistantPanel() {
             ) : null}
           </div>
         ) : null}
+
+        <div className={PANEL_CARD_CLASS} data-testid="assistant-journal-save">
+          <p className="text-label text-text-primary">保存对话到日志</p>
+          <p className="mt-xs text-caption text-text-muted">
+            当前对话共 {transcript.length} 条消息；只有你点击「确认保存」才会写入
+            本机对话日志，不会自动保存。
+          </p>
+          {journalSaveState === "confirming" ? (
+            <div className="mt-sm flex flex-col gap-xs" role="group" aria-label="确认保存对话">
+              <p className="text-caption text-text-secondary">
+                将把 {transcript.length} 条消息保存到今天的对话日志（{todayIso()}，仅本机）。
+              </p>
+              <div className="flex items-center gap-sm">
+                <Button size="sm" variant="primary" onClick={confirmSaveToJournal}>
+                  确认保存
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setJournalSaveState("idle")}
+                >
+                  取消
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="mt-sm"
+              disabled={transcript.length === 0}
+              onClick={() => setJournalSaveState("confirming")}
+            >
+              保存到日志
+            </Button>
+          )}
+          {journalSaveState === "saved" ? (
+            <p className="mt-xs text-caption text-success" role="status">
+              已保存 {transcript.length} 条消息到今天的对话日志。{" "}
+              <button
+                type="button"
+                className="text-info hover:underline"
+                onClick={() => setActiveView("journal")}
+              >
+                查看对话日志 →
+              </button>
+            </p>
+          ) : null}
+        </div>
 
         <div className={PANEL_CARD_CLASS}>
           <p className="text-label text-text-primary">记录决定</p>
