@@ -1,0 +1,65 @@
+{
+  "entities": [
+    {
+      "name": "Quantum entanglement",
+      "type": "concept",
+      "aliases": ["entanglement", "spooky action"],
+      "description": "A state of correlated quantum systems that persists across distance."
+    },
+    {
+      "name": "Bell test",
+      "type": "experiment",
+      "aliases": ["Bell experiment", "CHSH experiment"],
+      "description": "An experiment testing Bell inequalities with entangled particles."
+    },
+    {
+      "name": "John Bell",
+      "type": "person",
+      "aliases": ["J.S. Bell"],
+      "description": "Physicist who derived the inequalities bearing his name."
+    },
+    {
+      "name": "John Bell",
+      "type": "person",
+      "aliases": [],
+      "description": "Duplicate entry to exercise within-extraction dedup."
+    }
+  ],
+  "relations": [
+    {
+      "subject": "John Bell",
+      "predicate": "derived",
+      "object": "Bell test",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Bell test",
+      "predicate": "tests",
+      "object": "Quantum entanglement",
+      "confidence": 0.85
+    }
+  ],
+  "claims": [
+    {
+      "subject": "Quantum entanglement",
+      "predicate": "produces correlations",
+      "object_value": "stronger than any local hidden-variable model allows",
+      "quote": "no local hidden-variable model can reproduce the observed correlations",
+      "section": "Introduction",
+      "confidence": 0.8
+    },
+    {
+      "subject": "Bell test",
+      "predicate": "excludes",
+      "object_value": "local hidden-variable theories",
+      "quote": "the 2015 loophole-free experiments rejected local realism",
+      "section": "Results",
+      "confidence": 0.75
+    }
+  ],
+  "summary": "The source introduces quantum entanglement and the Bell tests that constrain it. It reports that loophole-free experiments rejected local hidden-variable theories. The text grounds every claim in quoted passages.",
+  "key_points": [
+    "Entanglement correlations exceed classical bounds",
+    "Loophole-free Bell tests were performed in 2015"
+  ]
+}
