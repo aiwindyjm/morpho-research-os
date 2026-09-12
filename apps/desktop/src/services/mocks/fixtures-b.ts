@@ -38,6 +38,8 @@ export const projectB: Project = {
 
 export const configB: ResearchConfig = {
   schema_version: "1.0",
+  config_id: fixtureId("cfgbbbb1", 2),
+  project_id: PROJECT_B_ID,
   domain: "神经工程",
   topic: "脑机接口在运动康复中的应用",
   purpose: "research",
@@ -52,7 +54,7 @@ export const configB: ResearchConfig = {
     "controversy",
     "future_trends",
   ],
-  time_range: { from: "2021-01-01T00:00:00.000Z", to: null },
+  time_range: { from: "2021-01-01T00:00:00.000Z", to: "2026-05-10T00:00:00.000Z" },
   geographic_scope: "global",
   languages: ["zh", "en"],
   source_types: ["paper", "documentation", "web_page"],

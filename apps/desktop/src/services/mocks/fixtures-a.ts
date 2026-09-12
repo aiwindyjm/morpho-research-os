@@ -36,6 +36,8 @@ export const PROJECT_B_ID = fixtureId("bbbbbbb", 1);
 
 export const configA: ResearchConfig = {
   schema_version: "1.0",
+  config_id: fixtureId("cfgaaaa1", 1),
+  project_id: PROJECT_A_ID,
   domain: "人工智能",
   topic: "大语言模型推理优化",
   purpose: "research",
@@ -49,7 +51,7 @@ export const configA: ResearchConfig = {
     "controversy",
     "future_trends",
   ],
-  time_range: { from: "2023-01-01T00:00:00.000Z", to: null },
+  time_range: { from: "2023-01-01T00:00:00.000Z", to: "2026-06-01T00:00:00.000Z" },
   geographic_scope: "global",
   languages: ["zh", "en"],
   source_types: ["paper", "documentation", "web_page"],

@@ -136,6 +136,10 @@ export interface TimeRange {
  */
 export interface ResearchConfig {
   schema_version: "1.0";
+  /** Persisted-record ids required by research-config.v1.json; the
+   *  user-editable form omits them until the Rust Core assigns them. */
+  config_id?: string;
+  project_id?: string;
   domain: string;
   topic: string;
   purpose: ResearchPurpose;
