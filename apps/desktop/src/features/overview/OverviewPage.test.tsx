@@ -92,9 +92,11 @@ describe("OverviewPage", () => {
     expect(path.querySelectorAll('[data-state="done"]').length).toBe(12);
     // No RUNNING/PLANNING/VALIDATING tasks in the fixture.
     expect(path.querySelectorAll('[data-state="current"]').length).toBe(0);
-    // NEEDS_REVIEW and PENDING are not done → waiting treatment.
-    expect(path.querySelectorAll('[data-state="waiting"]').length).toBe(2);
-    expect(within(path).getAllByText("等待前置任务").length).toBe(2);
+    // NEEDS_REVIEW gets the review treatment; PENDING keeps waiting.
+    expect(path.querySelectorAll('[data-state="review"]').length).toBe(1);
+    expect(path.querySelectorAll('[data-state="waiting"]').length).toBe(1);
+    expect(within(path).getAllByText("等待前置任务").length).toBe(1);
+    expect(within(path).getByText("待审核")).toBeInTheDocument();
   });
 
   it("shows the five most recent activity entries", async () => {
@@ -119,6 +121,10 @@ describe("OverviewPage", () => {
     });
     // One row per configured dimension (7 for project B).
     expect(dims.querySelectorAll('[data-testid="dimension-row"]').length).toBe(7);
+    // RES-10 explainability: each row discloses weighted components + reasons
+    // (ported from the former coverage view).
+    expect(within(dims).getAllByText("为什么是这个分数？").length).toBe(7);
+    expect(within(dims).getAllByText(/3\/5 个任务完成/).length).toBe(1);
   });
 
   it("shows the pending gap proposal and approving it creates a task", async () => {
@@ -150,6 +156,29 @@ describe("OverviewPage", () => {
     });
     await waitFor(() => {
       expect(within(next).getByText(/已创建任务/)).toBeInTheDocument();
+    });
+  });
+
+  it("dismisses the top proposal and falls through to the next pending gap", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const next = await screen.findByTestId("overview-next");
+    await waitFor(() => {
+      expect(next.textContent).toContain("核心概念");
+    });
+
+    await user.click(
+      within(next).getByRole("button", { name: "忽略该建议" }),
+    );
+
+    // Dismissal goes through the mock backend: the dismissed dimension's
+    // proposal disappears and the panel falls through to the next one.
+    await waitFor(() => {
+      expect(next.textContent).toContain("技术方法");
+      expect(
+        within(next).getByRole("button", { name: "创建研究任务 →" }),
+      ).toBeInTheDocument();
     });
   });
 

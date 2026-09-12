@@ -4,10 +4,15 @@ import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import {
+  COVERAGE_WEIGHTS,
   QUALITY_SOURCE_THRESHOLD,
   TERMINAL_TASK_STATES,
 } from "@/types/domain";
-import type { ResearchTask, TimelineEntry } from "@/types/domain";
+import type {
+  CoverageDimensionResult,
+  ResearchTask,
+  TimelineEntry,
+} from "@/types/domain";
 import {
   PLAN_STATUS_LABELS,
   TASK_STATE_LABELS,
@@ -36,7 +41,7 @@ import {
  * prototype's illustrative values.
  */
 
-type PathState = "done" | "current" | "waiting";
+type PathState = "done" | "current" | "review" | "waiting";
 
 function pathStateOf(task: ResearchTask): PathState {
   if (task.state === "COMPLETED") return "done";
@@ -47,12 +52,15 @@ function pathStateOf(task: ResearchTask): PathState {
   ) {
     return "current";
   }
+  // Conflicts surfaced by validation need a human decision, not waiting.
+  if (task.state === "NEEDS_REVIEW") return "review";
   return "waiting";
 }
 
 const PATH_MARKERS: Record<PathState, { glyph: string; className: string }> = {
   done: { glyph: "✓", className: "text-success" },
   current: { glyph: "→", className: "text-info" },
+  review: { glyph: "!", className: "text-warning" },
   waiting: { glyph: "○", className: "text-text-muted" },
 };
 
@@ -103,6 +111,47 @@ function MetricCard({
         </div>
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * RES-10 explainability, ported from the former coverage view: a quiet
+ * disclosure per dimension showing the weighted formula components with raw
+ * inputs plus the computed reasons. Coverage stays an explainable
+ * indicator, never a bare score.
+ */
+function CoverageDisclosure({ dimension }: { dimension: CoverageDimensionResult }) {
+  return (
+    <details className="text-caption text-text-muted">
+      <summary className="cursor-pointer">为什么是这个分数？</summary>
+      <ul className="mt-xs list-disc pl-lg">
+        <li>
+          任务完成度 {dimension.components.task_completion.toFixed(2)}（权重{" "}
+          {COVERAGE_WEIGHTS.task_completion}）：
+          {dimension.inputs.tasks_completed}/{dimension.inputs.tasks_total} 个任务完成
+        </li>
+        <li>
+          知识广度 {dimension.components.knowledge_breadth.toFixed(2)}（权重{" "}
+          {COVERAGE_WEIGHTS.knowledge_breadth}）：
+          {dimension.inputs.knowledge_nodes} 个节点
+        </li>
+        <li>
+          证据密度 {dimension.components.evidence_density.toFixed(2)}（权重{" "}
+          {COVERAGE_WEIGHTS.evidence_density}）：
+          {dimension.inputs.evidence_items} 条证据
+        </li>
+        <li>
+          来源多样性 {dimension.components.source_diversity.toFixed(2)}（权重{" "}
+          {COVERAGE_WEIGHTS.source_diversity}）：
+          {dimension.inputs.quality_sources} 个独立高质量来源
+        </li>
+      </ul>
+      <ul className="mt-xs list-disc pl-lg">
+        {dimension.reasons.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -302,18 +351,26 @@ export function OverviewPage() {
                           isLast ? "" : "timeline-connector"
                         }`}
                       >
-                        <span
-                          aria-hidden="true"
-                          className={`w-7 shrink-0 text-center text-body ${marker.className}`}
-                        >
-                          {marker.glyph}
-                        </span>
+                        {state === "review" ? (
+                          <span className="flex w-7 shrink-0 justify-center">
+                            <span aria-hidden="true" className="pill pill-warning">
+                              !
+                            </span>
+                          </span>
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className={`w-7 shrink-0 text-center text-body ${marker.className}`}
+                          >
+                            {marker.glyph}
+                          </span>
+                        )}
                         <div className="min-w-0 flex-1">
                           <p className="text-body text-text-primary">
                             {task.title}
                           </p>
                           <p className="text-caption text-text-muted">
-                            {state === "done"
+                            {state === "done" || state === "review"
                               ? TASK_STATE_LABELS[task.state]
                               : state === "current"
                                 ? "正在执行"
@@ -334,14 +391,18 @@ export function OverviewPage() {
                               ? "text-success"
                               : state === "current"
                                 ? "text-info"
-                                : "text-text-muted"
+                                : state === "review"
+                                  ? "text-warning"
+                                  : "text-text-muted"
                           }`}
                         >
                           {state === "done"
                             ? "完成"
                             : state === "current"
                               ? `${runProgressPct}%`
-                              : "等待"}
+                              : state === "review"
+                                ? "待审核"
+                                : "等待"}
                         </span>
                       </div>
                     );
@@ -438,6 +499,7 @@ export function OverviewPage() {
                         style={{ width: `${Math.round(dim.coverage * 100)}%` }}
                       />
                     </div>
+                    <CoverageDisclosure dimension={dim} />
                   </div>
                 ))}
               </div>
@@ -479,19 +541,33 @@ export function OverviewPage() {
                   <p className="text-body text-text-secondary">
                     {pendingGap.detail}
                   </p>
-                  <Button
-                    className="w-full"
-                    variant="secondary"
-                    loading={gapActions.approve.isPending}
-                    onClick={() =>
-                      void gapActions.approve
-                        .mutateAsync(pendingGap.id)
-                        .then(() => setCreatedGapId(pendingGap.id))
-                        .catch(() => undefined)
-                    }
-                  >
-                    创建研究任务 →
-                  </Button>
+                  <div className="flex items-center gap-sm">
+                    <Button
+                      className="flex-1"
+                      variant="secondary"
+                      loading={gapActions.approve.isPending}
+                      onClick={() =>
+                        void gapActions.approve
+                          .mutateAsync(pendingGap.id)
+                          .then(() => setCreatedGapId(pendingGap.id))
+                          .catch(() => undefined)
+                      }
+                    >
+                      创建研究任务 →
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      aria-label="忽略该建议"
+                      loading={gapActions.dismiss.isPending}
+                      onClick={() =>
+                        void gapActions.dismiss
+                          .mutateAsync(pendingGap.id)
+                          .catch(() => undefined)
+                      }
+                    >
+                      忽略
+                    </Button>
+                  </div>
                 </>
               ) : (
                 <p className="text-body text-text-secondary">
