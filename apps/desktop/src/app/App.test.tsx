@@ -186,7 +186,9 @@ describe("prototype navigation (IA switch)", () => {
   it("registers overview and journal views", async () => {
     useWorkspaceStore.setState({ activeProjectId: PROJECT_A_ID, activeView: "overview" });
     const first = renderApp();
-    expect(await screen.findByTestId("view-stub-overview")).toBeInTheDocument();
+    // Overview is the real dashboard now (no longer a stub).
+    expect(await screen.findByTestId("overview-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("metric-coverage")).toBeInTheDocument();
     first.unmount();
 
     // Journal is fully implemented (no longer a stub).
