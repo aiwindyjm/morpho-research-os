@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockBackend } from "./mocks/backend";
 import { MorphoError } from "./errors";
+import type { ResearchConfig } from "@/types/domain";
 import {
   getTransport,
   getTransportKind,
@@ -149,6 +150,136 @@ const researchEvent: ResearchEvent = {
   payload: { n: 1 },
 };
 
+/* IPC batch 2 wire fixtures (serde JSON of src-tauri/src/projections.rs). */
+
+const SECTION_ID = "7f000000-0000-7000-8000-000000000007";
+const CLAIM_ID = "7f000000-0000-7000-8000-000000000008";
+const SOURCE_ID = "7f000000-0000-7000-8000-000000000009";
+
+const researchConfigView = {
+  schema_version: "1.0",
+  config_id: CONFIG_ID,
+  project_id: PROJECT_ID,
+  domain: "AI",
+  topic: "LLM interpretability",
+  purpose: "research",
+  audience: "researchers",
+  depth: 4,
+  dimensions: ["theory", "safety"],
+  // time_range is ALWAYS an object, never bare null (frontend zod contract).
+  time_range: { from: "2023-01-01T00:00:00.000Z", to: null },
+  geographic_scope: "global",
+  languages: ["en", "zh"],
+  source_types: ["paper", "web"],
+  source_domains: ["arxiv.org"],
+  update_frequency: "manual",
+  created_at: "2024-01-02T03:04:05.000Z",
+  updated_at: "2024-01-02T03:04:05.000Z",
+};
+
+const planView = {
+  id: PLAN_ID,
+  project_id: PROJECT_ID,
+  title: "LLM interpretability 研究计划",
+  status: "draft",
+  rationale: "cover the configured dimensions",
+  sections: [
+    {
+      id: SECTION_ID,
+      title: "theory 维度",
+      dimension: "theory",
+      rationale: "why this section exists",
+      objectives: ["collect sources"],
+      tasks: [
+        {
+          id: TASK_ID,
+          title: "检索 theory 维度核心来源",
+          description: "search instructions",
+          kind: "search",
+        },
+      ],
+    },
+  ],
+  created_at: "2024-01-02T03:04:05.000Z",
+  updated_at: "2024-01-02T03:04:06.000Z",
+};
+
+const evidenceViews = [
+  {
+    id: "7f000000-0000-7000-8000-00000000000a",
+    project_id: PROJECT_ID,
+    claim_id: CLAIM_ID,
+    source_id: SOURCE_ID,
+    quote: "uses attention",
+    locator: { kind: "page", value: "p. 2" },
+    retrieved_at: "2024-01-02T03:04:05.000Z",
+    direction: "support",
+    extraction_method: "llm_extraction",
+    created_at: "2024-01-02T03:04:05.000Z",
+  },
+  {
+    id: "7f000000-0000-7000-8000-00000000000b",
+    project_id: PROJECT_ID,
+    claim_id: CLAIM_ID,
+    source_id: SOURCE_ID,
+    quote: "no locator stored",
+    locator: { kind: "quote", value: "no locator stored" },
+    retrieved_at: "2024-01-02T03:04:05.000Z",
+    direction: "contradict",
+    extraction_method: "llm_extraction",
+    created_at: "2024-01-02T03:04:05.000Z",
+  },
+];
+
+const graphProjection = {
+  project_id: PROJECT_ID,
+  nodes: [
+    {
+      id: "7f000000-0000-7000-8000-00000000000c",
+      type: "Concept",
+      title: "Transformer",
+      confidence: "high",
+      dimension: "theory",
+      source_count: 3,
+      claim_count: 2,
+      year: null,
+    },
+  ],
+  relations: [
+    {
+      id: "7f000000-0000-7000-8000-00000000000d",
+      source_node_id: "7f000000-0000-7000-8000-00000000000c",
+      target_node_id: "7f000000-0000-7000-8000-00000000000e",
+      predicate: "derives_from",
+      confidence: 0.8,
+    },
+  ],
+};
+
+const approvedGapReport = {
+  project_id: PROJECT_ID,
+  gaps: [
+    {
+      id: `gap:${PROJECT_ID}:theory`,
+      project_id: PROJECT_ID,
+      dimension: "theory",
+      trigger: "coverage_below_threshold",
+      rule: "coverage < 0.6",
+      detail: "维度 theory 覆盖不足。",
+      quality_sources_found: 0,
+      coverage: 0.12,
+      proposed_task: {
+        title: "Follow-up research: theory",
+        description: "target coverage >= 0.6",
+        dimension: "theory",
+      },
+      proposal_status: "approved",
+      created_task_id: TASK_ID,
+    },
+  ],
+  computed_at: "2024-01-02T03:04:05.000Z",
+};
+
 /* ------------------------------------------------------------------ */
 /* Shared cleanup                                                      */
 /* ------------------------------------------------------------------ */
@@ -193,6 +324,7 @@ describe("tauri transport command mapping", () => {
     const invoke = vi.fn(async (command: string): Promise<unknown> => {
       if (command === "plan_list") return okEnvelope([planWithTasks]);
       if (command === "run_start") return okEnvelope(runStarted);
+      if (command === "research_config_get") return okEnvelope(researchConfigView);
       throw new Error(`unexpected rust command '${command}'`);
     });
     const run = await createTauriTransport({ invoke }).invoke("run.start", {
@@ -219,6 +351,9 @@ describe("tauri transport command mapping", () => {
       plan_id: PLAN_ID,
       state: "RUNNING",
       plan_snapshot_title: "T",
+      // The run carries the project's real research config (batch 2), not a
+      // placeholder.
+      config_snapshot: { topic: "LLM interpretability", depth: 4 },
     });
   });
 
@@ -244,6 +379,7 @@ describe("tauri transport command mapping", () => {
       }
       if (command === "plan_list") return okEnvelope([planWithTasks]);
       if (command === "run_start") return okEnvelope(runStarted);
+      if (command === "research_config_get") return okEnvelope(researchConfigView);
       throw new Error(`unexpected rust command '${command}'`);
     });
     const transport = createTauriTransport({ invoke });
@@ -255,13 +391,23 @@ describe("tauri transport command mapping", () => {
     await transport.invoke("run.start", { project_id: PROJECT_ID });
     const run = await transport.invoke("run.get", { project_id: PROJECT_ID });
 
-    expect(invoke).toHaveBeenLastCalledWith("run_get", {
-      request: {
-        schema_version: "1.0",
-        request_id: expect.any(String),
-        data: { job_id: JOB_ID },
+    // run_get (job-keyed) plus the batch-2 config snapshot read.
+    expect(invoke.mock.calls).toContainEqual([
+      "run_get",
+      {
+        request: {
+          schema_version: "1.0",
+          request_id: expect.any(String),
+          data: { job_id: JOB_ID },
+        },
       },
-    });
+    ]);
+    expect(invoke).toHaveBeenLastCalledWith(
+      "research_config_get",
+      expect.objectContaining({
+        request: expect.objectContaining({ data: { project_id: PROJECT_ID } }),
+      }),
+    );
     // The orchestrator rollup (needs_review) wins over the worker status.
     expect(run).toMatchObject({
       id: RUN_ID,
@@ -277,6 +423,7 @@ describe("tauri transport command mapping", () => {
     const invoke = vi.fn(async (command: string): Promise<unknown> => {
       if (command === "plan_list") return okEnvelope([planWithTasks]);
       if (command === "run_start") return okEnvelope(runStarted);
+      if (command === "research_config_get") return okEnvelope(researchConfigView);
       if (command === "run_cancel") return okEnvelope(true);
       throw new Error(`unexpected rust command '${command}'`);
     });
@@ -557,9 +704,328 @@ describe("tauri transport command mapping", () => {
   it("fails fast with a typed error for commands the Rust surface lacks", async () => {
     const invoke = vi.fn(async (): Promise<unknown> => okEnvelope({}));
     await expect(
-      createTauriTransport({ invoke }).invoke("config.get", { project_id: PROJECT_ID }),
+      createTauriTransport({ invoke }).invoke("task.pause", {
+        project_id: PROJECT_ID,
+        task_id: TASK_ID,
+      }),
     ).rejects.toMatchObject({ code: "NOT_FOUND", correlationId: "local-unsupported" });
     expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* IPC batch 2 (ADR-020): research config, plan review, evidence,      */
+/* graph, gap proposals                                                */
+/* ------------------------------------------------------------------ */
+
+describe("tauri transport batch-2 command mapping", () => {
+  it("maps config.get onto research_config_get with the object time_range", async () => {
+    const invoke = vi.fn(async (): Promise<unknown> => okEnvelope(researchConfigView));
+    const config = await createTauriTransport({ invoke }).invoke("config.get", {
+      project_id: PROJECT_ID,
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      "research_config_get",
+      expect.objectContaining({
+        request: expect.objectContaining({ data: { project_id: PROJECT_ID } }),
+      }),
+    );
+    expect(config).toMatchObject({
+      schema_version: "1.0",
+      domain: "AI",
+      topic: "LLM interpretability",
+      purpose: "research",
+      depth: 4,
+      dimensions: ["theory", "safety"],
+      time_range: { from: "2023-01-01T00:00:00.000Z", to: null },
+      languages: ["en", "zh"],
+      update_frequency: "manual",
+    });
+    // Bookkeeping fields of the persisted record stay out of the payload.
+    expect(JSON.stringify(config)).not.toContain(CONFIG_ID);
+  });
+
+  it("maps config.update onto research_config_put, forwarding the config object", async () => {
+    const invoke = vi.fn(async (): Promise<unknown> =>
+      okEnvelope({ ...researchConfigView, topic: "LLM safety", config_id: "7f000000-0000-7000-8000-00000000000f" }),
+    );
+    const config = await createTauriTransport({ invoke }).invoke("config.update", {
+      project_id: PROJECT_ID,
+      config: researchConfigView as unknown as ResearchConfig,
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      "research_config_put",
+      expect.objectContaining({
+        request: expect.objectContaining({
+          data: { project_id: PROJECT_ID, config: researchConfigView },
+        }),
+      }),
+    );
+    // The response is the NEW generation the core resolved.
+    expect(config).toMatchObject({ topic: "LLM safety" });
+  });
+
+  it("maps plan.regenerate onto plan_regenerate and caches the sectioned view", async () => {
+    const invoke = vi.fn(async (): Promise<unknown> => okEnvelope(planView));
+    const transport = createTauriTransport({ invoke });
+
+    const plan = await transport.invoke("plan.regenerate", { project_id: PROJECT_ID });
+    expect(invoke).toHaveBeenCalledWith(
+      "plan_regenerate",
+      expect.objectContaining({
+        request: expect.objectContaining({ data: { project_id: PROJECT_ID } }),
+      }),
+    );
+    expect(plan).toMatchObject({
+      id: PLAN_ID,
+      status: "draft",
+      rationale: "cover the configured dimensions",
+    });
+    expect(plan.sections[0]).toMatchObject({
+      dimension: "theory",
+      objectives: ["collect sources"],
+    });
+    expect(plan.sections[0].tasks[0]).toMatchObject({
+      id: TASK_ID,
+      kind: "search",
+    });
+  });
+
+  it("maps plan.updateTask onto plan_update_task with the full request shape", async () => {
+    const invoke = vi.fn(async (): Promise<unknown> =>
+      okEnvelope({
+        ...planView,
+        sections: [
+          {
+            ...planView.sections[0],
+            tasks: [
+              { ...planView.sections[0].tasks[0], title: "聚焦的检索任务", description: "更聚焦" },
+            ],
+          },
+        ],
+      }),
+    );
+    const plan = await createTauriTransport({ invoke }).invoke("plan.updateTask", {
+      project_id: PROJECT_ID,
+      task_id: TASK_ID,
+      title: "聚焦的检索任务",
+      description: "更聚焦",
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      "plan_update_task",
+      expect.objectContaining({
+        request: expect.objectContaining({
+          data: {
+            project_id: PROJECT_ID,
+            task_id: TASK_ID,
+            title: "聚焦的检索任务",
+            description: "更聚焦",
+          },
+        }),
+      }),
+    );
+    expect(plan.sections[0].tasks[0]).toMatchObject({
+      title: "聚焦的检索任务",
+      description: "更聚焦",
+    });
+  });
+
+  it("maps plan.reject onto plan_reject", async () => {
+    const invoke = vi.fn(async (): Promise<unknown> =>
+      okEnvelope({ ...planView, status: "rejected" }),
+    );
+    const plan = await createTauriTransport({ invoke }).invoke("plan.reject", {
+      project_id: PROJECT_ID,
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      "plan_reject",
+      expect.objectContaining({
+        request: expect.objectContaining({ data: { project_id: PROJECT_ID } }),
+      }),
+    );
+    expect(plan).toMatchObject({ id: PLAN_ID, status: "rejected" });
+  });
+
+  it("serves plan.get from the cached sectioned view, syncing the record status", async () => {
+    const draftEntry = { plan: { ...planWithTasks.plan, created_at: 1700000000000, updated_at: 1700000000500 } };
+    const supersededEntry = {
+      plan: {
+        ...planWithTasks.plan,
+        id: "7f000000-0000-7000-8000-000000000010",
+        created_at: 1600000000000,
+        updated_at: 1600000000500,
+      },
+      tasks: planWithTasks.tasks,
+    };
+    let plans = [supersededEntry, draftEntry];
+    const invoke = vi.fn(async (command: string): Promise<unknown> => {
+      if (command === "plan_list") return okEnvelope(plans);
+      if (command === "plan_regenerate") return okEnvelope(planView);
+      if (command === "plan_approve") {
+        plans = [
+          supersededEntry,
+          { plan: { ...draftEntry.plan, status: "approved", updated_at: 1700000000900 } },
+        ];
+        return okEnvelope({ ...draftEntry.plan, status: "approved", updated_at: 1700000000900 });
+      }
+      throw new Error(`unexpected rust command '${command}'`);
+    });
+    const transport = createTauriTransport({ invoke });
+
+    // No cached projection yet → the plan_list bridge without sections.
+    const bridged = await transport.invoke("plan.get", { project_id: PROJECT_ID });
+    expect(bridged).toMatchObject({ id: PLAN_ID, status: "draft" });
+    expect(bridged?.sections).toEqual([]);
+
+    // After regenerate the cached view serves the full section tree.
+    await transport.invoke("plan.regenerate", { project_id: PROJECT_ID });
+    const cached = await transport.invoke("plan.get", { project_id: PROJECT_ID });
+    expect(cached).toMatchObject({ id: PLAN_ID, status: "draft" });
+    expect(cached?.sections).toHaveLength(1);
+    expect(cached?.sections[0].tasks[0].id).toBe(TASK_ID);
+
+    // plan.approve patches the cached view's status from the record.
+    const approved = await transport.invoke("plan.approve", { project_id: PROJECT_ID });
+    expect(approved).toMatchObject({ id: PLAN_ID, status: "approved" });
+    expect(approved.sections).toHaveLength(1);
+    const refetched = await transport.invoke("plan.get", { project_id: PROJECT_ID });
+    expect(refetched).toMatchObject({ status: "approved", updated_at: "2023-11-14T22:13:20.900Z" });
+    expect(refetched?.sections).toHaveLength(1);
+  });
+
+  it("counts task.list on the latest plan generation only", async () => {
+    const supersededEntry = {
+      plan: {
+        ...planWithTasks.plan,
+        id: "7f000000-0000-7000-8000-000000000011",
+        status: "superseded",
+        created_at: 1600000000000,
+        updated_at: 1600000000500,
+      },
+      tasks: [
+        { ...planWithTasks.tasks[0], id: "7f000000-0000-7000-8000-000000000012" },
+      ],
+    };
+    const invoke = vi.fn(async (): Promise<unknown> =>
+      okEnvelope([supersededEntry, planWithTasks]),
+    );
+    const tasks = await createTauriTransport({ invoke }).invoke("task.list", {
+      project_id: PROJECT_ID,
+    });
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({ id: TASK_ID, project_id: PROJECT_ID });
+  });
+
+  it("maps evidence.listByClaim onto evidence_list_by_claim with locator kinds", async () => {
+    const invoke = vi.fn(async (): Promise<unknown> => okEnvelope(evidenceViews));
+    const evidence = await createTauriTransport({ invoke }).invoke("evidence.listByClaim", {
+      project_id: PROJECT_ID,
+      claim_id: CLAIM_ID,
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      "evidence_list_by_claim",
+      expect.objectContaining({
+        request: expect.objectContaining({
+          data: { project_id: PROJECT_ID, claim_id: CLAIM_ID },
+        }),
+      }),
+    );
+    expect(evidence).toHaveLength(2);
+    expect(evidence[0]).toMatchObject({
+      claim_id: CLAIM_ID,
+      locator: { kind: "page", value: "p. 2" },
+      direction: "support",
+      extraction_method: "llm_extraction",
+    });
+    expect(evidence[1]).toMatchObject({
+      locator: { kind: "quote" },
+      direction: "contradict",
+    });
+  });
+
+  it("maps graph.get onto graph_get, keeping the `type` node key", async () => {
+    const invoke = vi.fn(async (): Promise<unknown> => okEnvelope(graphProjection));
+    const graph = await createTauriTransport({ invoke }).invoke("graph.get", {
+      project_id: PROJECT_ID,
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      "graph_get",
+      expect.objectContaining({
+        request: expect.objectContaining({ data: { project_id: PROJECT_ID } }),
+      }),
+    );
+    expect(graph.project_id).toBe(PROJECT_ID);
+    expect(graph.nodes[0]).toMatchObject({
+      type: "Concept",
+      confidence: "high",
+      dimension: "theory",
+      source_count: 3,
+      claim_count: 2,
+      year: null,
+    });
+    expect(graph.relations[0]).toMatchObject({
+      predicate: "derives_from",
+      confidence: 0.8,
+    });
+  });
+
+  it("maps gap.approveProposal/dismissProposal and merges decisions into gap.list", async () => {
+    const invoke = vi.fn(async (command: string): Promise<unknown> => {
+      if (command === "coverage_get") return okEnvelope(rustCoverageReport);
+      if (command === "gap_approve_proposal") return okEnvelope(approvedGapReport);
+      if (command === "gap_dismiss_proposal") {
+        return okEnvelope({ ...approvedGapReport, gaps: [] });
+      }
+      throw new Error(`unexpected rust command '${command}'`);
+    });
+    const transport = createTauriTransport({ invoke });
+
+    const approved = await transport.invoke("gap.approveProposal", {
+      project_id: PROJECT_ID,
+      gap_id: `gap:${PROJECT_ID}:theory`,
+    });
+    expect(invoke).toHaveBeenCalledWith(
+      "gap_approve_proposal",
+      expect.objectContaining({
+        request: expect.objectContaining({
+          data: { project_id: PROJECT_ID, gap_id: `gap:${PROJECT_ID}:theory` },
+        }),
+      }),
+    );
+    expect(approved.gaps[0]).toMatchObject({
+      proposal_status: "approved",
+      created_task_id: TASK_ID,
+    });
+
+    // The decision sticks on the next gap.list read.
+    const afterApprove = await transport.invoke("gap.list", { project_id: PROJECT_ID });
+    expect(afterApprove.gaps[0]).toMatchObject({
+      id: `gap:${PROJECT_ID}:theory`,
+      proposal_status: "approved",
+      created_task_id: TASK_ID,
+    });
+
+    await transport.invoke("gap.dismissProposal", {
+      project_id: PROJECT_ID,
+      gap_id: `gap:${PROJECT_ID}:theory`,
+    });
+    expect(invoke).toHaveBeenLastCalledWith(
+      "gap_dismiss_proposal",
+      expect.objectContaining({
+        request: expect.objectContaining({
+          data: { project_id: PROJECT_ID, gap_id: `gap:${PROJECT_ID}:theory` },
+        }),
+      }),
+    );
+    const afterDismiss = await transport.invoke("gap.list", { project_id: PROJECT_ID });
+    expect(afterDismiss.gaps).toEqual([]);
   });
 });
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Button, Card, Dialog, Input, Textarea } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -28,6 +28,10 @@ export function ProjectsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [dialogError, setDialogError] = useState<string | null>(null);
+  // Stable identity: Dialog re-runs its focus effect when onClose changes;
+  // an inline closure would steal focus back to the first field on every
+  // keystroke (the description textarea became untypeable).
+  const closeDialog = useCallback(() => setDialogOpen(false), []);
 
   const projectList = projects ?? [];
   const filtered = projectList.filter(
@@ -142,7 +146,7 @@ export function ProjectsPage() {
 
       <Dialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={closeDialog}
         title="新建研究项目"
         description="每个项目拥有独立的配置、计划、任务、知识与助手上下文。"
       >

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Alert, Button, Card, Dialog, Input, Textarea, useToast } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -65,6 +65,10 @@ export function PlanPage({ projectId }: { projectId: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   /** Section ids currently folded away in the plan tree. */
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(new Set());
+  // Stable identity: Dialog re-runs its focus effect when onClose changes,
+  // and an inline closure would steal focus back to the first field on
+  // every keystroke (the description textarea became untypeable).
+  const closeEditing = useCallback(() => setEditing(null), []);
 
   const hasRun = run !== null;
   const editable = plan?.status === "draft" && !hasRun;
@@ -315,7 +319,7 @@ export function PlanPage({ projectId }: { projectId: string }) {
 
       <Dialog
         open={editing !== null}
-        onClose={() => setEditing(null)}
+        onClose={closeEditing}
         title="编辑计划任务"
         description="只修改标题与描述；任务类型与执行顺序由 Orchestrator 决定。"
       >

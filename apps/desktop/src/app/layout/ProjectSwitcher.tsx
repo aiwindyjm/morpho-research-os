@@ -1,7 +1,7 @@
 import { useProjects, useCreateProject, useAssistantContext } from "@/services/queries";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { Button, Dialog, Input, Popover, Textarea } from "@morpho/ui";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 /**
  * Project switcher — the isolation boundary users touch. Creating or
@@ -17,6 +17,10 @@ export function ProjectSwitcher() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Stable identity: Dialog re-runs its focus effect when onClose changes;
+  // an inline closure would steal focus back to the first field on every
+  // keystroke (the description textarea became untypeable).
+  const closeDialog = useCallback(() => setDialogOpen(false), []);
 
   const active = projects?.find((p) => p.id === activeProjectId);
 
@@ -99,7 +103,7 @@ export function ProjectSwitcher() {
 
       <Dialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={closeDialog}
         title="新建研究项目"
         description="每个项目拥有独立的配置、计划、任务、知识与助手上下文。"
       >

@@ -2,8 +2,12 @@ import { z } from "zod";
 import type {
   Claim,
   CoverageReport,
+  Evidence,
   GapReport,
+  GraphNode,
+  GraphProjection,
   KnowledgeNode,
+  PlanTaskDraft,
   Project,
   Relation,
   ResearchConfig,
@@ -154,15 +158,35 @@ interface AdapterContext {
    * run.cancel can bridge onto the job-keyed Rust commands.
    */
   sessionJobs: Map<string, SessionJob>;
+  /**
+   * Latest sectioned plan projection per project (see `PlanViewWire`).
+   * `plan_list` carries plan records and tasks but no section rows, so the
+   * full plan view returned by plan_regenerate / plan_update_task /
+   * plan_reject is remembered here and re-served by plan.get while the
+   * project's latest generation matches (ADR-020).
+   */
+  sessionPlans: Map<string, PlanViewWire>;
+  /**
+   * Gap proposal decisions taken this session (project → dimension →
+   * outcome). Rust persists them in `gap_decisions` and merges them into
+   * the gap_approve/dismiss responses, but no committed read command
+   * exposes them — so the outcomes are merged into gap.list here,
+   * mirroring the core's gap_report merge (src-tauri/src/projections.rs).
+   */
+  sessionGapDecisions: Map<string, Map<string, SessionGapDecision>>;
 }
 
 function makeContext(
   invoke: TauriInvoke,
   sessionJobs: Map<string, SessionJob>,
+  sessionPlans: Map<string, PlanViewWire>,
+  sessionGapDecisions: Map<string, Map<string, SessionGapDecision>>,
   signal?: AbortSignal,
 ): AdapterContext {
   return {
     sessionJobs,
+    sessionPlans,
+    sessionGapDecisions,
     async call(rustCommand: string, data: unknown): Promise<unknown> {
       if (signal?.aborted) {
         throw new DOMException("The request was aborted", "AbortError");
@@ -432,6 +456,120 @@ interface RunGetEnvelopeWire {
 }
 
 /* ------------------------------------------------------------------ */
+/* Batch-2 projection wire shapes (src-tauri/src/projections.rs)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `research_config_get`/`research_config_put` payload
+ * (`ResearchConfigView`): the frontend ResearchConfig shape plus persisted
+ * bookkeeping. `time_range` is ALWAYS an object — never bare null — even
+ * when unbounded.
+ */
+interface ResearchConfigViewWire {
+  schema_version: string;
+  config_id: string;
+  project_id: string;
+  domain: string;
+  topic: string;
+  purpose: string;
+  audience: string;
+  depth: number;
+  dimensions: string[];
+  time_range: { from: string | null; to: string | null };
+  geographic_scope: string;
+  languages: string[];
+  source_types: string[];
+  source_domains: string[];
+  update_frequency: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** `plan_regenerate`/`plan_update_task`/`plan_reject` payload (`PlanView`). */
+interface PlanViewWire {
+  id: string;
+  project_id: string;
+  title: string;
+  status: string;
+  rationale: string;
+  sections: Array<{
+    id: string;
+    title: string;
+    dimension: string;
+    rationale: string;
+    objectives: string[];
+    tasks: Array<{ id: string; title: string; description: string; kind: string }>;
+  }>;
+  created_at: string;
+  updated_at: string;
+}
+
+/** `evidence_list_by_claim` row (`EvidenceView`). */
+interface EvidenceViewWire {
+  id: string;
+  project_id: string;
+  claim_id: string;
+  source_id: string;
+  quote: string;
+  locator: { kind: string; value: string };
+  retrieved_at: string;
+  direction: string;
+  extraction_method: string;
+  created_at: string;
+}
+
+/**
+ * `graph_get` payload (`GraphProjection`): the node type serializes under
+ * the contract's `type` key (serde rename) and `year` is always present
+ * (null for persisted nodes, which carry no year).
+ */
+interface GraphProjectionWire {
+  project_id: string;
+  nodes: Array<{
+    id: string;
+    type: string;
+    title: string;
+    confidence: string;
+    dimension: string;
+    source_count: number;
+    claim_count: number;
+    year: number | null;
+  }>;
+  relations: Array<{
+    id: string;
+    source_node_id: string;
+    target_node_id: string;
+    predicate: string;
+    confidence: number;
+  }>;
+}
+
+/** `gap_approve_proposal`/`gap_dismiss_proposal` payload (`GapReportView`). */
+interface GapReportViewWire {
+  project_id: string;
+  gaps: Array<{
+    id: string;
+    project_id: string;
+    dimension: string;
+    trigger: string;
+    rule: string;
+    detail: string;
+    quality_sources_found: number;
+    coverage: number;
+    proposed_task: { title: string; description: string; dimension: string };
+    proposal_status: string;
+    created_task_id: string | null;
+  }>;
+  computed_at: string;
+}
+
+/** A gap proposal outcome taken this session (see AdapterContext). */
+interface SessionGapDecision {
+  status: "approved" | "dismissed";
+  createdTaskId: string | null;
+}
+
+/* ------------------------------------------------------------------ */
 /* Shape conversions (Rust wire → frontend domain)                     */
 /* ------------------------------------------------------------------ */
 
@@ -649,6 +787,124 @@ function timelineKindFor(eventType: string): TimelineEntry["kind"] {
 }
 
 /* ------------------------------------------------------------------ */
+/* Batch-2 projection conversions (wire → frontend domain)             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `ResearchConfigView` → ResearchConfig. The view arrives in the frontend
+ * shape (ISO-8601 bounds inside the always-object time_range); persisted
+ * bookkeeping (config_id/created_at/updated_at) is dropped here because the
+ * zod contract strips it anyway.
+ */
+function toResearchConfig(view: ResearchConfigViewWire): ResearchConfig {
+  return {
+    schema_version: "1.0",
+    domain: view.domain,
+    topic: view.topic,
+    purpose: view.purpose as ResearchConfig["purpose"],
+    audience: view.audience,
+    depth: view.depth as ResearchConfig["depth"],
+    dimensions: view.dimensions,
+    time_range: { from: view.time_range.from, to: view.time_range.to },
+    geographic_scope: view.geographic_scope,
+    languages: view.languages,
+    source_types: view.source_types,
+    source_domains: view.source_domains,
+    update_frequency: "manual",
+  };
+}
+
+/** `PlanView` → ResearchPlan (the projection is already in the IPC shape). */
+function toResearchPlanFromView(view: PlanViewWire): ResearchPlan {
+  return {
+    id: view.id,
+    project_id: view.project_id,
+    title: view.title,
+    status: view.status as ResearchPlan["status"],
+    rationale: view.rationale,
+    sections: view.sections.map((section) => ({
+      id: section.id,
+      title: section.title,
+      dimension: section.dimension,
+      rationale: section.rationale,
+      objectives: section.objectives,
+      tasks: section.tasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        kind: task.kind as PlanTaskDraft["kind"],
+      })),
+    })),
+    created_at: view.created_at,
+    updated_at: view.updated_at,
+  };
+}
+
+/** `EvidenceView` → Evidence. */
+function toEvidence(view: EvidenceViewWire): Evidence {
+  return {
+    id: view.id,
+    project_id: view.project_id,
+    claim_id: view.claim_id,
+    source_id: view.source_id,
+    quote: view.quote,
+    locator: {
+      kind: view.locator.kind as Evidence["locator"]["kind"],
+      value: view.locator.value,
+    },
+    retrieved_at: view.retrieved_at,
+    direction: view.direction as Evidence["direction"],
+    extraction_method: view.extraction_method as Evidence["extraction_method"],
+    created_at: view.created_at,
+  };
+}
+
+/** `GraphProjection` → GraphProjection (node `type` key already renamed). */
+function toGraphProjection(view: GraphProjectionWire): GraphProjection {
+  return {
+    project_id: view.project_id,
+    nodes: view.nodes.map((node) => ({
+      id: node.id,
+      type: node.type as GraphNode["type"],
+      title: node.title,
+      confidence: node.confidence as GraphNode["confidence"],
+      dimension: node.dimension,
+      source_count: node.source_count,
+      claim_count: node.claim_count,
+      year: node.year,
+    })),
+    relations: view.relations.map((relation) => ({
+      id: relation.id,
+      source_node_id: relation.source_node_id,
+      target_node_id: relation.target_node_id,
+      predicate: relation.predicate,
+      confidence: relation.confidence,
+    })),
+  };
+}
+
+/** `GapReportView` → GapReport (the projection carries the merge results). */
+function toGapReport(view: GapReportViewWire): GapReport {
+  return {
+    project_id: view.project_id,
+    gaps: view.gaps.map((gap) => ({
+      id: gap.id,
+      project_id: gap.project_id,
+      dimension: gap.dimension,
+      trigger: gap.trigger as ResearchGap["trigger"],
+      rule: gap.rule,
+      detail: gap.detail,
+      quality_sources_found: gap.quality_sources_found,
+      coverage: gap.coverage,
+      proposed_task: gap.proposed_task,
+      proposal_status: gap.proposal_status as ResearchGap["proposal_status"],
+      created_task_id: gap.created_task_id,
+    })),
+    computed_at: view.computed_at,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Command mapping                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -678,27 +934,20 @@ function unsupported(command: CommandName, what: string): MorphoError {
 }
 
 /**
- * The committed surface has no research-config read command, so a faithful
- * config snapshot cannot be assembled for run responses yet. This
- * schema-minimal placeholder (validated like any other payload) stands in
- * until the core exposes project config reads; run views must not treat
- * its defaults as user data.
+ * Reads the project's current research configuration for run responses
+ * (`research_config_get`, IPC batch 2). Runs exist only for persisted
+ * projects whose config generation is resolvable, so a failure here is a
+ * real broken state and surfaces rather than being papered over.
  */
-const RUN_CONFIG_SNAPSHOT_PLACEHOLDER: ResearchConfig = {
-  schema_version: "1.0",
-  domain: "",
-  topic: "",
-  purpose: "learning",
-  audience: "",
-  depth: 2,
-  dimensions: [],
-  time_range: { from: null, to: null },
-  geographic_scope: "",
-  languages: ["en"],
-  source_types: [],
-  source_domains: [],
-  update_frequency: "manual",
-};
+async function researchConfigSnapshot(
+  ctx: AdapterContext,
+  projectId: string,
+): Promise<ResearchConfig> {
+  const view = (await ctx.call("research_config_get", {
+    project_id: projectId,
+  })) as ResearchConfigViewWire;
+  return toResearchConfig(view);
+}
 
 async function planListWire(ctx: AdapterContext, projectId: string): Promise<PlanWithTasksWire[]> {
   return (await ctx.call("plan_list", { project_id: projectId })) as PlanWithTasksWire[];
@@ -712,6 +961,32 @@ async function latestPlanWire(ctx: AdapterContext, projectId: string): Promise<P
     throw notFound("该项目尚无研究计划。", `plan_list returned no plans for project '${projectId}'`);
   }
   return latest;
+}
+
+/**
+ * Records one gap-proposal outcome in the session decision map. Gap ids are
+ * namespaced `gap:{project_id}:{dimension}` (the core's stable identity), so
+ * the dimension is recovered by stripping the prefix; the created task id
+ * comes from the decision-merged report the core returned.
+ */
+function rememberGapDecision(
+  ctx: AdapterContext,
+  projectId: string,
+  gapId: string,
+  report: GapReportViewWire,
+  status: "approved" | "dismissed",
+): void {
+  const prefix = `gap:${projectId}:`;
+  if (!gapId.startsWith(prefix)) return;
+  const dimension = gapId.slice(prefix.length);
+  const approved = report.gaps.find((gap) => gap.id === gapId);
+  const decisions =
+    ctx.sessionGapDecisions.get(projectId) ?? new Map<string, SessionGapDecision>();
+  decisions.set(dimension, {
+    status,
+    createdTaskId: status === "approved" ? (approved?.created_task_id ?? null) : null,
+  });
+  ctx.sessionGapDecisions.set(projectId, decisions);
 }
 
 /* ------------------------------------------------------------------ */
@@ -799,30 +1074,63 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     return record === null || record === undefined ? null : toProject(record);
   },
 
-  "config.get": async () => {
-    // NOTE: the committed Rust surface DOES register `config_get`/`config_put`
-    // (src-tauri/src/commands.rs), but they transport the APP config
-    // (providers/worker/secrets — secrets.rs `AppConfig`), not a project's
-    // RESEARCH config (PRD §5: topic/purpose/depth/dimensions/…). No
-    // committed command reads or writes a project research config, so this
-    // frontend command stays mock-only until the core exposes one; mapping
-    // it onto config_get would silently hand ConfigPage the wrong payload.
-    throw unsupported("config.get", "research-config read");
+  "config.get": async (ctx, payload) => {
+    // Research-config read (ADR-020). Distinct from the Rust `config_get`,
+    // which transports the APP config (providers/worker/secrets wiring).
+    const view = (await ctx.call("research_config_get", {
+      project_id: payload.project_id,
+    })) as ResearchConfigViewWire;
+    return toResearchConfig(view);
   },
-  "config.update": async () => {
-    // See config.get: `config_put` persists AppConfig, not ResearchConfig.
-    throw unsupported("config.update", "research-config write");
+  "config.update": async (ctx, payload) => {
+    // Appends a NEW research_configs generation (ADR-020); serde ignores
+    // echoed bookkeeping keys inside `config`, and the response resolves the
+    // new generation in the frontend shape.
+    const view = (await ctx.call("research_config_put", {
+      project_id: payload.project_id,
+      config: payload.config,
+    })) as ResearchConfigViewWire;
+    return toResearchConfig(view);
   },
 
   "plan.get": async (ctx, payload) => {
     const plans = await planListWire(ctx, payload.project_id);
-    return plans.length > 0 ? toResearchPlan(plans[plans.length - 1]) : null;
+    if (plans.length === 0) return null;
+    const latest = plans[plans.length - 1];
+    // plan_list carries no section rows; when the cached sectioned view (from
+    // a batch-2 plan command) describes the same generation, serve it with
+    // the record's status/timestamps staying authoritative.
+    const cached = ctx.sessionPlans.get(payload.project_id);
+    if (cached && cached.id === latest.plan.id) {
+      return toResearchPlanFromView({
+        ...cached,
+        status: latest.plan.status,
+        created_at: epochMsToIso(latest.plan.created_at),
+        updated_at: epochMsToIso(latest.plan.updated_at),
+      });
+    }
+    return toResearchPlan(latest);
   },
-  "plan.regenerate": async () => {
-    throw unsupported("plan.regenerate", "plan generation");
+  "plan.regenerate": async (ctx, payload) => {
+    // Scripted V0.1 planner: supersedes earlier generations and returns the
+    // new draft as a full PlanView (ADR-020).
+    const view = (await ctx.call("plan_regenerate", {
+      project_id: payload.project_id,
+    })) as PlanViewWire;
+    ctx.sessionPlans.set(payload.project_id, view);
+    return toResearchPlanFromView(view);
   },
-  "plan.updateTask": async () => {
-    throw unsupported("plan.updateTask", "plan task editing");
+  "plan.updateTask": async (ctx, payload) => {
+    // Edits one task of the current draft; a blank title keeps the old one
+    // (Rust side; the service layer already trims and rejects blanks).
+    const view = (await ctx.call("plan_update_task", {
+      project_id: payload.project_id,
+      task_id: payload.task_id,
+      title: payload.title,
+      description: payload.description,
+    })) as PlanViewWire;
+    ctx.sessionPlans.set(payload.project_id, view);
+    return toResearchPlanFromView(view);
   },
   "plan.approve": async (ctx, payload) => {
     const entry = await latestPlanWire(ctx, payload.project_id);
@@ -832,10 +1140,28 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     }
     // Re-list so the response carries the refreshed status plus tasks.
     const refreshed = await planListWire(ctx, payload.project_id);
-    return toResearchPlan(refreshed[refreshed.length - 1] ?? entry);
+    const latest = refreshed[refreshed.length - 1] ?? entry;
+    // plan_approve returns only the record; patch the cached sectioned view
+    // so follow-up plan.get reads keep serving the full tree.
+    const cached = ctx.sessionPlans.get(payload.project_id);
+    if (cached && cached.id === latest.plan.id) {
+      const patched: PlanViewWire = {
+        ...cached,
+        status: latest.plan.status,
+        updated_at: epochMsToIso(latest.plan.updated_at),
+      };
+      ctx.sessionPlans.set(payload.project_id, patched);
+      return toResearchPlanFromView(patched);
+    }
+    return toResearchPlan(latest);
   },
-  "plan.reject": async () => {
-    throw unsupported("plan.reject", "plan review decision");
+  "plan.reject": async (ctx, payload) => {
+    // Marks the latest generation rejected and returns its full view.
+    const view = (await ctx.call("plan_reject", {
+      project_id: payload.project_id,
+    })) as PlanViewWire;
+    ctx.sessionPlans.set(payload.project_id, view);
+    return toResearchPlanFromView(view);
   },
 
   "run.get": async (ctx, payload) => {
@@ -856,7 +1182,7 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
       // is authoritative); the worker envelope stands in when the run is
       // not yet resolvable locally.
       state: runStateFrom(envelope.task_rollup?.run_status ?? envelope.job?.status),
-      config_snapshot: RUN_CONFIG_SNAPSHOT_PLACEHOLDER,
+      config_snapshot: await researchConfigSnapshot(ctx, payload.project_id),
       plan_snapshot_title: job.plan_title,
       started_at: isoOr(envelope.job?.created_at, null),
       updated_at: isoOr(envelope.job?.updated_at, now),
@@ -882,7 +1208,7 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
       project_id: started.project_id,
       plan_id: entry.plan.id,
       state: "RUNNING",
-      config_snapshot: RUN_CONFIG_SNAPSHOT_PLACEHOLDER,
+      config_snapshot: await researchConfigSnapshot(ctx, payload.project_id),
       plan_snapshot_title: entry.plan.title,
       started_at: now,
       updated_at: now,
@@ -901,10 +1227,13 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
   },
 
   "task.list": async (ctx, payload) => {
+    // Only the latest plan generation's tasks are actionable: regenerate
+    // supersedes earlier generations whose task rows persist for history
+    // and must not double-count in the UI. Gap follow-up tasks attach to
+    // the latest plan's sections, so they stay listed.
     const plans = await planListWire(ctx, payload.project_id);
-    return plans.flatMap((entry) =>
-      entry.tasks.map((task) => toResearchTask(task, entry.plan.project_id)),
-    );
+    const latest = plans[plans.length - 1];
+    return latest ? latest.tasks.map((task) => toResearchTask(task, latest.plan.project_id)) : [];
   },
   "task.pause": async () => {
     throw unsupported("task.pause", "per-task worker dispatch (ADR-019 phase 2)");
@@ -937,8 +1266,14 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     })) as ClaimRecordWire[];
     return records.map(toClaim);
   },
-  "evidence.listByClaim": async () => {
-    throw unsupported("evidence.listByClaim", "evidence listing");
+  "evidence.listByClaim": async (ctx, payload) => {
+    // Evidence joined through claim_evidence, project-scoped; an unknown
+    // claim lists nothing (ADR-020).
+    const views = (await ctx.call("evidence_list_by_claim", {
+      project_id: payload.project_id,
+      claim_id: payload.claim_id,
+    })) as EvidenceViewWire[];
+    return views.map(toEvidence);
   },
   "relation.list": async (ctx, payload) => {
     const records = (await ctx.call("relations_list", {
@@ -946,8 +1281,13 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     })) as RelationRecordWire[];
     return records.map(toRelation);
   },
-  "graph.get": async () => {
-    throw unsupported("graph.get", "graph projection");
+  "graph.get": async (ctx, payload) => {
+    // Nodes + relations projection with dangling edges filtered; empty for a
+    // fresh project (ADR-020).
+    const view = (await ctx.call("graph_get", {
+      project_id: payload.project_id,
+    })) as GraphProjectionWire;
+    return toGraphProjection(view);
   },
 
   "coverage.get": async (ctx, payload) => {
@@ -957,21 +1297,47 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     return toCoverageReport(report);
   },
   "gap.list": async (ctx, payload) => {
-    // The Rust coverage report already computes the gap list.
+    // The Rust coverage report already computes the gap rows; this
+    // session's approve/dismiss outcomes are merged on top because no
+    // committed read command exposes the persisted gap_decisions (the merge
+    // mirrors the core's gap_report, src-tauri/src/projections.rs).
     const report = (await ctx.call("coverage_get", {
       project_id: payload.project_id,
     })) as RustCoverageReportWire;
+    const decisions = ctx.sessionGapDecisions.get(payload.project_id);
+    const gaps = report.gaps
+      .filter((gap) => decisions?.get(gap.dimension)?.status !== "dismissed")
+      .map((gap) => {
+        const decision = decisions?.get(gap.dimension);
+        const base = toResearchGap(gap, report.project_id);
+        return decision?.status === "approved"
+          ? { ...base, proposal_status: "approved" as const, created_task_id: decision.createdTaskId }
+          : base;
+      });
     return {
       project_id: report.project_id,
-      gaps: report.gaps.map((gap) => toResearchGap(gap, report.project_id)),
+      gaps,
       computed_at: epochMsToIso(report.computed_at),
     } satisfies GapReport;
   },
-  "gap.approveProposal": async () => {
-    throw unsupported("gap.approveProposal", "gap proposal actions");
+  "gap.approveProposal": async (ctx, payload) => {
+    // Creates the PENDING follow-up task (idempotent) and returns the
+    // decision-merged report; the outcome is remembered for gap.list.
+    const view = (await ctx.call("gap_approve_proposal", {
+      project_id: payload.project_id,
+      gap_id: payload.gap_id,
+    })) as GapReportViewWire;
+    rememberGapDecision(ctx, payload.project_id, payload.gap_id, view, "approved");
+    return toGapReport(view);
   },
-  "gap.dismissProposal": async () => {
-    throw unsupported("gap.dismissProposal", "gap proposal actions");
+  "gap.dismissProposal": async (ctx, payload) => {
+    // Persists the dismissal; the dimension disappears from the report.
+    const view = (await ctx.call("gap_dismiss_proposal", {
+      project_id: payload.project_id,
+      gap_id: payload.gap_id,
+    })) as GapReportViewWire;
+    rememberGapDecision(ctx, payload.project_id, payload.gap_id, view, "dismissed");
+    return toGapReport(view);
   },
   "timeline.get": async (ctx, payload) => {
     const records = (await ctx.call("events_list", {
@@ -1076,9 +1442,11 @@ export function createTauriTransport(options: TauriTransportOptions = {}): Trans
     );
   }
   // One registry per transport instance: the app uses a single transport
-  // singleton (transportProvider), so run.start → run.get/run.cancel share
-  // it for the whole session.
+  // singleton (transportProvider), so run.start → run.get/run.cancel and the
+  // batch-2 plan-view/gap-decision bridges share it for the whole session.
   const sessionJobs = new Map<string, SessionJob>();
+  const sessionPlans = new Map<string, PlanViewWire>();
+  const sessionGapDecisions = new Map<string, Map<string, SessionGapDecision>>();
   return {
     async invoke<K extends CommandName>(
       command: K,
@@ -1088,7 +1456,7 @@ export function createTauriTransport(options: TauriTransportOptions = {}): Trans
       if (invokeOptions?.signal?.aborted) {
         throw new DOMException("The request was aborted", "AbortError");
       }
-      const ctx = makeContext(invoke, sessionJobs, invokeOptions?.signal);
+      const ctx = makeContext(invoke, sessionJobs, sessionPlans, sessionGapDecisions, invokeOptions?.signal);
       let candidate: unknown;
       try {
         candidate = await adapters[command](ctx, payload);

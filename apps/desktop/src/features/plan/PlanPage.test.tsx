@@ -6,7 +6,7 @@ import { ToastProvider } from "@morpho/ui";
 import { createQueryClient } from "@/app/queryClient";
 import { PlanPage } from "./PlanPage";
 import { mockBackend } from "@/services/mocks/backend";
-import { PROJECT_B_ID } from "@/services/mocks/fixtures-a";
+import { PROJECT_A_ID, PROJECT_B_ID } from "@/services/mocks/fixtures-a";
 
 /**
  * Prototype alignment (spec §4, `view-plan`): a four-cell plan summary strip
@@ -16,7 +16,10 @@ import { PROJECT_B_ID } from "@/services/mocks/fixtures-a";
  * dimensions, and 1 unverified + 1 conflicting claim await review.
  *
  * Plan review / run interactions stay covered by App.test.tsx (批准计划 /
- * 拒绝计划 / 重新生成 / 开始运行 keep their exact accessible names there).
+ * 开始运行 keep their exact accessible names there). The plan-regeneration
+ * review flow (重新生成 / 拒绝计划 / 编辑任务) is pinned here on Project A
+ * (draft plan, no run) — the interactions the desktop transport now serves
+ * through plan_regenerate / plan_reject / plan_update_task (ADR-020).
  */
 
 function renderPage() {
@@ -24,6 +27,16 @@ function renderPage() {
     <QueryClientProvider client={createQueryClient()}>
       <ToastProvider>
         <PlanPage projectId={PROJECT_B_ID} />
+      </ToastProvider>
+    </QueryClientProvider>,
+  );
+}
+
+function renderDraftPage() {
+  return render(
+    <QueryClientProvider client={createQueryClient()}>
+      <ToastProvider>
+        <PlanPage projectId={PROJECT_A_ID} />
       </ToastProvider>
     </QueryClientProvider>,
   );
@@ -66,5 +79,59 @@ describe("PlanPage prototype alignment", () => {
     expect(
       within(tree).getByRole("button", { name: "展开分组" }),
     ).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+describe("PlanPage plan-review interactions (desktop-wired commands)", () => {
+  it("rejects the draft plan, then regenerates a fresh editable draft", async () => {
+    const user = userEvent.setup();
+    renderDraftPage();
+
+    // Draft state: the review trio plus per-task edit actions.
+    expect(await screen.findByRole("button", { name: "拒绝计划" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新生成" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "编辑任务" }).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "拒绝计划" }));
+
+    // Rejected: editing closes and the only action is a fresh generation.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "重新生成计划" })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "拒绝计划" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑任务" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "重新生成计划" }));
+
+    // The regenerated plan is a draft again with editable tasks.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "重新生成" })).toBeInTheDocument();
+    });
+    expect(screen.getAllByRole("button", { name: "编辑任务" }).length).toBeGreaterThan(0);
+  });
+
+  it("edits a draft task's title and description through the dialog", async () => {
+    const user = userEvent.setup();
+    renderDraftPage();
+
+    await screen.findByRole("button", { name: "拒绝计划" });
+    const firstTask = "检索 concepts 维度来源";
+    expect(screen.getByText(firstTask)).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "编辑任务" })[0]);
+    const titleInput = screen.getByLabelText("任务标题");
+    const descriptionInput = screen.getByLabelText("任务描述");
+    expect(titleInput).toHaveValue(firstTask);
+
+    await user.clear(titleInput);
+    await user.type(titleInput, "聚焦量化方案的检索");
+    await user.clear(descriptionInput);
+    await user.type(descriptionInput, "只检索量化相关的来源。");
+    await user.click(screen.getByRole("button", { name: "保存修改" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("聚焦量化方案的检索")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(firstTask)).not.toBeInTheDocument();
   });
 });
