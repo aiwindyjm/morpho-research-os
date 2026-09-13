@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { Dialog, ToastProvider, Tooltip, useToast } from "./overlays";
+import { Dialog, Popover, ToastProvider, Tooltip, useToast } from "./overlays";
 
 describe("Dialog primitive", () => {
   function DialogHarness({ onClose }: { onClose: () => void }) {
@@ -35,6 +35,12 @@ describe("Dialog primitive", () => {
     expect(dialog).toHaveAttribute("aria-modal", "true");
     // Scrim consumes the semantic token utility, not bg-black/60.
     expect(screen.getByTestId("dialog-overlay")).toHaveClass("bg-scrim");
+    // The panel enters on the overlay tier with the shared ease-out rise
+    // (the previous rule referenced a `fade-in` keyframe that never existed,
+    // so dialogs appeared without any entrance).
+    expect(dialog).toHaveClass(
+      "animate-[var(--morpho-motion-slow)_var(--morpho-motion-ease)_morpho-overlay-in]",
+    );
     expect(screen.getByRole("button", { name: "确认" })).toHaveFocus();
 
     // Tab from the last focusable wraps back to the first.
@@ -47,6 +53,37 @@ describe("Dialog primitive", () => {
     expect(
       screen.getByRole("button", { name: "打开对话框" }),
     ).toHaveFocus();
+  });
+});
+
+describe("Popover primitive", () => {
+  function PopoverHarness() {
+    return (
+      <Popover
+        trigger={(props) => (
+          <button {...props}>切换面板</button>
+        )}
+      >
+        <button>面板动作</button>
+      </Popover>
+    );
+  }
+
+  it("opens with the shared entrance, closes on Escape and outside clicks", async () => {
+    const user = userEvent.setup();
+    render(<PopoverHarness />);
+    await user.click(screen.getByRole("button", { name: "切换面板" }));
+
+    const panel = screen.getByTestId("popover-panel");
+    expect(panel).toHaveAttribute("role", "dialog");
+    expect(panel).toHaveAttribute("aria-modal", "false");
+    expect(panel).toHaveClass(
+      "animate-[var(--morpho-motion-base)_var(--morpho-motion-ease)_morpho-overlay-in]",
+    );
+    expect(screen.getByRole("button", { name: "面板动作" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("popover-panel")).not.toBeInTheDocument();
   });
 });
 
@@ -77,6 +114,10 @@ describe("Toast primitive", () => {
       const region = screen.getByTestId("toast-region");
       expect(region).toHaveAttribute("aria-live", "polite");
       expect(screen.getByText("已保存")).toBeInTheDocument();
+      // Toasts enter with the shared overlay rise on the base tier.
+      expect(screen.getByText("已保存").closest("div")).toHaveClass(
+        "animate-[var(--morpho-motion-base)_var(--morpho-motion-ease)_morpho-overlay-in]",
+      );
       await waitFor(
         () => expect(screen.queryByText("已保存")).not.toBeInTheDocument(),
         { timeout: 6000 },
@@ -96,7 +137,13 @@ describe("Tooltip primitive", () => {
     );
     const trigger = screen.getByRole("button", { name: "暂停" });
     await user.hover(trigger);
-    expect(screen.getByRole("tooltip")).toHaveTextContent("暂停当前任务");
+    const tooltip = screen.getByRole("tooltip");
+    // Fades in on the fast tier — opacity only, so the keyframe never
+    // overrides the tooltip's own centering translate.
+    expect(tooltip).toHaveClass(
+      "animate-[var(--morpho-motion-fast)_var(--morpho-motion-ease)_morpho-tooltip-in]",
+    );
+    expect(tooltip).toHaveTextContent("暂停当前任务");
     await user.unhover(trigger);
     await user.tab();
     expect(trigger).toHaveFocus();

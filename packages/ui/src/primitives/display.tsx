@@ -141,7 +141,11 @@ export interface ProgressProps {
 }
 
 /** Registered primitive: Progress — determinate or indeterminate with an
- * accessible name; the percentage is rendered for non-visual confirmation. */
+ * accessible name; the percentage is rendered for non-visual confirmation.
+ * The fill moves via transform (scaleX) rather than width so progress
+ * animation stays on the compositor; indeterminate slides through the
+ * track (a static full bar would read as "done") and honors the global
+ * reduced-motion override. */
 export function Progress({ value, max = 100, label }: ProgressProps) {
   const determinate = typeof value === "number";
   const percent = determinate ? Math.min(100, Math.round((value / max) * 100)) : null;
@@ -155,9 +159,12 @@ export function Progress({ value, max = 100, label }: ProgressProps) {
       className="h-2 w-full overflow-hidden rounded-full bg-surface-raised"
     >
       <div
-        className="h-full rounded-full bg-accent transition-[width] duration-[var(--morpho-motion-base)]"
-        style={{ width: percent !== null ? `${percent}%` : "100%" }}
-        data-indeterminate={determinate ? undefined : "true"}
+        className={`h-full w-full origin-left rounded-full bg-accent ${
+          determinate
+            ? "transition-transform duration-[var(--morpho-motion-base)]"
+            : "animate-[morpho-progress-slide_1.4s_ease-in-out_infinite]"
+        }`}
+        style={{ transform: percent !== null ? `scaleX(${percent / 100})` : undefined }}
         data-testid="progress-fill"
       />
       {percent !== null ? (
@@ -270,7 +277,7 @@ export function Tabs({ items, label }: { items: TabItem[]; label: string }) {
               aria-controls={`panel-${item.id}`}
               tabIndex={selected ? 0 : -1}
               onClick={() => setActiveId(item.id)}
-              className={`rounded-t-md px-md py-sm text-label transition-colors duration-[var(--morpho-motion-fast)] ${
+              className={`rounded-t-md px-md py-sm text-label transition-[color,border-color,transform] duration-[var(--morpho-motion-fast)] active:scale-[0.98] ${
                 selected
                   ? "border-b-2 border-accent text-text-primary"
                   : "text-text-secondary hover:text-text-primary"

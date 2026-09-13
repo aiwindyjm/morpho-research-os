@@ -52,4 +52,37 @@ describe("form primitives", () => {
     await user.click(checkbox);
     expect(checkbox).toBeChecked();
   });
+
+  it("form fields focus with the celadon ring at a 2px offset", () => {
+    // Spec §5: the focus-visible ring is bronze globally, but form fields
+    // take the celadon variant (accent-alt, 5.84:1 — above the 3:1 floor).
+    render(<Input aria-label="主题" />);
+    const input = screen.getByLabelText("主题");
+    expect(input).toHaveClass("focus-visible:outline-accent-alt");
+    expect(input).toHaveClass("focus-visible:outline-2");
+    expect(input).toHaveClass("focus-visible:outline-offset-2");
+    expect(input.className).not.toContain("outline-accent ");
+  });
+
+  it("disabled fields mute the ink instead of opacity dimming", () => {
+    render(<Input aria-label="主题" disabled />);
+    const input = screen.getByLabelText("主题");
+    expect(input).toBeDisabled();
+    expect(input).toHaveClass("disabled:text-text-muted");
+    expect(input.className).not.toContain("disabled:opacity");
+  });
+
+  it("hover warms fields up the surface ladder and never darkens them", () => {
+    render(<Input aria-label="主题" />);
+    expect(screen.getByLabelText("主题")).toHaveClass(
+      "enabled:hover:bg-surface-raised",
+    );
+  });
+
+  it("a disabled checkbox mutes its label ink", () => {
+    render(<Checkbox label="包含论文" disabled />);
+    const checkbox = screen.getByRole("checkbox", { name: "包含论文" });
+    expect(checkbox).toBeDisabled();
+    expect(checkbox.nextElementSibling).toHaveClass("text-text-muted");
+  });
 });

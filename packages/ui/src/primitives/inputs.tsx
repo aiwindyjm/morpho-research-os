@@ -91,8 +91,14 @@ export function Field({
   );
 }
 
+/* Shared control states (spec §5, 8-state audit): hover warms the field one
+ * rung up the surface ladder (gated by enabled:), invalid keeps the error
+ * border, disabled mutes the ink instead of opacity dimming (text-muted
+ * holds 5.13:1 on surface), and focus-visible is the celadon ring — the
+ * form-field variant of the spec's brass-or-celadon rule (accent-alt holds
+ * 5.84:1, above the 3:1 ring floor; buttons keep the global bronze ring). */
 const controlClasses =
-  "w-full rounded-md border bg-surface px-md text-body text-text-primary placeholder:text-text-muted transition-colors duration-[var(--morpho-motion-fast)] disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-error focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-0";
+  "w-full rounded-md border bg-surface px-md text-body text-text-primary placeholder:text-text-muted transition-colors duration-[var(--morpho-motion-fast)] enabled:hover:bg-surface-raised disabled:cursor-not-allowed disabled:text-text-muted aria-[invalid=true]:border-error focus-visible:outline-2 focus-visible:outline-accent-alt focus-visible:outline-offset-2";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   invalid?: boolean;
@@ -157,9 +163,10 @@ export interface CheckboxProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string;
 }
 
-/** Registered primitive: Checkbox with an integrated label. */
+/** Registered primitive: Checkbox with an integrated label. Disabled
+ * mutes the label ink (text-muted, 4.67:1) instead of opacity dimming. */
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
-  function Checkbox({ label, className = "", id, ...rest }, ref) {
+  function Checkbox({ label, className = "", id, disabled, ...rest }, ref) {
     const generatedId = useId();
     const controlId = id ?? generatedId;
     return (
@@ -168,10 +175,14 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
           ref={ref}
           id={controlId}
           type="checkbox"
-          className="size-4 accent-[var(--morpho-color-accent)]"
+          disabled={disabled}
+          className="size-4 accent-[var(--morpho-color-accent)] disabled:cursor-not-allowed"
           {...rest}
         />
-        <label htmlFor={controlId} className="text-body text-text-primary">
+        <label
+          htmlFor={controlId}
+          className={`text-body ${disabled ? "text-text-muted" : "text-text-primary"}`}
+        >
           {label}
         </label>
       </div>

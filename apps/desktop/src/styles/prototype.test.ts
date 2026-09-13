@@ -93,7 +93,10 @@ describe("lamplit-study effect layer (ADR-021, spec §3)", () => {
 
   it("swaps the dot glows to brass, warm neutral, and terracotta", () => {
     expect(rule(prototypeCss, ".dot-glow-accent")).toContain("rgb(217 160 91 / 0.11)");
-    expect(rule(prototypeCss, ".dot-glow-secondary")).toContain("rgb(242 235 224 / 0.4)");
+    // Retuned in the polish pass from the spec's 0.4: the parchment ring
+    // must sit at its siblings' intensity (accent 0.11 / warning 0.1), not
+    // glow 4x brighter than every other status.
+    expect(rule(prototypeCss, ".dot-glow-secondary")).toContain("rgb(242 235 224 / 0.1)");
     expect(rule(prototypeCss, ".dot-glow-warning")).toContain("rgb(207 125 84 / 0.1)");
   });
 

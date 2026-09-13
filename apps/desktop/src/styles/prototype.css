@@ -111,9 +111,12 @@
 .node-badge-error   { color: var(--morpho-color-error);      background: rgb(212 118 118 / 0.1); }
 
 /* Status-dot glows and muted dot (ADR-013 structure; ADR-021 values).
- * dot-muted resolves to text-secondary. */
+ * dot-muted resolves to text-secondary. The draft ring was retuned in the
+ * polish pass: the spec's 0.4 parchment alpha read as a bright halo — 4x
+ * its sibling glows — inverting the status hierarchy (draft must be the
+ * quietest state); 0.1 matches the accent (0.11) and warning (0.1) rings. */
 .dot-glow-accent { box-shadow: 0 0 0 4px rgb(217 160 91 / 0.11); }
-.dot-glow-secondary { box-shadow: 0 0 0 4px rgb(242 235 224 / 0.4); }
+.dot-glow-secondary { box-shadow: 0 0 0 4px rgb(242 235 224 / 0.1); }
 .dot-glow-warning { box-shadow: 0 0 0 4px rgb(207 125 84 / 0.1); }
 .dot-muted { background-color: var(--morpho-color-text-secondary); }
 

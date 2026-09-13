@@ -107,12 +107,19 @@ Visual effects that Tailwind utilities cannot express cleanly. The effect layer 
 | `chip-selected` | Selected chip/filter state: brass text, brass 0.55 border (≥3:1), accent-soft background |
 | `option-selected` (+ `:hover`) | Selected option card: brass 0.55 border (≥3:1) on brass 0.06 fill; hover deepens the fill to 0.1 instead of relaxing the border below 3:1 |
 | `dot-glow-accent` | 4px brass glow ring (project dot) |
-| `dot-glow-secondary` | 4px warm-neutral glow ring (draft dot; `rgb(242 235 224 / 0.4)` per spec — flag for the visual polish pass) |
+| `dot-glow-secondary` | 4px warm-neutral glow ring (draft dot); retuned in the 2026-09-13 polish pass from the spec's `rgb(242 235 224 / 0.4)` to `rgb(242 235 224 / 0.1)` — at 0.4 the parchment ring read ~4x brighter than its sibling glows (accent 0.11, warning 0.1), making the draft state the loudest on screen and inverting the status hierarchy; 0.1 matches the sibling ring intensity |
 | `dot-glow-warning` | 4px terracotta glow ring (paused dot) |
 | `dot-muted` | Muted status dot fill — resolves to `text-secondary` |
 | `pulse` | 5px brass glow ring on the current overview timeline marker |
 
 Rule (ADR-013 decision 2, still in force): base colors on pages must come from semantic tokens. Token-derived alpha tints — the same RGB triple as a named token with an `/alpha` suffix (e.g. `border-[rgb(217_160_91/0.3)]`) — are permitted in Tailwind arbitrary values. The former one-off literals (sidebar `#0d121b`, avatar `#b8c8ef`/`#151a24`, brand text `#f2f6ff`, graph node `#1b273b`) were promoted to named tokens in the ADR-013 follow-up wave and simply ride the ADR-021 values now; the only raw literals left in the effect layer are the ADR-021 gradient/glow composites (`#e0b06b`, `#c8914e`, `#141009`) and documented flat washes.
+
+### Polish-pass semantic notes (2026-09-13 visual review)
+
+- `pill-accent` wears the slate-blue info color even though its name says "accent" (class names are the frozen consumer contract). Verified against every consumer: the journal date pill and the RUNNING task status are informational/transient states, so the info hue is the correct read — nothing that should carry brand-CTA emphasis consumes this class. Brass stays reserved for interactive emphasis (≤12% surface), so no "accent" pill competes with primary actions.
+- `node-badge-accent` (info slate blue: Concept/Event node types, `web_page` sources) and `node-badge-alt` (celadon accent-alt: source/technology badges, taking over the former purple's role per ADR-021) are type labels, not status semantics; the two cool counter-axis hues distinguish label families from the success/warning/error pills without ever reading as calls to action.
+- `option-selected:hover` (fill deepened 0.06 → 0.1 while the border holds 0.55 / ≥3:1) verified: selection is carried by the 3:1 brass border and wash, hover only deepens the wash, so selected-vs-hover stays legible; unselected option cards answer hover with the warm tint ladder (`bg-overlay-hover`), never a state border below 3:1.
+- Shared motion keyframes now live in `packages/ui/src/tokens.css` beside the motion tiers (additive): `morpho-overlay-in` (ease-out rise, `--morpho-motion-slow` for Dialog, base for Popover/Toast), `morpho-tooltip-in` (opacity-only fast fade, so the keyframe never overrides the tooltip's centering transform), and `morpho-progress-slide` (indeterminate Progress loop — a static full bar would read as complete). The Dialog previously referenced a `fade-in` keyframe that did not exist anywhere, so dialogs had no entrance at all.
 
 ## Approved non-token values (documented exceptions)
 

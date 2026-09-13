@@ -465,7 +465,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                 type="button"
                 disabled
                 title="桌面版提供"
-                className="rounded-full border border-dashed border-border px-md py-1.5 text-caption text-accent-alt disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-full border border-dashed border-border px-md py-1.5 text-caption text-accent-alt disabled:cursor-not-allowed disabled:text-text-muted"
               >
                 ＋ 自定义维度
               </button>
@@ -484,7 +484,9 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                   <label
                     key={preference.value}
                     className={`grid cursor-pointer grid-cols-[auto_1fr] gap-sm rounded-md border p-md transition-colors duration-[var(--morpho-motion-fast)] ${
-                      checked ? "option-selected" : "border-border"
+                      checked
+                        ? "option-selected"
+                        : "border-border hover:bg-overlay-hover"
                     }`}
                   >
                     <input

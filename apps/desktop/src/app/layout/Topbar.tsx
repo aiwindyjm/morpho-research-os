@@ -31,7 +31,7 @@ export function Topbar() {
           disabled
           title="本地版暂未提供帮助文档"
           aria-label="帮助"
-          className="flex size-7 items-center justify-center rounded-full border border-border text-caption text-text-muted"
+          className="flex size-7 cursor-not-allowed items-center justify-center rounded-full border border-border text-caption text-text-muted"
         >
           ?
         </button>

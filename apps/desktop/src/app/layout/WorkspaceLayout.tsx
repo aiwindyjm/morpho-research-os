@@ -107,7 +107,7 @@ function AssistantDock() {
         ref={launcherRef}
         aria-label="打开 AI 助手"
         onClick={() => setAssistantOpen(true)}
-        className="brand-gradient-button fixed bottom-xl right-xl z-30 flex items-center gap-sm rounded-full px-md py-sm text-micro font-bold text-text-on-brand transition-transform hover:-translate-y-0.5"
+        className="brand-gradient-button fixed bottom-xl right-xl z-30 flex items-center gap-sm rounded-full px-md py-sm text-micro font-bold text-text-on-brand transition-transform duration-[var(--morpho-motion-fast)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
         data-testid="assistant-launcher"
       >
         <span aria-hidden="true" className="flex size-5 items-center justify-center rounded-full bg-overlay-strong">

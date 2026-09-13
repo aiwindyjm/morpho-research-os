@@ -57,6 +57,42 @@ describe("display primitives", () => {
     expect(bar).toHaveAttribute("aria-valuenow", "40");
   });
 
+  it("Progress animates on the compositor: determinate scales, indeterminate slides", () => {
+    render(
+      <>
+        <Progress value={40} max={200} label="任务完成度" />
+        <Progress label="检索中" />
+      </>,
+    );
+    const determinate = screen
+      .getByRole("progressbar", { name: "任务完成度" })
+      .querySelector('[data-testid="progress-fill"]');
+    expect(determinate).toHaveClass("origin-left");
+    expect(determinate).toHaveClass("transition-transform");
+    expect(determinate).toHaveStyle({ transform: "scaleX(0.2)" });
+
+    // An indeterminate bar must never sit static at full width (that reads
+    // as done); it slides through the track instead.
+    const indeterminate = screen
+      .getByRole("progressbar", { name: "检索中" })
+      .querySelector('[data-testid="progress-fill"]');
+    expect(indeterminate).toHaveClass(
+      "animate-[morpho-progress-slide_1.4s_ease-in-out_infinite]",
+    );
+  });
+
+  it("Tabs give press feedback with scale(0.98)", () => {
+    render(
+      <Tabs
+        label="详情视图"
+        items={[{ id: "overview", label: "概览", content: <p>概览内容</p> }]}
+      />,
+    );
+    expect(screen.getByRole("tab", { name: "概览" })).toHaveClass(
+      "active:scale-[0.98]",
+    );
+  });
+
   it("Skeleton is hidden from assistive tech", () => {
     render(<Skeleton />);
     expect(screen.getByTestId("skeleton")).toHaveAttribute("aria-hidden", "true");

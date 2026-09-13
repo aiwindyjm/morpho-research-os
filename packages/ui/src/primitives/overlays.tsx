@@ -89,7 +89,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className="w-full max-w-lg rounded-lg border border-border bg-surface-raised p-xl shadow-overlay animate-[var(--morpho-motion-slow)_var(--morpho-motion-ease)_fade-in]"
+        className="w-full max-w-lg rounded-lg border border-border bg-surface-raised p-xl shadow-overlay animate-[var(--morpho-motion-slow)_var(--morpho-motion-ease)_morpho-overlay-in]"
       >
         <h2 id={titleId} className="text-h2 text-text-primary">
           {title}
@@ -157,7 +157,7 @@ export function Popover({ trigger, children, align = "start" }: PopoverProps) {
           role="dialog"
           aria-modal="false"
           data-testid="popover-panel"
-          className={`absolute top-[calc(100%+4px)] z-40 min-w-48 rounded-md border border-border bg-surface-raised p-md shadow-panel ${
+          className={`absolute top-[calc(100%+4px)] z-40 min-w-48 rounded-md border border-border bg-surface-raised p-md shadow-panel animate-[var(--morpho-motion-base)_var(--morpho-motion-ease)_morpho-overlay-in] ${
             align === "end" ? "right-0" : "left-0"
           }`}
         >
@@ -208,7 +208,7 @@ export function Tooltip({ label, children }: TooltipProps) {
         <span
           role="tooltip"
           id={tooltipId}
-          className="absolute bottom-[calc(100%+6px)] left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-sm border border-border bg-surface-raised px-sm py-xs text-caption text-text-primary shadow-panel"
+          className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-sm border border-border bg-surface-raised px-sm py-xs text-caption text-text-primary shadow-panel animate-[var(--morpho-motion-fast)_var(--morpho-motion-ease)_morpho-tooltip-in]"
         >
           {label}
         </span>
@@ -249,7 +249,9 @@ const toastVariantClasses: Record<ToastMessage["variant"], string> = {
 };
 
 /** Registered primitive: Toast — screen-reader announcements through a
- * polite live region; errors announce assertively. Auto-dismisses. */
+ * polite live region; errors announce assertively. Auto-dismisses. Toasts
+ * enter with the shared overlay rise (Guidance: the new notice draws the
+ * eye); reduced-motion collapses the entrance globally. */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const counter = useRef(0);
@@ -287,7 +289,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 function ToastItem({ toast }: { toast: ToastMessage }) {
   return (
     <div
-      className={`fixed bottom-lg right-lg z-50 max-w-sm rounded-md border bg-surface-raised px-md py-sm shadow-panel ${toastVariantClasses[toast.variant]}`}
+      className={`fixed bottom-lg right-lg z-50 max-w-sm rounded-md border bg-surface-raised px-md py-sm shadow-panel animate-[var(--morpho-motion-base)_var(--morpho-motion-ease)_morpho-overlay-in] ${toastVariantClasses[toast.variant]}`}
     >
       <p className="text-label">{toast.title}</p>
       {toast.detail ? (
