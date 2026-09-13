@@ -8,7 +8,9 @@ Implement approved specifications, fix bugs, refactor within boundaries, add tes
 
 - Frontend never accesses SQLite, filesystem, secrets, or worker processes directly.
 - LLM output is parsed, validated, normalized, then persisted; it never mutates the vault directly.
-- Reuse registered components and tokens. No new UI framework or state library.
+- Frontend uses React 18+ with TypeScript, built by Vite. Global UI state uses Zustand; async queries, caching, and request state use TanStack Query. Persisted domain facts must never live only in frontend state.
+- Components build on shadcn/ui and are styled with Tailwind CSS. Components must satisfy keyboard, screen-reader, high-zoom, and narrow-window requirements.
+- Routing uses React Router. View switches preserve defined temporary UI state; state invalidated by project lock, permission revocation, or version invalidation must be cleared proactively.
 - Durable schema changes require a numbered migration and contract update.
 - User-modified Markdown is never silently overwritten.
 - Use mocks and fixtures; tests never call real providers.

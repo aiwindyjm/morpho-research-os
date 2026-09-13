@@ -9,6 +9,7 @@ Morpho intentionally uses a small, familiar stack suited to one maintainer and A
 | Styling | Tailwind CSS + shadcn/ui | Tokenized visual system and primitives | No second UI framework |
 | UI state | Zustand | Local view state | Not a server cache or domain database |
 | Async state | TanStack Query | Request lifecycle and cache | Uses service contracts |
+| Routing | React Router | View routing and deep-linkable state | Single router instance, no second router |
 | Validation | Zod | Runtime validation in TypeScript | Mirrors canonical schemas |
 | Desktop core | Rust | Persistence, filesystem, secrets, process lifecycle | Authoritative local boundary |
 | Database | SQLite | Runtime state and indexes | Never the sole user knowledge asset |
