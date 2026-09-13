@@ -15,6 +15,8 @@ pub struct NewPlan {
     pub project_id: String,
     pub research_config_id: String,
     pub title: String,
+    /// Plan-level rationale rendered by the review UI (migration 003).
+    pub rationale: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -24,8 +26,22 @@ pub struct PlanRecord {
     pub research_config_id: String,
     pub title: String,
     pub status: String,
+    pub rationale: String,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+/// A section to create inside a plan draft. `order_index` orders sections
+/// within the plan; `dimension` names the research dimension the section
+/// covers (empty for synthesis-only sections written before migration 003);
+/// `objectives` is a JSON string array in the database.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NewSection {
+    pub title: String,
+    pub order_index: i64,
+    pub summary: String,
+    pub dimension: String,
+    pub objectives: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -35,6 +51,8 @@ pub struct SectionRecord {
     pub title: String,
     pub order_index: i64,
     pub summary: String,
+    pub dimension: String,
+    pub objectives: Vec<String>,
     pub created_at: i64,
 }
 
@@ -44,6 +62,7 @@ pub struct SectionRecord {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NewTask {
     pub title: String,
+    pub description: String,
     pub task_type: String,
     pub idempotency_key: String,
     pub section_index: Option<i64>,
@@ -57,6 +76,7 @@ pub struct TaskRecord {
     pub section_id: Option<String>,
     pub run_id: Option<String>,
     pub title: String,
+    pub description: String,
     pub task_type: String,
     pub status: String,
     pub idempotency_key: String,
@@ -77,7 +97,7 @@ pub struct TaskRecord {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanDraft {
     pub plan: NewPlan,
-    pub sections: Vec<(String, i64, String)>, // (title, order_index, summary)
+    pub sections: Vec<NewSection>,
     pub tasks: Vec<NewTask>,
 }
 
@@ -120,42 +140,53 @@ impl Plans {
             research_config_id: draft.plan.research_config_id.clone(),
             title: draft.plan.title.clone(),
             status: "draft".into(),
+            rationale: draft.plan.rationale.clone(),
             created_at: now,
             updated_at: now,
         };
         tx.execute(
-            "INSERT INTO plans (id, project_id, research_config_id, title, status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            "INSERT INTO plans (id, project_id, research_config_id, title, status, rationale,
+                                created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
             params![
                 plan.id,
                 plan.project_id,
                 plan.research_config_id,
                 plan.title,
                 plan.status,
+                plan.rationale,
                 now
             ],
         )
         .map_err(CoreError::from)?;
 
         let mut sections = Vec::with_capacity(draft.sections.len());
-        for (title, order_index, summary) in &draft.sections {
+        for new_section in &draft.sections {
+            let objectives_json = serde_json::to_string(&new_section.objectives).map_err(|e| {
+                CoreError::database(format!("serialize section objectives failed: {e}"))
+            })?;
             let section = SectionRecord {
                 id: new_id(),
                 plan_id: plan.id.clone(),
-                title: title.clone(),
-                order_index: *order_index,
-                summary: summary.clone(),
+                title: new_section.title.clone(),
+                order_index: new_section.order_index,
+                summary: new_section.summary.clone(),
+                dimension: new_section.dimension.clone(),
+                objectives: new_section.objectives.clone(),
                 created_at: now,
             };
             tx.execute(
-                "INSERT INTO sections (id, plan_id, title, order_index, summary, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO sections (id, plan_id, title, order_index, summary, dimension,
+                                       objectives, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     section.id,
                     section.plan_id,
                     section.title,
                     section.order_index,
                     section.summary,
+                    section.dimension,
+                    objectives_json,
                     section.created_at
                 ],
             )
@@ -176,6 +207,7 @@ impl Plans {
                 section_id,
                 run_id: None,
                 title: new_task.title.clone(),
+                description: new_task.description.clone(),
                 task_type: new_task.task_type.clone(),
                 status: "PENDING".into(),
                 idempotency_key: new_task.idempotency_key.clone(),
@@ -190,14 +222,16 @@ impl Plans {
                 updated_at: now,
             };
             tx.execute(
-                "INSERT INTO tasks (id, plan_id, section_id, run_id, title, task_type, status,
-                                    idempotency_key, retry_count, max_retries, created_at, updated_at)
-                 VALUES (?1,?2,?3,NULL,?4,?5,?6,?7,?8,?9,?10,?10)",
+                "INSERT INTO tasks (id, plan_id, section_id, run_id, title, description, task_type,
+                                    status, idempotency_key, retry_count, max_retries,
+                                    created_at, updated_at)
+                 VALUES (?1,?2,?3,NULL,?4,?5,?6,?7,?8,?9,?10,?11,?11)",
                 params![
                     task.id,
                     task.plan_id,
                     task.section_id,
                     task.title,
+                    task.description,
                     task.task_type,
                     task.status,
                     task.idempotency_key,
@@ -240,7 +274,8 @@ impl Plans {
     pub fn get(conn: &Connection, id: &str) -> Result<Option<PlanRecord>, CoreError> {
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, research_config_id, title, status, created_at, updated_at
+                "SELECT id, project_id, research_config_id, title, status, rationale,
+                        created_at, updated_at
                  FROM plans WHERE id = ?1",
             )
             .map_err(CoreError::from)?;
@@ -257,7 +292,8 @@ impl Plans {
     ) -> Result<Vec<PlanRecord>, CoreError> {
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, research_config_id, title, status, created_at, updated_at
+                "SELECT id, project_id, research_config_id, title, status, rationale,
+                        created_at, updated_at
                  FROM plans WHERE project_id = ?1 ORDER BY created_at, id",
             )
             .map_err(CoreError::from)?;
@@ -267,6 +303,17 @@ impl Plans {
             .collect::<Result<Vec<_>, _>>()
             .map_err(CoreError::from)?;
         Ok(rows)
+    }
+
+    /// The project's most recently created plan (its "current" plan for the
+    /// review flow), or `None` when the project has none.
+    pub fn latest_for_project(
+        conn: &Connection,
+        project_id: &str,
+    ) -> Result<Option<PlanRecord>, CoreError> {
+        Ok(Self::list_for_project(conn, project_id)?
+            .into_iter()
+            .next_back())
     }
 
     /// Updates a plan status (the plan-review decision: `approved`,
@@ -291,10 +338,46 @@ impl Plans {
         if changed == 0 {
             return Err(CoreError::database(format!("plan '{id}' not found")));
         }
-        let sql = "SELECT id, project_id, research_config_id, title, status, created_at, updated_at
+        let sql = "SELECT id, project_id, research_config_id, title, status, rationale,
+                        created_at, updated_at
              FROM plans WHERE id = ?1";
         tx.query_row(sql, params![id], map_plan)
             .map_err(CoreError::from)
+    }
+
+    /// The plan's sections in `order_index` order.
+    pub fn sections_for_plan(
+        conn: &Connection,
+        plan_id: &str,
+    ) -> Result<Vec<SectionRecord>, CoreError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, plan_id, title, order_index, summary, dimension, objectives,
+                        created_at
+                 FROM sections WHERE plan_id = ?1 ORDER BY order_index, id",
+            )
+            .map_err(CoreError::from)?;
+        let rows = stmt
+            .query_map(params![plan_id], map_section)
+            .map_err(CoreError::from)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CoreError::from)?;
+        Ok(rows)
+    }
+
+    /// Marks every plan of a project as `superseded` (plan generations,
+    /// migration 001's status vocabulary). Already-superseded rows keep
+    /// their timestamp. Returns how many rows changed.
+    pub fn supersede_all_for_project(
+        tx: &Transaction<'_>,
+        project_id: &str,
+    ) -> Result<usize, CoreError> {
+        tx.execute(
+            "UPDATE plans SET status = 'superseded', updated_at = ?2
+             WHERE project_id = ?1 AND status <> 'superseded'",
+            params![project_id, now_unix_ms()],
+        )
+        .map_err(CoreError::from)
     }
 
     pub fn tasks_for_plan(conn: &Connection, plan_id: &str) -> Result<Vec<TaskRecord>, CoreError> {
@@ -311,9 +394,9 @@ impl Plans {
 
 fn task_select(suffix: &str) -> String {
     format!(
-        "SELECT id, plan_id, section_id, run_id, title, task_type, status, idempotency_key,
-                checkpoint, retry_count, max_retries, cache_ref, result_ref, error_ref,
-                skip_reason, created_at, updated_at
+        "SELECT id, plan_id, section_id, run_id, title, description, task_type, status,
+                idempotency_key, checkpoint, retry_count, max_retries, cache_ref, result_ref,
+                error_ref, skip_reason, created_at, updated_at
          FROM tasks {suffix}"
     )
 }
@@ -325,8 +408,24 @@ fn map_plan(row: &Row<'_>) -> rusqlite::Result<PlanRecord> {
         research_config_id: row.get(2)?,
         title: row.get(3)?,
         status: row.get(4)?,
-        created_at: row.get(5)?,
-        updated_at: row.get(6)?,
+        rationale: row.get(5)?,
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
+    })
+}
+
+fn map_section(row: &Row<'_>) -> rusqlite::Result<SectionRecord> {
+    let objectives_json: String = row.get(6)?;
+    let objectives = serde_json::from_str(&objectives_json).unwrap_or_default();
+    Ok(SectionRecord {
+        id: row.get(0)?,
+        plan_id: row.get(1)?,
+        title: row.get(2)?,
+        order_index: row.get(3)?,
+        summary: row.get(4)?,
+        dimension: row.get(5)?,
+        objectives,
+        created_at: row.get(7)?,
     })
 }
 
@@ -337,18 +436,19 @@ fn map_task(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         section_id: row.get(2)?,
         run_id: row.get(3)?,
         title: row.get(4)?,
-        task_type: row.get(5)?,
-        status: row.get(6)?,
-        idempotency_key: row.get(7)?,
-        checkpoint: row.get(8)?,
-        retry_count: row.get(9)?,
-        max_retries: row.get(10)?,
-        cache_ref: row.get(11)?,
-        result_ref: row.get(12)?,
-        error_ref: row.get(13)?,
-        skip_reason: row.get(14)?,
-        created_at: row.get(15)?,
-        updated_at: row.get(16)?,
+        description: row.get(5)?,
+        task_type: row.get(6)?,
+        status: row.get(7)?,
+        idempotency_key: row.get(8)?,
+        checkpoint: row.get(9)?,
+        retry_count: row.get(10)?,
+        max_retries: row.get(11)?,
+        cache_ref: row.get(12)?,
+        result_ref: row.get(13)?,
+        error_ref: row.get(14)?,
+        skip_reason: row.get(15)?,
+        created_at: row.get(16)?,
+        updated_at: row.get(17)?,
     })
 }
 
@@ -395,14 +495,28 @@ mod tests {
                 project_id: project_id.into(),
                 research_config_id: config_id.into(),
                 title: "LLM scaling survey".into(),
+                rationale: "five sections of work".into(),
             },
             sections: vec![
-                ("Foundations".into(), 0, "core concepts".into()),
-                ("Experiments".into(), 1, String::new()),
+                NewSection {
+                    title: "Foundations".into(),
+                    order_index: 0,
+                    summary: "core concepts".into(),
+                    dimension: "theory".into(),
+                    objectives: vec!["map concepts".into()],
+                },
+                NewSection {
+                    title: "Experiments".into(),
+                    order_index: 1,
+                    summary: String::new(),
+                    dimension: "experiments".into(),
+                    objectives: vec![],
+                },
             ],
             tasks: vec![
                 NewTask {
                     title: "search foundations".into(),
+                    description: "find foundational sources".into(),
                     task_type: "search".into(),
                     idempotency_key: "plan-1-search-foundations".into(),
                     section_index: Some(0),
@@ -410,6 +524,7 @@ mod tests {
                 },
                 NewTask {
                     title: "extract experiments".into(),
+                    description: String::new(),
                     task_type: "extraction".into(),
                     idempotency_key: "plan-1-extract-experiments".into(),
                     section_index: Some(1),
@@ -529,5 +644,46 @@ mod tests {
         })
         .unwrap_err();
         assert!(err.developer_detail.contains("not found"));
+    }
+
+    #[test]
+    fn draft_persists_plan_metadata_and_lists_sections_in_order() {
+        let (mut conn, project_id, config_id) = setup();
+        let created = with_write_tx(&mut conn, |tx| {
+            Plans::insert_draft(tx, &sample_draft(&project_id, &config_id))
+        })
+        .unwrap();
+
+        // Plan rationale, section dimension/objectives, and task description
+        // (migration 003) round-trip through the records.
+        assert_eq!(created.plan.rationale, "five sections of work");
+        let sections = Plans::sections_for_plan(&conn, &created.plan.id).unwrap();
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].title, "Foundations");
+        assert_eq!(sections[0].dimension, "theory");
+        assert_eq!(sections[0].objectives, vec!["map concepts".to_string()]);
+        assert_eq!(sections[1].order_index, 1, "sections list in order");
+        let tasks = Plans::tasks_for_plan(&conn, &created.plan.id).unwrap();
+        assert_eq!(tasks[0].description, "find foundational sources");
+
+        // latest_for_project returns the most recently created plan.
+        let second = {
+            let mut draft = sample_draft(&project_id, &config_id);
+            draft.plan.title = "Second".into();
+            // Idempotency keys are globally unique per task, so vary them
+            // (and drop the draft-internal dependency references to them).
+            for (index, task) in draft.tasks.iter_mut().enumerate() {
+                task.idempotency_key = format!("plan-2-task-{index}");
+                task.depends_on.clear();
+            }
+            with_write_tx(&mut conn, |tx| Plans::insert_draft(tx, &draft)).unwrap()
+        };
+        assert_eq!(
+            Plans::latest_for_project(&conn, &project_id)
+                .unwrap()
+                .map(|p| p.id),
+            Some(second.plan.id)
+        );
+        assert!(Plans::latest_for_project(&conn, "ghost").unwrap().is_none());
     }
 }

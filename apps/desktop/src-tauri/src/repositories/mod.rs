@@ -12,6 +12,7 @@ pub mod claims;
 pub mod configs;
 pub mod events;
 pub mod evidence;
+pub mod gap_decisions;
 pub mod knowledge;
 pub mod llm_usage;
 pub mod plans;

@@ -11,7 +11,7 @@ use rusqlite::{Connection, Transaction};
 use std::path::Path;
 
 /// Highest schema version shipped in `migrations/`.
-pub const LATEST_SCHEMA_VERSION: i64 = 2;
+pub const LATEST_SCHEMA_VERSION: i64 = 3;
 
 /// A numbered SQL migration. `sql` may contain multiple statements.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +34,11 @@ pub fn embedded_migrations() -> Vec<Migration> {
             version: 2,
             name: "task_skip_and_orchestrator",
             sql: include_str!("../migrations/002_task_skip_and_orchestrator.sql"),
+        },
+        Migration {
+            version: 3,
+            name: "plan_metadata_and_gap_decisions",
+            sql: include_str!("../migrations/003_plan_metadata_and_gap_decisions.sql"),
         },
     ]
 }
@@ -195,7 +200,7 @@ mod tests {
         let versions: Vec<i64> = migrations.iter().map(|m| m.version).collect();
         assert_eq!(
             versions,
-            vec![1, 2],
+            vec![1, 2, 3],
             "migrations must be gapless and ordered"
         );
         assert_eq!(LATEST_SCHEMA_VERSION, migrations.last().unwrap().version);
@@ -207,7 +212,11 @@ mod tests {
         let outcome = migrate(&mut conn, &embedded_migrations()).unwrap();
         assert_eq!(
             outcome.applied,
-            vec![(1, "initial"), (2, "task_skip_and_orchestrator")]
+            vec![
+                (1, "initial"),
+                (2, "task_skip_and_orchestrator"),
+                (3, "plan_metadata_and_gap_decisions")
+            ]
         );
         assert_eq!(outcome.current, LATEST_SCHEMA_VERSION);
         assert_eq!(
@@ -349,6 +358,7 @@ mod tests {
             "artifacts",
             "events",
             "llm_usage",
+            "gap_decisions",
             "schema_meta",
         ];
         for table in expected {
@@ -431,10 +441,16 @@ mod tests {
             .is_err();
         assert!(skipped_rejected, "v1 CHECK must not know SKIPPED");
 
-        // Upgrade applies exactly migration 2.
+        // Upgrade applies exactly migrations 2 and 3.
         let outcome = migrate(&mut conn, &embedded_migrations()).unwrap();
-        assert_eq!(outcome.applied, vec![(2, "task_skip_and_orchestrator")]);
-        assert_eq!(current_schema_version(&conn).unwrap(), 2);
+        assert_eq!(
+            outcome.applied,
+            vec![
+                (2, "task_skip_and_orchestrator"),
+                (3, "plan_metadata_and_gap_decisions")
+            ]
+        );
+        assert_eq!(current_schema_version(&conn).unwrap(), 3);
 
         // Every rebuild table kept its rows and values.
         let (tasks, deps, events, usage): (i64, i64, i64, i64) = conn
@@ -480,6 +496,23 @@ mod tests {
             )
             .unwrap();
         assert_eq!(condition, "completed-or-skipped");
+
+        // Migration 003's additive columns accept values on upgraded rows.
+        conn.execute("UPDATE plans SET rationale = 'why' WHERE id = 'pl1'", [])
+            .unwrap();
+        conn.execute("UPDATE tasks SET description = 'what' WHERE id = 't1'", [])
+            .unwrap();
+        let rationale: String = conn
+            .query_row("SELECT rationale FROM plans WHERE id = 'pl1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let description: String = conn
+            .query_row("SELECT description FROM tasks WHERE id = 't1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!((rationale.as_str(), description.as_str()), ("why", "what"));
 
         // The rebuilt foreign-key graph is intact.
         let violations = conn

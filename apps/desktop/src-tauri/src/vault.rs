@@ -804,6 +804,139 @@ pub fn format_rfc3339_utc(unix_ms: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
 }
 
+/// Inverse of [`format_rfc3339_utc`]: parses an RFC 3339 / ISO-8601 date or
+/// date-time into unix epoch milliseconds. Accepts date-only forms
+/// (`2024-05-06`), `T` or space separators, optional fractional seconds,
+/// and `Z` / `±HH:MM` / `±HHMM` / bare (implicit UTC) offsets. Returns
+/// `None` for anything else — callers surface that as a structured
+/// validation error instead of guessing a fallback instant.
+pub fn parse_rfc3339_to_unix_ms(input: &str) -> Option<i64> {
+    let input = input.trim();
+    let (date_part, time_part) = match input.split_once('T') {
+        Some(parts) => parts,
+        None => match input.split_once(' ') {
+            Some(parts) => parts,
+            None => (input, ""),
+        },
+    };
+
+    let (year, month, day) = parse_padded_date(date_part)?;
+    let days = days_from_civil(year, month, day);
+
+    let (hour, minute, second, millis, offset_secs) = if time_part.is_empty() {
+        (0, 0, 0, 0, 0)
+    } else {
+        parse_time_and_offset(time_part)?
+    };
+
+    Some((days * 86_400 + hour * 3_600 + minute * 60 + second - offset_secs) * 1_000 + millis)
+}
+
+/// Parses a strictly padded `YYYY-MM-DD` date (RFC 3339 date-mday).
+fn parse_padded_date(input: &str) -> Option<(i64, i64, i64)> {
+    let bytes = input.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
+    }
+    if !(0..10).all(|i| i == 4 || i == 7 || bytes[i].is_ascii_digit()) {
+        return None;
+    }
+    let year: i64 = input[0..4].parse().ok()?;
+    let month: i64 = input[5..7].parse().ok()?;
+    let day: i64 = input[8..10].parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some((year, month, day))
+}
+
+/// Parses `HH:MM[:SS[.f..]][Z|±HH:MM|±HHMM]` into wall-clock parts plus the
+/// UTC offset in seconds (subtracted to reach UTC; positive west of UTC per
+/// RFC 3339 signage).
+fn parse_time_and_offset(time: &str) -> Option<(i64, i64, i64, i64, i64)> {
+    let (clock, offset) = match time.find(['Z', 'z', '+']) {
+        Some(index) => (&time[..index], &time[index..]),
+        None => match time.rfind('-') {
+            // A minus offset only counts after the clock; a stray minus
+            // inside the clock is not RFC 3339.
+            Some(index) if index >= 5 => (&time[..index], &time[index..]),
+            _ => (time, ""),
+        },
+    };
+    let mut fields = clock.split(':');
+    let hour_field = fields.next()?;
+    let minute_field = fields.next()?;
+    let second_field = fields.next();
+    if fields.next().is_some() || hour_field.len() != 2 || minute_field.len() != 2 {
+        return None;
+    }
+    let hour: i64 = hour_field.parse().ok()?;
+    let minute: i64 = minute_field.parse().ok()?;
+    if !(0..=23).contains(&hour) || !(0..=59).contains(&minute) {
+        return None;
+    }
+    let (second, millis) = match second_field {
+        None => (0, 0),
+        Some(field) => {
+            let (secs, fraction) = match field.split_once('.') {
+                Some((secs, fraction)) => (secs, fraction),
+                None => (field, ""),
+            };
+            if secs.len() != 2 {
+                return None;
+            }
+            let second: i64 = secs.parse().ok()?;
+            if !(0..=59).contains(&second) {
+                return None;
+            }
+            let millis = if fraction.is_empty() {
+                0
+            } else {
+                if fraction.len() > 3 || !fraction.chars().all(|c| c.is_ascii_digit()) {
+                    return None;
+                }
+                let scaled: i64 = fraction.parse().ok()?;
+                scaled * 10_i64.pow(3 - fraction.len() as u32)
+            };
+            (second, millis)
+        }
+    };
+    let offset_secs = if offset.is_empty() || offset == "Z" || offset == "z" {
+        0
+    } else {
+        // RFC 3339: local = UTC + offset, so UTC = local − offset; `sign`
+        // makes `+HH:MM` a positive (subtracted) offset and `-HH:MM`
+        // negative (added back).
+        let sign: i64 = if offset.starts_with('-') { -1 } else { 1 };
+        let digits = &offset[1..];
+        let off_clock = digits.strip_suffix('Z').unwrap_or(digits);
+        let (h, m) = match off_clock.split_once(':') {
+            Some((h, m)) => (h, m),
+            None if off_clock.len() == 4 => (&off_clock[..2], &off_clock[2..]),
+            None => (off_clock, "0"),
+        };
+        let h: i64 = h.parse().ok()?;
+        let m: i64 = m.parse().ok()?;
+        if !(0..=23).contains(&h) || !(0..=59).contains(&m) {
+            return None;
+        }
+        sign * (h * 3_600 + m * 60)
+    };
+    Some((hour, minute, second, millis, offset_secs))
+}
+
+/// Howard Hinnant's days-from-civil algorithm — the inverse of the era math
+/// in [`format_rfc3339_utc`].
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let yoe = year - era * 400; // [0, 399]
+    let mp = if month > 2 { month - 3 } else { month + 9 };
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -899,6 +1032,77 @@ mod tests {
             format_rfc3339_utc(951_782_400_000),
             "2000-02-29T00:00:00.000Z"
         );
+    }
+
+    #[test]
+    fn rfc3339_parsing_round_trips_and_accepts_common_forms() {
+        // Canonical round trip through the formatter.
+        for ms in [
+            0i64,
+            1_700_000_000_123,
+            951_782_400_000,
+            -1,
+            4_102_444_800_000,
+        ] {
+            let formatted = format_rfc3339_utc(ms);
+            assert_eq!(
+                parse_rfc3339_to_unix_ms(&formatted),
+                Some(ms),
+                "{formatted}"
+            );
+        }
+        // Hand-written RFC 3339 / ISO-8601 variants.
+        assert_eq!(parse_rfc3339_to_unix_ms("1970-01-01"), Some(0));
+        assert_eq!(parse_rfc3339_to_unix_ms("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_rfc3339_to_unix_ms("1970-01-01 00:00:00"), Some(0));
+        assert_eq!(
+            parse_rfc3339_to_unix_ms("2023-11-14T22:13:20.123Z"),
+            Some(1_700_000_000_123)
+        );
+        assert_eq!(
+            parse_rfc3339_to_unix_ms("2023-11-14T22:13:20.123"),
+            Some(1_700_000_000_123),
+            "no offset implies UTC"
+        );
+        assert_eq!(
+            parse_rfc3339_to_unix_ms("2023-11-15T06:13:20.123+08:00"),
+            Some(1_700_000_000_123),
+            "+08:00 shifts the instant west"
+        );
+        assert_eq!(
+            parse_rfc3339_to_unix_ms("2023-11-14T17:13:20.123-05:00"),
+            Some(1_700_000_000_123),
+            "-05:00 shifts the instant east"
+        );
+        assert_eq!(
+            parse_rfc3339_to_unix_ms("2023-11-15T06:13:20.1+0800"),
+            Some(1_700_000_000_100),
+            "compact ±HHMM offset and one fractional digit"
+        );
+    }
+
+    #[test]
+    fn rfc3339_parsing_rejects_malformed_input() {
+        for bad in [
+            "",
+            "not-a-date",
+            "2023-13-01",
+            "2023-00-10",
+            "2023-02-32",
+            "2023-2-3",
+            "20233-11-14",
+            "2023-11-14T24:00:00Z",
+            "2023-11-14T10:60:00Z",
+            "2023-11-14T10:00:61Z",
+            "2023-11-14T10:00:00.1234Z",
+            "2023-11-14T10:00:00.xZ",
+            "2023-11-14T10Z",
+            "2023-11-14T1:2:3Z",
+            "2023-11-14T10:00:00+99:00",
+            "2023/11/14",
+        ] {
+            assert_eq!(parse_rfc3339_to_unix_ms(bad), None, "{bad:?}");
+        }
     }
 
     #[test]

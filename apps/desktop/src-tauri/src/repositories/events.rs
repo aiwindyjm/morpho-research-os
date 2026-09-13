@@ -182,10 +182,12 @@ mod tests {
                         project_id: project_id.clone(),
                         research_config_id: config_id,
                         title: "T".into(),
+                        rationale: String::new(),
                     },
                     sections: vec![],
                     tasks: vec![NewTask {
                         title: "search".into(),
+                        description: String::new(),
                         task_type: "search".into(),
                         idempotency_key: "k-1".into(),
                         section_index: None,

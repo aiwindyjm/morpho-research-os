@@ -209,6 +209,7 @@ mod tests {
                         project_id: project_id.clone(),
                         research_config_id: config_id,
                         title: "T".into(),
+                        rationale: String::new(),
                     },
                     sections: vec![],
                     tasks: vec![],

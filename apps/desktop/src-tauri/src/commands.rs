@@ -11,14 +11,16 @@ use crate::coverage::CoverageReport;
 use crate::error::CoreError;
 use crate::ipc::{IpcRequest, IpcResponse};
 use crate::repositories::claims::ClaimRecord;
-use crate::repositories::configs::{NewResearchConfig, ResearchConfigRecord};
+use crate::repositories::configs::{NewResearchConfig, ResearchConfigRecord, ResearchConfigs};
 use crate::repositories::events::EventRecord;
 use crate::repositories::knowledge::KnowledgeNodeRecord;
 use crate::repositories::plans::{PlanRecord, TaskRecord};
 use crate::repositories::projects::ProjectRecord;
 use crate::repositories::relations::RelationRecord;
 use crate::repositories::runs::RunRecord;
-use crate::repositories::services::{ProjectService, VaultExportResult, VaultService};
+use crate::repositories::services::{
+    GapService, PlanService, ProjectService, VaultExportResult, VaultService,
+};
 use crate::repositories::sources::SourceRecord;
 use crate::secrets::{AppConfig, FileConfigStore, SecretRef, WorkerConfig};
 use crate::state::AppState;
@@ -332,6 +334,184 @@ fn config_put_impl(state: &AppState, config: AppConfig) -> Result<AppConfig, Cor
 }
 
 // ---------------------------------------------------------------------------
+// Project research configuration (IPC batch 2, ADR-020)
+//
+// Distinct from `config_get`/`config_put` above, which transport the APP
+// config (worker/secrets wiring, secrets.rs): these commands read and write
+// the PROJECT-scoped research configuration persisted in
+// `research_configs` (research-config.v1.json). The frontend's
+// `config.get`/`config.update` CommandMap entries target these.
+// ---------------------------------------------------------------------------
+
+/// Purposes allowed by research-config.v1.json (frontend
+/// `researchPurposeSchema`).
+pub const RESEARCH_PURPOSES: [&str; 8] = [
+    "learning", "teaching", "writing", "research", "industry", "product", "strategy", "custom",
+];
+
+/// The research config as it crosses IPC on update. Mirrors the frontend
+/// `ResearchConfig` object (ISO-8601 time bounds); unknown keys such as
+/// `schema_version` are ignored by serde and re-stamped on the response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResearchConfigInput {
+    pub domain: String,
+    pub topic: String,
+    pub purpose: String,
+    #[serde(default)]
+    pub audience: String,
+    pub depth: i64,
+    pub dimensions: Vec<String>,
+    #[serde(default)]
+    pub time_range: TimeRangeInput,
+    #[serde(default)]
+    pub geographic_scope: String,
+    pub languages: Vec<String>,
+    pub source_types: Vec<String>,
+    #[serde(default)]
+    pub source_domains: Vec<String>,
+    pub update_frequency: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct TimeRangeInput {
+    #[serde(default)]
+    pub from: Option<String>,
+    #[serde(default)]
+    pub to: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResearchConfigPutRequest {
+    pub project_id: String,
+    pub config: ResearchConfigInput,
+}
+
+/// Returns the project's current (latest) research configuration in the
+/// frontend `ResearchConfig` shape.
+#[tauri::command]
+pub fn research_config_get(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<ProjectScopedRequest>,
+) -> IpcResponse<crate::projections::ResearchConfigView> {
+    wrapped(
+        &request.request_id,
+        research_config_get_impl(&state, &request.data.project_id),
+    )
+}
+
+fn research_config_get_impl(
+    state: &AppState,
+    project_id: &str,
+) -> Result<crate::projections::ResearchConfigView, CoreError> {
+    let conn = state.conn.lock().expect("database mutex poisoned");
+    if crate::repositories::projects::Projects::get(&conn, project_id)?.is_none() {
+        return Err(CoreError::database(format!(
+            "project '{project_id}' not found"
+        )));
+    }
+    let record = ResearchConfigs::list_for_project(&conn, project_id)?
+        .into_iter()
+        .next_back()
+        .ok_or_else(|| {
+            CoreError::database(format!(
+                "project '{project_id}' has no research configuration"
+            ))
+        })?;
+    Ok(crate::projections::research_config_view(&record))
+}
+
+/// Saves an updated research configuration for the project. The write is a
+/// new `research_configs` generation, not an in-place edit: earlier plan
+/// generations keep referencing the exact configuration they were built
+/// from (`plans.research_config_id`), while later reads and regenerated
+/// plans resolve the new generation (ADR-020).
+#[tauri::command]
+pub fn research_config_put(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<ResearchConfigPutRequest>,
+) -> IpcResponse<crate::projections::ResearchConfigView> {
+    wrapped(
+        &request.request_id,
+        research_config_put_impl(&state, request.data),
+    )
+}
+
+fn research_config_put_impl(
+    state: &AppState,
+    request: ResearchConfigPutRequest,
+) -> Result<crate::projections::ResearchConfigView, CoreError> {
+    let new_config = validated_research_config(&request.project_id, &request.config)?;
+    let mut conn = state.conn.lock().expect("database mutex poisoned");
+    if crate::repositories::projects::Projects::get(&conn, &request.project_id)?.is_none() {
+        return Err(CoreError::database(format!(
+            "project '{}' not found",
+            request.project_id
+        )));
+    }
+    let record = crate::repositories::with_write_tx(&mut conn, |tx| {
+        ResearchConfigs::insert(tx, &new_config)
+    })?;
+    Ok(crate::projections::research_config_view(&record))
+}
+
+/// Applies the research-config.v1.json value constraints the frontend
+/// schema also enforces (`researchPurposeSchema`, `researchDepthSchema`,
+/// the `update_frequency` literal, ISO-8601 bounds) and converts time
+/// bounds to persisted unix milliseconds.
+fn validated_research_config(
+    project_id: &str,
+    input: &ResearchConfigInput,
+) -> Result<NewResearchConfig, CoreError> {
+    if !RESEARCH_PURPOSES.contains(&input.purpose.as_str()) {
+        return Err(CoreError::database(format!(
+            "unknown research purpose '{}' (expected one of: {})",
+            input.purpose,
+            RESEARCH_PURPOSES.join(", ")
+        )));
+    }
+    if !(1..=5).contains(&input.depth) {
+        return Err(CoreError::database(format!(
+            "research depth must be between 1 and 5 (got {})",
+            input.depth
+        )));
+    }
+    if input.update_frequency != "manual" {
+        return Err(CoreError::database(format!(
+            "update_frequency '{}' is not supported yet (V0.1 only allows 'manual')",
+            input.update_frequency
+        )));
+    }
+    let parse_bound = |value: &Option<String>| -> Result<Option<i64>, CoreError> {
+        value
+            .as_deref()
+            .map(|raw| {
+                crate::vault::parse_rfc3339_to_unix_ms(raw).ok_or_else(|| {
+                    CoreError::database(format!(
+                        "time_range bound '{raw}' is not an ISO-8601 date-time"
+                    ))
+                })
+            })
+            .transpose()
+    };
+    Ok(NewResearchConfig {
+        project_id: project_id.to_string(),
+        domain: input.domain.clone(),
+        topic: input.topic.clone(),
+        purpose: input.purpose.clone(),
+        audience: input.audience.clone(),
+        depth: input.depth,
+        dimensions: input.dimensions.clone(),
+        time_range_from: parse_bound(&input.time_range.from)?,
+        time_range_to: parse_bound(&input.time_range.to)?,
+        geographic_scope: input.geographic_scope.clone(),
+        languages: input.languages.clone(),
+        source_types: input.source_types.clone(),
+        source_domains: input.source_domains.clone(),
+        update_frequency: input.update_frequency.clone(),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Plans
 // ---------------------------------------------------------------------------
 
@@ -393,6 +573,133 @@ fn plan_approve_impl(state: &AppState, plan_id: &str) -> Result<Option<PlanRecor
         crate::repositories::plans::Plans::update_status(tx, plan_id, "approved")
     })
     .map(Some)
+}
+
+// ---------------------------------------------------------------------------
+// Plan review actions (IPC batch 2, ADR-020)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct PlanRegenerateRequest {
+    pub project_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct PlanRejectRequest {
+    pub project_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanUpdateTaskRequest {
+    pub project_id: String,
+    pub task_id: String,
+    pub title: String,
+    pub description: String,
+}
+
+/// Regenerates the project's plan draft with the deterministic scripted V0.1
+/// planner (the worker has no plan-regeneration job kind yet — that is a
+/// protocol change and stays out of scope; see ADR-020). Earlier
+/// generations move to `superseded`; the new draft comes back in the
+/// frontend plan shape.
+#[tauri::command]
+pub fn plan_regenerate(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<PlanRegenerateRequest>,
+) -> IpcResponse<crate::projections::PlanView> {
+    wrapped(
+        &request.request_id,
+        plan_regenerate_impl(&state, &request.data.project_id),
+    )
+}
+
+fn plan_regenerate_impl(
+    state: &AppState,
+    project_id: &str,
+) -> Result<crate::projections::PlanView, CoreError> {
+    let mut conn = state.conn.lock().expect("database mutex poisoned");
+    let plan = PlanService::regenerate_plan(&mut conn, project_id)?;
+    crate::projections::plan_view(&conn, &plan)
+}
+
+/// Edits one task of the project's current draft plan (title and
+/// description; an empty title keeps the previous one). Editing closes once
+/// the plan leaves `draft`, mirroring the mock's review flow.
+#[tauri::command]
+pub fn plan_update_task(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<PlanUpdateTaskRequest>,
+) -> IpcResponse<crate::projections::PlanView> {
+    wrapped(
+        &request.request_id,
+        plan_update_task_impl(&state, request.data),
+    )
+}
+
+fn plan_update_task_impl(
+    state: &AppState,
+    request: PlanUpdateTaskRequest,
+) -> Result<crate::projections::PlanView, CoreError> {
+    let mut conn = state.conn.lock().expect("database mutex poisoned");
+    let task = crate::repositories::tasks::Tasks::get(&conn, &request.task_id)?
+        .ok_or_else(|| CoreError::database(format!("task '{}' not found", request.task_id)))?;
+    let plan = crate::repositories::plans::Plans::get(&conn, &task.plan_id)?
+        .ok_or_else(|| CoreError::database(format!("plan '{}' not found", task.plan_id)))?;
+    if plan.project_id != request.project_id {
+        return Err(CoreError::database(format!(
+            "task '{}' does not belong to project '{}'",
+            request.task_id, request.project_id
+        )));
+    }
+    if plan.status != "draft" {
+        return Err(CoreError::database(format!(
+            "only draft plans can be edited (plan status is '{}')",
+            plan.status
+        )));
+    }
+    let trimmed = request.title.trim();
+    let title = if trimmed.is_empty() {
+        task.title.clone()
+    } else {
+        trimmed.to_string()
+    };
+    crate::repositories::with_write_tx(&mut conn, |tx| {
+        crate::repositories::tasks::Tasks::set_title_and_description(
+            tx,
+            &task.id,
+            &title,
+            &request.description,
+        )
+        .map(|_| ())
+    })?;
+    crate::projections::plan_view(&conn, &plan)
+}
+
+/// Rejects the project's current (latest) plan generation.
+#[tauri::command]
+pub fn plan_reject(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<PlanRejectRequest>,
+) -> IpcResponse<crate::projections::PlanView> {
+    wrapped(
+        &request.request_id,
+        plan_reject_impl(&state, &request.data.project_id),
+    )
+}
+
+fn plan_reject_impl(
+    state: &AppState,
+    project_id: &str,
+) -> Result<crate::projections::PlanView, CoreError> {
+    let mut conn = state.conn.lock().expect("database mutex poisoned");
+    let plan = crate::repositories::plans::Plans::latest_for_project(&conn, project_id)?
+        .ok_or_else(|| {
+            CoreError::database(format!("project '{project_id}' has no plan to reject"))
+        })?;
+    let rejected = crate::repositories::with_write_tx(&mut conn, |tx| {
+        crate::repositories::plans::Plans::update_status(tx, &plan.id, "rejected")
+    })?;
+    crate::projections::plan_view(&conn, &rejected)
 }
 
 // ---------------------------------------------------------------------------
@@ -662,6 +969,113 @@ fn relations_list_impl(
     crate::repositories::relations::Relations::list_for_project(&conn, project_id)
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EvidenceListByClaimRequest {
+    pub project_id: String,
+    pub claim_id: String,
+}
+
+/// Evidence linked to one claim, in the frontend evidence shape. The claim
+/// link lives in `claim_evidence`; rows of other projects never leak (an
+/// unknown claim lists nothing, mirroring the mock). The mock's
+/// reveal-gating is a simulation-only concept and does not apply to
+/// persisted state (ADR-020).
+#[tauri::command]
+pub fn evidence_list_by_claim(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<EvidenceListByClaimRequest>,
+) -> IpcResponse<Vec<crate::projections::EvidenceView>> {
+    wrapped(
+        &request.request_id,
+        evidence_list_by_claim_impl(&state, &request.data.project_id, &request.data.claim_id),
+    )
+}
+
+fn evidence_list_by_claim_impl(
+    state: &AppState,
+    project_id: &str,
+    claim_id: &str,
+) -> Result<Vec<crate::projections::EvidenceView>, CoreError> {
+    let conn = state.conn.lock().expect("database mutex poisoned");
+    if crate::repositories::projects::Projects::get(&conn, project_id)?.is_none() {
+        return Err(CoreError::database(format!(
+            "project '{project_id}' not found"
+        )));
+    }
+    let records: Vec<_> = crate::repositories::evidence::Evidence::list_for_claim(&conn, claim_id)?
+        .into_iter()
+        .filter(|record| record.project_id == project_id)
+        .collect();
+    Ok(crate::projections::evidence_views(claim_id, &records))
+}
+
+/// The knowledge-graph projection assembled from the knowledge and relation
+/// repositories (no graph-specific tables; ADR-020).
+#[tauri::command]
+pub fn graph_get(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<ProjectScopedRequest>,
+) -> IpcResponse<crate::projections::GraphProjection> {
+    wrapped(
+        &request.request_id,
+        graph_get_impl(&state, &request.data.project_id),
+    )
+}
+
+fn graph_get_impl(
+    state: &AppState,
+    project_id: &str,
+) -> Result<crate::projections::GraphProjection, CoreError> {
+    let conn = state.conn.lock().expect("database mutex poisoned");
+    crate::projections::graph(&conn, project_id)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GapActionRequest {
+    pub project_id: String,
+    pub gap_id: String,
+}
+
+#[tauri::command]
+pub fn gap_approve_proposal(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<GapActionRequest>,
+) -> IpcResponse<crate::projections::GapReportView> {
+    wrapped(
+        &request.request_id,
+        gap_approve_proposal_impl(&state, &request.data.project_id, &request.data.gap_id),
+    )
+}
+
+fn gap_approve_proposal_impl(
+    state: &AppState,
+    project_id: &str,
+    gap_id: &str,
+) -> Result<crate::projections::GapReportView, CoreError> {
+    let mut conn = state.conn.lock().expect("database mutex poisoned");
+    GapService::approve(&mut conn, project_id, gap_id)
+}
+
+#[tauri::command]
+pub fn gap_dismiss_proposal(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<GapActionRequest>,
+) -> IpcResponse<crate::projections::GapReportView> {
+    wrapped(
+        &request.request_id,
+        gap_dismiss_proposal_impl(&state, &request.data.project_id, &request.data.gap_id),
+    )
+}
+
+fn gap_dismiss_proposal_impl(
+    state: &AppState,
+    project_id: &str,
+    gap_id: &str,
+) -> Result<crate::projections::GapReportView, CoreError> {
+    let mut conn = state.conn.lock().expect("database mutex poisoned");
+    GapService::dismiss(&mut conn, project_id, gap_id)
+}
+
 /// Event listing: project-scoped, optionally narrowed to one run of that
 /// project. Ordered by (run, sequence); `after_sequence` applies per run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -878,10 +1292,10 @@ mod tests {
     use crate::repositories::sources::{NewSource, Sources};
     use crate::repositories::with_write_tx;
     use crate::secrets::{FakeKeychain, ProviderConfig};
-    use std::sync::Arc;
     use crate::worker::fake::{FakeClock, FakeSleeper, FakeWorkerScript};
     use crate::worker::{RestartPolicy, Supervisor};
     use serde_json::json;
+    use std::sync::Arc;
 
     /// Builds an AppState around an in-memory database, the fake worker, and
     /// a temp config/vault area. No Tauri app is involved.
@@ -943,10 +1357,12 @@ mod tests {
                     project_id: project_id.clone(),
                     research_config_id: config_id,
                     title: "T".into(),
+                    rationale: String::new(),
                 },
                 sections: vec![],
                 tasks: vec![NewTask {
                     title: "search theory".into(),
+                    description: String::new(),
                     task_type: "search".into(),
                     idempotency_key: "k-1".into(),
                     section_index: None,
@@ -1400,5 +1816,552 @@ mod tests {
         let mut http = transport_factory_from_config(&http_config);
         let http_transport = http().unwrap();
         assert!(!http_transport.is_alive(), "no process spawned yet");
+    }
+
+    // -----------------------------------------------------------------
+    // IPC batch 2 (ADR-020)
+    // -----------------------------------------------------------------
+
+    /// A project whose config carries two dimensions so the scripted
+    /// planner builds two dimension sections plus the synthesis section.
+    fn two_dimension_project(state: &AppState) -> String {
+        project_create_impl(
+            state,
+            ProjectCreateRequest {
+                name: "BCI".into(),
+                description: String::new(),
+                config: ConfigInput {
+                    domain: "AI".into(),
+                    topic: "LLM scaling".into(),
+                    dimensions: vec!["theory".into(), "market".into()],
+                    ..default_config_input()
+                },
+            },
+        )
+        .unwrap()
+        .project
+        .id
+    }
+
+    #[test]
+    fn plan_regenerate_builds_the_scripted_draft_and_supersedes() {
+        let state = test_state();
+        let project_id = two_dimension_project(&state);
+
+        let first = plan_regenerate_impl(&state, &project_id).unwrap();
+        assert_eq!(first.status, "draft");
+        assert!(first.title.contains("LLM scaling"));
+        assert!(!first.rationale.is_empty());
+        // Two dimension sections + the cross-validation section, with the
+        // mock planner's task mix (search / evaluate / normalize + 2).
+        assert_eq!(first.sections.len(), 3);
+        let kinds: Vec<&str> = first
+            .sections
+            .iter()
+            .flat_map(|section| section.tasks.iter().map(|task| task.kind.as_str()))
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                "search",
+                "source_evaluation",
+                "normalization",
+                "search",
+                "source_evaluation",
+                "normalization",
+                "validation",
+                "synthesis"
+            ]
+        );
+        for section in &first.sections {
+            assert!(!section.dimension.is_empty());
+            assert!(!section.objectives.is_empty());
+            for task in &section.tasks {
+                assert!(!task.description.is_empty());
+            }
+        }
+
+        // Regenerating supersedes the previous generation and returns the
+        // new draft (the schema's plan generations, ADR-020).
+        let second = plan_regenerate_impl(&state, &project_id).unwrap();
+        assert_ne!(second.id, first.id);
+        assert_eq!(second.status, "draft");
+        {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            assert_eq!(
+                crate::repositories::plans::Plans::get(&conn, &first.id)
+                    .unwrap()
+                    .unwrap()
+                    .status,
+                "superseded"
+            );
+        }
+
+        let err = plan_regenerate_impl(&state, "ghost").unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
+    }
+
+    #[test]
+    fn plan_update_task_edits_titles_and_descriptions_of_draft_plans() {
+        let state = test_state();
+        let project_id = two_dimension_project(&state);
+        let plan = plan_regenerate_impl(&state, &project_id).unwrap();
+        let task_id = {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            crate::repositories::plans::Plans::tasks_for_plan(&conn, &plan.id).unwrap()[0]
+                .id
+                .clone()
+        };
+
+        let updated = plan_update_task_impl(
+            &state,
+            PlanUpdateTaskRequest {
+                project_id: project_id.clone(),
+                task_id: task_id.clone(),
+                title: "检索 theory 维度核心来源".into(),
+                description: "更聚焦的检索说明".into(),
+            },
+        )
+        .unwrap();
+        let task = &updated.sections[0].tasks[0];
+        assert_eq!(task.id, task_id);
+        assert_eq!(task.title, "检索 theory 维度核心来源");
+        assert_eq!(task.description, "更聚焦的检索说明");
+
+        // An empty title keeps the previous one (mock parity).
+        let kept = plan_update_task_impl(
+            &state,
+            PlanUpdateTaskRequest {
+                project_id: project_id.clone(),
+                task_id: task_id.clone(),
+                title: "   ".into(),
+                description: "d".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(kept.sections[0].tasks[0].title, "检索 theory 维度核心来源");
+
+        // Only draft plans are editable; approving closes the edit window.
+        let conn = state.conn.lock().expect("database mutex poisoned");
+        let plan_id = plan.id.clone();
+        drop(conn);
+        plan_approve_impl(&state, &plan_id).unwrap();
+        let err = plan_update_task_impl(
+            &state,
+            PlanUpdateTaskRequest {
+                project_id,
+                task_id,
+                title: "t".into(),
+                description: "d".into(),
+            },
+        )
+        .unwrap_err();
+        assert!(err.developer_detail.contains("draft"), "{err:?}");
+
+        // Unknown tasks and foreign tasks are structured errors.
+        let err = plan_update_task_impl(
+            &state,
+            PlanUpdateTaskRequest {
+                project_id: two_dimension_project(&state),
+                task_id: "ghost".into(),
+                title: "t".into(),
+                description: "d".into(),
+            },
+        )
+        .unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
+    }
+
+    #[test]
+    fn plan_reject_marks_the_latest_generation() {
+        let state = test_state();
+        let project_id = two_dimension_project(&state);
+        plan_regenerate_impl(&state, &project_id).unwrap();
+
+        let rejected = plan_reject_impl(&state, &project_id).unwrap();
+        assert_eq!(rejected.status, "rejected");
+        {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            assert_eq!(
+                crate::repositories::plans::Plans::get(&conn, &rejected.id)
+                    .unwrap()
+                    .unwrap()
+                    .status,
+                "rejected"
+            );
+        }
+
+        let err = plan_reject_impl(&state, "ghost").unwrap_err();
+        assert!(err.developer_detail.contains("no plan"));
+    }
+
+    #[test]
+    fn evidence_list_by_claim_returns_linked_evidence_scoped_to_the_project() {
+        let state = test_state();
+        let project_id = seeded_project(&state);
+        let claim_id = {
+            let mut conn = state.conn.lock().expect("database mutex poisoned");
+            let source = with_write_tx(&mut conn, |tx| {
+                Sources::upsert_by_canonical_url(
+                    tx,
+                    &NewSource {
+                        project_id: project_id.clone(),
+                        url: "https://example.com/a".into(),
+                        canonical_url: "a".into(),
+                        title: "A".into(),
+                        source_type: "web".into(),
+                    },
+                )
+                .map(|(record, _)| record.id)
+            })
+            .unwrap();
+            let claim = with_write_tx(&mut conn, |tx| {
+                crate::repositories::claims::Claims::insert(
+                    tx,
+                    &crate::repositories::claims::NewClaim {
+                        id: None,
+                        project_id: project_id.clone(),
+                        subject: "S".into(),
+                        predicate: "uses".into(),
+                        object_value: "attention".into(),
+                        scope: String::new(),
+                        confidence: "medium".into(),
+                        provenance: "run-1".into(),
+                    },
+                )
+                .map(|(record, _)| record)
+            })
+            .unwrap();
+            let evidence = with_write_tx(&mut conn, |tx| {
+                crate::repositories::evidence::Evidence::insert(
+                    tx,
+                    &crate::repositories::evidence::NewEvidence {
+                        id: None,
+                        project_id: project_id.clone(),
+                        source_id: source,
+                        quote: "uses attention".into(),
+                        value: String::new(),
+                        locator: "p. 1".into(),
+                        direction: "support".into(),
+                    },
+                )
+                .map(|(record, _)| record)
+            })
+            .unwrap();
+            with_write_tx(&mut conn, |tx| {
+                crate::repositories::claims::ClaimEvidence::link(tx, &claim.id, &evidence.id)
+                    .map(|_| ())
+            })
+            .unwrap();
+            claim.id
+        };
+
+        let listed = evidence_list_by_claim_impl(&state, &project_id, &claim_id).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].claim_id, claim_id);
+        assert_eq!(listed[0].quote, "uses attention");
+        assert_eq!(listed[0].locator.kind, "page");
+
+        // Unknown claims list nothing (mock parity); unknown projects fail.
+        assert!(evidence_list_by_claim_impl(&state, &project_id, "ghost")
+            .unwrap()
+            .is_empty());
+        let err = evidence_list_by_claim_impl(&state, "ghost", &claim_id).unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
+    }
+
+    #[test]
+    fn graph_get_returns_an_empty_projection_for_a_fresh_project() {
+        let state = test_state();
+        let project_id = seeded_project(&state);
+        let projection = graph_get_impl(&state, &project_id).unwrap();
+        assert_eq!(projection.project_id, project_id);
+        assert!(projection.nodes.is_empty());
+        assert!(projection.relations.is_empty());
+
+        let err = graph_get_impl(&state, "ghost").unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
+    }
+
+    #[test]
+    fn gap_proposals_approve_into_tasks_and_dismiss_into_hidden_dimensions() {
+        let state = test_state();
+        let project_id = two_dimension_project(&state);
+        plan_regenerate_impl(&state, &project_id).unwrap();
+        // Complete one task so tasks exist; every dimension still gaps.
+        let gap_id = format!("gap:{project_id}:theory");
+
+        // A gap id that is not currently proposed is a structured error.
+        let err = gap_approve_proposal_impl(&state, &project_id, "gap:x:nope").unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
+
+        let report = gap_approve_proposal_impl(&state, &project_id, &gap_id).unwrap();
+        let gap = report.gaps.iter().find(|g| g.id == gap_id).unwrap();
+        assert_eq!(gap.proposal_status, "approved");
+        let created_task_id = gap.created_task_id.clone().unwrap();
+
+        // The decision created a PENDING follow-up task keyed by the gap id,
+        // attached to the plan's first section, claimed by the next run.
+        let task = {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            crate::repositories::tasks::Tasks::get(&conn, &created_task_id)
+                .unwrap()
+                .unwrap()
+        };
+        assert_eq!(task.status, "PENDING");
+        assert_eq!(task.idempotency_key, gap_id);
+        assert_eq!(task.task_type, "search");
+        assert!(task.section_id.is_some());
+        assert!(!task.description.is_empty());
+
+        // Approving again is idempotent: the same task, no duplicates.
+        let again = gap_approve_proposal_impl(&state, &project_id, &gap_id).unwrap();
+        let gap = again.gaps.iter().find(|g| g.id == gap_id).unwrap();
+        assert_eq!(
+            gap.created_task_id.as_deref(),
+            Some(created_task_id.as_str())
+        );
+
+        // Dismissing hides the dimension from the report.
+        let dismissed = gap_dismiss_proposal_impl(&state, &project_id, &gap_id).unwrap();
+        assert!(dismissed.gaps.iter().all(|g| g.id != gap_id));
+
+        // A dismissed gap no longer resolves: the mock surfaces NOT_FOUND.
+        let err = gap_dismiss_proposal_impl(&state, &project_id, &gap_id).unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
+    }
+
+    #[test]
+    fn gap_approval_needs_a_plan_to_attach_the_task_to() {
+        let state = test_state();
+        let project_id = seeded_project(&state);
+        // Fresh project: no tasks -> no gaps proposed at all.
+        let gap_id = format!("gap:{project_id}:theory");
+        let err = gap_approve_proposal_impl(&state, &project_id, &gap_id).unwrap_err();
+        assert!(
+            err.developer_detail.contains("not found"),
+            "no proposed gap: {err:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Research config (IPC batch 2, ADR-020)
+    // -----------------------------------------------------------------
+
+    /// A valid config input payload; the closure parameters vary the parts
+    /// under test.
+    fn config_input(
+        purpose: &str,
+        depth: i64,
+        update_frequency: &str,
+        time_range: TimeRangeInput,
+    ) -> ResearchConfigInput {
+        ResearchConfigInput {
+            domain: "AI".into(),
+            topic: "LLM scaling".into(),
+            purpose: purpose.into(),
+            audience: String::new(),
+            depth,
+            dimensions: vec!["theory".into()],
+            time_range,
+            geographic_scope: String::new(),
+            languages: vec!["en".into()],
+            source_types: vec!["web".into()],
+            source_domains: Vec::new(),
+            update_frequency: update_frequency.into(),
+        }
+    }
+
+    #[test]
+    fn research_config_get_returns_the_current_generation() {
+        let state = test_state();
+        let project_id = seeded_project(&state);
+
+        let config = research_config_get_impl(&state, &project_id).unwrap();
+        assert_eq!(config.project_id, project_id);
+        assert_eq!(config.schema_version, "1.0");
+        assert_eq!(config.domain, "AI");
+        assert_eq!(config.topic, "LLM scaling");
+        assert_eq!(config.purpose, "learning", "default_config_input default");
+        assert_eq!(config.depth, 2);
+        assert_eq!(config.dimensions, vec!["theory".to_string()]);
+        // Unbounded reads as the object form, never bare null (frontend
+        // timeRangeSchema requires {from, to}).
+        assert_eq!(config.time_range.from, None);
+        assert_eq!(config.time_range.to, None);
+        assert_eq!(config.update_frequency, "manual");
+        assert!(!config.config_id.is_empty());
+        assert!(config.created_at.ends_with('Z'), "{}", config.created_at);
+
+        let err = research_config_get_impl(&state, "ghost").unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
+    }
+
+    #[test]
+    fn research_config_put_appends_a_generation_the_read_side_resolves() {
+        let state = test_state();
+        let project_id = seeded_project(&state);
+        let before = research_config_get_impl(&state, &project_id).unwrap();
+
+        let updated = research_config_put_impl(
+            &state,
+            ResearchConfigPutRequest {
+                project_id: project_id.clone(),
+                config: ResearchConfigInput {
+                    topic: "LLM interpretability".into(),
+                    purpose: "research".into(),
+                    audience: "researchers".into(),
+                    depth: 4,
+                    dimensions: vec!["theory".into(), "safety".into()],
+                    time_range: TimeRangeInput {
+                        from: Some("2023-01-01T00:00:00.000Z".into()),
+                        to: Some("2026-06-01T00:00:00Z".into()),
+                    },
+                    geographic_scope: "global".into(),
+                    languages: vec!["en".into(), "zh".into()],
+                    source_types: vec!["paper".into(), "web".into()],
+                    source_domains: vec!["arxiv.org".into()],
+                    ..config_input("research", 4, "manual", TimeRangeInput::default())
+                },
+            },
+        )
+        .unwrap();
+
+        // A new generation, not an in-place edit of the first row.
+        assert_ne!(updated.config_id, before.config_id);
+        assert_eq!(updated.topic, "LLM interpretability");
+        assert_eq!(updated.depth, 4);
+        assert_eq!(
+            updated.time_range.from.as_deref(),
+            Some("2023-01-01T00:00:00.000Z")
+        );
+        assert_eq!(
+            updated.time_range.to.as_deref(),
+            Some("2026-06-01T00:00:00.000Z")
+        );
+        assert_eq!(updated.languages, vec!["en".to_string(), "zh".to_string()]);
+
+        // Reads resolve the latest generation; both rows persist.
+        assert_eq!(
+            research_config_get_impl(&state, &project_id).unwrap(),
+            updated
+        );
+        {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            let rows = ResearchConfigs::list_for_project(&conn, &project_id).unwrap();
+            assert_eq!(rows.len(), 2);
+            assert_eq!(rows[0].id, before.config_id, "ordered oldest first");
+            assert_eq!(rows[1].id, updated.config_id);
+            assert_eq!(rows[1].time_range_from, Some(1_672_531_200_000));
+            assert_eq!(rows[1].purpose, "research");
+        }
+
+        // Later plan generations build from the new configuration.
+        let plan = plan_regenerate_impl(&state, &project_id).unwrap();
+        assert!(
+            plan.title.contains("LLM interpretability"),
+            "{}",
+            plan.title
+        );
+    }
+
+    #[test]
+    fn research_config_put_rejects_invalid_values_without_persisting() {
+        let state = test_state();
+        let project_id = seeded_project(&state);
+
+        let cases: Vec<(&str, ResearchConfigInput)> = vec![
+            (
+                "purpose",
+                config_input("vibing", 2, "manual", TimeRangeInput::default()),
+            ),
+            (
+                "depth",
+                config_input("learning", 0, "manual", TimeRangeInput::default()),
+            ),
+            (
+                "depth",
+                config_input("learning", 6, "manual", TimeRangeInput::default()),
+            ),
+            (
+                "update_frequency",
+                config_input("learning", 2, "daily", TimeRangeInput::default()),
+            ),
+            (
+                "ISO-8601",
+                config_input(
+                    "learning",
+                    2,
+                    "manual",
+                    TimeRangeInput {
+                        from: Some("yesterday-ish".into()),
+                        to: None,
+                    },
+                ),
+            ),
+        ];
+        for (needle, config) in cases {
+            let err = research_config_put_impl(
+                &state,
+                ResearchConfigPutRequest {
+                    project_id: project_id.clone(),
+                    config,
+                },
+            )
+            .unwrap_err();
+            assert!(
+                err.developer_detail.contains(needle),
+                "expected '{needle}' in {err:?}"
+            );
+        }
+
+        // Unknown projects fail too; nothing above persisted a row.
+        let err = research_config_put_impl(
+            &state,
+            ResearchConfigPutRequest {
+                project_id: "ghost".into(),
+                config: config_input("learning", 2, "manual", TimeRangeInput::default()),
+            },
+        )
+        .unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
+        let conn = state.conn.lock().expect("database mutex poisoned");
+        assert_eq!(
+            ResearchConfigs::list_for_project(&conn, &project_id)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn research_config_put_request_parses_the_frontend_payload_shape() {
+        // The frontend sends the full ResearchConfig object (including
+        // schema_version, config_id echoes) inside ConfigUpdateRequest.
+        let payload = json!({
+            "project_id": "p1",
+            "config": {
+                "schema_version": "1.0",
+                "config_id": "ignored-echo",
+                "project_id": "p1",
+                "domain": "AI",
+                "topic": "LLM scaling",
+                "purpose": "learning",
+                "audience": "",
+                "depth": 2,
+                "dimensions": ["theory"],
+                "time_range": {"from": null, "to": null},
+                "geographic_scope": "",
+                "languages": ["en"],
+                "source_types": ["web"],
+                "source_domains": [],
+                "update_frequency": "manual"
+            }
+        });
+        let parsed: ResearchConfigPutRequest = serde_json::from_value(payload).unwrap();
+        assert_eq!(parsed.project_id, "p1");
+        assert_eq!(parsed.config.purpose, "learning");
+        assert_eq!(parsed.config.time_range.from, None);
+        assert_eq!(parsed.config.dimensions, vec!["theory".to_string()]);
     }
 }

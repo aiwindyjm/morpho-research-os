@@ -4,7 +4,7 @@
 use crate::error::CoreError;
 use crate::repositories::configs::{NewResearchConfig, ResearchConfigRecord, ResearchConfigs};
 use crate::repositories::events::{EventRecord, Events, NewEvent};
-use crate::repositories::plans::{CreatedPlan, PlanDraft, Plans};
+use crate::repositories::plans::{CreatedPlan, NewPlan, NewSection, NewTask, PlanDraft, Plans};
 use crate::repositories::projects::{NewProject, ProjectRecord, Projects};
 use crate::vault::{
     folder_for_type, slugify, MapNote, MapSection, MergeProposal, RelatedLink, VaultWriter,
@@ -42,6 +42,244 @@ impl PlanService {
     /// draft without partial writes.
     pub fn create_plan(conn: &mut Connection, draft: PlanDraft) -> Result<CreatedPlan, CoreError> {
         crate::repositories::with_write_tx(conn, |tx| Plans::insert_draft(tx, &draft))
+    }
+
+    /// Regenerates the project's plan with the deterministic scripted
+    /// planner (V0.1 domain-side stand-in for the LLM planner, ADR-020):
+    /// resolves the project's latest research configuration, supersedes
+    /// every earlier plan generation, and inserts the new draft — all in one
+    /// transaction. The structure mirrors the mock planner
+    /// (`apps/desktop/src/services/mocks/planner.ts`): one section per
+    /// dimension (at most `depth + 3`), each with a search /
+    /// source-evaluation / normalization task, plus a cross-validation
+    /// section with a validation and a synthesis task.
+    pub fn regenerate_plan(
+        conn: &mut Connection,
+        project_id: &str,
+    ) -> Result<crate::repositories::plans::PlanRecord, CoreError> {
+        if Projects::get(conn, project_id)?.is_none() {
+            return Err(CoreError::database(format!(
+                "project '{project_id}' not found"
+            )));
+        }
+        let config = ResearchConfigs::list_for_project(conn, project_id)?
+            .into_iter()
+            .next_back()
+            .ok_or_else(|| {
+                CoreError::database(format!(
+                    "project '{project_id}' has no research configuration"
+                ))
+            })?;
+        let draft = scripted_plan_draft(project_id, &config);
+        crate::repositories::with_write_tx(conn, |tx| {
+            Plans::supersede_all_for_project(tx, project_id)?;
+            Plans::insert_draft(tx, &draft).map(|created| created.plan)
+        })
+    }
+}
+
+/// Builds the scripted V0.1 plan draft from a research configuration.
+///
+/// Task idempotency keys carry a per-generation token: regenerated plans
+/// contain semantically identical tasks, and the keys must stay globally
+/// unique across generations.
+fn scripted_plan_draft(
+    project_id: &str,
+    config: &crate::repositories::configs::ResearchConfigRecord,
+) -> PlanDraft {
+    let dimension_count = config.dimensions.len().min(config.depth as usize + 3);
+    let dimensions: Vec<String> = config
+        .dimensions
+        .iter()
+        .take(dimension_count)
+        .cloned()
+        .collect();
+    let generation = crate::ids::new_id();
+
+    let mut sections = Vec::with_capacity(dimension_count + 1);
+    let mut tasks = Vec::new();
+    for (index, dimension) in dimensions.iter().enumerate() {
+        let section_index = index as i64;
+        sections.push(NewSection {
+            title: format!("{dimension} 维度研究"),
+            order_index: section_index,
+            summary: format!("为「{dimension}」维度建立独立来源与知识节点。"),
+            dimension: dimension.clone(),
+            objectives: vec![
+                "收集不少于三个独立来源".into(),
+                "识别该维度的核心对象与关系".into(),
+                "为关键结论保留证据定位".into(),
+            ],
+        });
+        for (kind, title, description) in [
+            (
+                "search",
+                format!("检索 {dimension} 维度来源"),
+                "检索候选来源，记录 URL、类型与检索时间。",
+            ),
+            (
+                "source_evaluation",
+                format!("提取并评估 {dimension} 维度内容"),
+                "提取正文与元数据，生成来源质量评估。",
+            ),
+            (
+                "normalization",
+                format!("归一化 {dimension} 维度知识"),
+                "生成实体、关系与候选论断，保留出处。",
+            ),
+        ] {
+            tasks.push(NewTask {
+                title,
+                description: description.into(),
+                task_type: kind.into(),
+                idempotency_key: format!("plan-{generation}-d{index}-{kind}"),
+                section_index: Some(section_index),
+                depends_on: vec![],
+            });
+        }
+    }
+
+    let synthesis_dimension = dimensions
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "concepts".into());
+    sections.push(NewSection {
+        title: "交叉验证与综合".into(),
+        order_index: dimension_count as i64,
+        summary: "对全部维度的结果执行冲突检测并输出综合摘要。".into(),
+        dimension: synthesis_dimension.clone(),
+        objectives: vec![
+            "检测相互矛盾的论断并保留双方证据".into(),
+            "输出本轮研究综合摘要".into(),
+        ],
+    });
+    let synthesis_index = dimension_count as i64;
+    for (kind, title, description) in [
+        (
+            "validation",
+            "验证论断与证据",
+            "校验证据定位与置信度，标记冲突项进入审核。",
+        ),
+        (
+            "synthesis",
+            "综合研究简报",
+            "汇总本轮研究结论、待审核项与下一步建议。",
+        ),
+    ] {
+        tasks.push(NewTask {
+            title: title.into(),
+            description: description.into(),
+            task_type: kind.into(),
+            idempotency_key: format!("plan-{generation}-{kind}"),
+            section_index: Some(synthesis_index),
+            depends_on: vec![],
+        });
+    }
+
+    PlanDraft {
+        plan: NewPlan {
+            project_id: project_id.to_string(),
+            research_config_id: config.id.clone(),
+            title: format!("{} · 研究计划", config.topic),
+            rationale: format!(
+                "按 {} 个研究维度、深度 {} 组织检索与提取；批准后将创建可恢复的任务 DAG。",
+                config.dimensions.len(),
+                config.depth
+            ),
+        },
+        sections,
+        tasks,
+    }
+}
+
+pub struct GapService;
+
+impl GapService {
+    /// Approves a gap proposal: creates the follow-up task (PENDING, keyed by
+    /// the stable gap id, attached to the current plan's first section) and
+    /// records the decision, then returns the recomputed report. Approving
+    /// an already-approved gap is an idempotent no-op.
+    pub fn approve(
+        conn: &mut Connection,
+        project_id: &str,
+        gap_id: &str,
+    ) -> Result<crate::projections::GapReportView, CoreError> {
+        let report = crate::projections::gap_report(conn, project_id)?;
+        let gap = Self::require_gap(&report, gap_id)?;
+        if gap.proposal_status == "approved" {
+            return Ok(report);
+        }
+        let plan = Plans::latest_for_project(conn, project_id)?.ok_or_else(|| {
+            CoreError::database(format!(
+                "project '{project_id}' has no plan to attach a gap task to"
+            ))
+        })?;
+        let section_id = Plans::sections_for_plan(conn, &plan.id)?
+            .first()
+            .map(|section| section.id.clone());
+        let dimension = gap.dimension.clone();
+        let proposed = gap.proposed_task.clone();
+        crate::repositories::with_write_tx(conn, |tx| {
+            let task = crate::repositories::tasks::Tasks::insert(
+                tx,
+                &crate::repositories::tasks::NewStandaloneTask {
+                    id: None,
+                    plan_id: plan.id.clone(),
+                    section_id,
+                    title: proposed.title,
+                    description: proposed.description,
+                    task_type: "search".into(),
+                    idempotency_key: gap_id.to_string(),
+                },
+            )?;
+            crate::repositories::gap_decisions::GapDecisions::upsert(
+                tx,
+                project_id,
+                &dimension,
+                "approved",
+                Some(&task.id),
+            )
+            .map(|_| ())
+        })?;
+        crate::projections::gap_report(conn, project_id)
+    }
+
+    /// Dismisses a gap proposal: records the decision so the dimension stays
+    /// hidden from reports, then returns the recomputed report.
+    pub fn dismiss(
+        conn: &mut Connection,
+        project_id: &str,
+        gap_id: &str,
+    ) -> Result<crate::projections::GapReportView, CoreError> {
+        let report = crate::projections::gap_report(conn, project_id)?;
+        let gap = Self::require_gap(&report, gap_id)?;
+        let dimension = gap.dimension.clone();
+        crate::repositories::with_write_tx(conn, |tx| {
+            crate::repositories::gap_decisions::GapDecisions::upsert(
+                tx,
+                project_id,
+                &dimension,
+                "dismissed",
+                None,
+            )
+            .map(|_| ())
+        })?;
+        crate::projections::gap_report(conn, project_id)
+    }
+
+    /// Resolves a gap id inside the current report; unknown or no-longer-
+    /// proposed gaps (for example after a dismissal) are structured errors.
+    fn require_gap<'a>(
+        report: &'a crate::projections::GapReportView,
+        gap_id: &str,
+    ) -> Result<&'a crate::projections::ResearchGapView, CoreError> {
+        report
+            .gaps
+            .iter()
+            .find(|gap| gap.id == gap_id)
+            .ok_or_else(|| {
+                CoreError::database(format!("gap '{gap_id}' not found or no longer proposed"))
+            })
     }
 }
 
@@ -475,6 +713,7 @@ mod tests {
                         project_id: project_id.clone(),
                         research_config_id: config_id,
                         title: "T".into(),
+                        rationale: String::new(),
                     },
                     sections: vec![],
                     tasks: vec![],
@@ -511,6 +750,79 @@ mod tests {
             assert_eq!(record.sequence, expected);
         }
         assert_eq!(Events::latest_sequence(&conn, &run_id).unwrap(), 2);
+    }
+
+    #[test]
+    fn regenerate_plan_truncates_dimensions_by_depth_and_supersedes() {
+        use crate::repositories::projects::{NewProject, Projects};
+
+        let mut conn = migrated_memory_db().unwrap();
+        let project_id = with_write_tx(&mut conn, |tx| {
+            Projects::insert(
+                tx,
+                &NewProject {
+                    name: "P".into(),
+                    description: String::new(),
+                },
+            )
+            .map(|p| p.id)
+        })
+        .unwrap();
+        with_write_tx(&mut conn, |tx| {
+            ResearchConfigs::insert(
+                tx,
+                &NewResearchConfig {
+                    project_id: project_id.clone(),
+                    domain: "AI".into(),
+                    topic: "LLM scaling".into(),
+                    depth: 1,
+                    dimensions: vec![
+                        "a".into(),
+                        "b".into(),
+                        "c".into(),
+                        "d".into(),
+                        "e".into(),
+                        "f".into(),
+                    ],
+                    ..Default::default()
+                },
+            )
+            .map(|_| ())
+        })
+        .unwrap();
+
+        // depth 1 keeps at most depth + 3 = 4 dimensions.
+        let first = PlanService::regenerate_plan(&mut conn, &project_id).unwrap();
+        assert_eq!(first.status, "draft");
+        let sections = Plans::sections_for_plan(&conn, &first.id).unwrap();
+        assert_eq!(
+            sections.len(),
+            5,
+            "4 dimension sections + the synthesis section"
+        );
+        assert_eq!(sections[0].dimension, "a");
+        assert_eq!(sections[3].dimension, "d", "e and f are truncated");
+        assert_eq!(
+            sections[4].dimension, "a",
+            "the synthesis section carries the first dimension"
+        );
+        assert_eq!(
+            Plans::tasks_for_plan(&conn, &first.id).unwrap().len(),
+            4 * 3 + 2
+        );
+        assert!(!first.rationale.is_empty());
+        assert!(first.title.contains("LLM scaling"));
+
+        // Regenerating supersedes the previous generation atomically.
+        let second = PlanService::regenerate_plan(&mut conn, &project_id).unwrap();
+        assert_eq!(
+            Plans::get(&conn, &first.id).unwrap().unwrap().status,
+            "superseded"
+        );
+        assert_eq!(second.status, "draft");
+
+        let err = PlanService::regenerate_plan(&mut conn, "ghost").unwrap_err();
+        assert!(err.developer_detail.contains("not found"));
     }
 
     #[test]

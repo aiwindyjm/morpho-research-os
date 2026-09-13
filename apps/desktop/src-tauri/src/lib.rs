@@ -13,6 +13,7 @@ pub mod error;
 pub mod ids;
 pub mod ipc;
 pub mod orchestrator;
+pub mod projections;
 pub mod redaction;
 pub mod repositories;
 pub mod secrets;
@@ -78,8 +79,13 @@ pub fn run() {
             commands::project_archive,
             commands::config_get,
             commands::config_put,
+            commands::research_config_get,
+            commands::research_config_put,
             commands::plan_list,
             commands::plan_approve,
+            commands::plan_regenerate,
+            commands::plan_update_task,
+            commands::plan_reject,
             commands::run_start,
             commands::run_get,
             commands::run_cancel,
@@ -87,6 +93,10 @@ pub fn run() {
             commands::knowledge_list,
             commands::claims_list,
             commands::relations_list,
+            commands::evidence_list_by_claim,
+            commands::graph_get,
+            commands::gap_approve_proposal,
+            commands::gap_dismiss_proposal,
             commands::events_list,
             commands::secrets_set_provider_key,
             commands::secrets_list_providers,

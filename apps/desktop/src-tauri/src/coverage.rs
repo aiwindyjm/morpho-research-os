@@ -530,10 +530,12 @@ mod tests {
                         project_id: project_id.to_string(),
                         research_config_id: config_id,
                         title: "T".into(),
+                        rationale: String::new(),
                     },
                     sections: vec![],
                     tasks: vec![NewTask {
                         title: title.to_string(),
+                        description: String::new(),
                         task_type: "search".into(),
                         idempotency_key: format!("key-{title}"),
                         section_index: None,

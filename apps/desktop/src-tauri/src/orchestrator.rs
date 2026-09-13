@@ -670,15 +670,15 @@ fn cascade_dependency_failure(
 /// in flight. FAILED is settled for the rollup even though a single task may
 /// later retry — the retry reopens the run through `failed -> running`.
 fn rollup_target(statuses: &[TaskStatus]) -> Option<RunStatus> {
-    if statuses.iter().any(|s| *s == TaskStatus::NeedsReview) {
+    if statuses.contains(&TaskStatus::NeedsReview) {
         return Some(RunStatus::NeedsReview);
     }
     if !statuses.iter().all(|s| s.is_run_settled()) {
         return None;
     }
-    if statuses.iter().any(|s| *s == TaskStatus::Failed) {
+    if statuses.contains(&TaskStatus::Failed) {
         Some(RunStatus::Failed)
-    } else if statuses.iter().any(|s| *s == TaskStatus::Cancelled) {
+    } else if statuses.contains(&TaskStatus::Cancelled) {
         Some(RunStatus::Cancelled)
     } else {
         Some(RunStatus::Completed)
@@ -819,6 +819,7 @@ mod tests {
             .iter()
             .map(|(key, deps)| NewTask {
                 title: (*key).into(),
+                description: String::new(),
                 task_type: "search".into(),
                 idempotency_key: (*key).into(),
                 section_index: None,
@@ -833,6 +834,7 @@ mod tests {
                         project_id: project_id.clone(),
                         research_config_id: config_id,
                         title: "T".into(),
+                        rationale: String::new(),
                     },
                     sections: vec![],
                     tasks,
