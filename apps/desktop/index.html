@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/icon.png" />
     <title>Morpho Research OS</title>
+    <script>
+      // ADR-022 FOUC guard: resolve the skin before first paint so the
+      // module bundle's theme store never flashes the default palette.
+      // Whitelist only; unknown/stale values fall back to lamplit-study.
+      try {
+        var t = localStorage.getItem("morpho.theme");
+        document.documentElement.dataset.theme =
+          t === "bio-luminal" || t === "lamplit-study" ? t : "lamplit-study";
+      } catch (e) {
+        document.documentElement.dataset.theme = "lamplit-study";
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -3,51 +3,26 @@
  * typography, radius, shadow, and motion. Components consume these tokens;
  * pages never hard-code raw values.
  *
- * Visual direction: "深夜研究室" (Lamplit Study) dark research workbench —
- * neutral-warm graphite shell, brass accent, celadon/slate counter-axis
- * (ADR-021 + Amendment 1: surfaces desaturated from the first warm-stone
- * cut after maintainer review — warmth concentrates in the accent, not the
- * surface family, avoiding one-note brown convergence).
+ * Theme system (ADR-022): every color token is defined by a skin. Structure
+ * tokens (spacing/layout/typography/radii/shadows/motion/keyframes) are
+ * theme-independent and live in the shared `:root` below.
+ *
+ * Skins (theme ids are the contract, applied as `data-theme` on <html>):
+ * - "lamplit-study" (default): "深夜研究室" dark research workbench —
+ *   neutral-warm graphite shell, brass accent, celadon/slate counter-axis
+ *   (ADR-021 + Amendment 1). The default block is plain `:root`, so the
+ *   skin renders correctly even before the FOUC script runs.
+ * - "bio-luminal": 生物荧光 — deep-sea dark field, bio-luminescent cyan
+ *   primary, violet secondary (derived from the brand logo's butterfly-
+ *   brain artwork). Futuristic/youthful register for THIS skin only, per
+ *   maintainer direction. Glow is reserved for "living data" positions
+ *   (focus rings, graph, active states, coverage) — never button fills.
+ *
+ * Both palettes are WCAG-audited (worst-case ratios in
+ * docs/frontend/DESIGN_TOKENS.md). `color-scheme` stays dark for both
+ * skins (declared in apps/desktop app.css).
  */
 :root {
-  /* Color — semantic (ADR-021 Amendment 1 values; text-muted and error are
-   * contrast-driven adjustments within their families — see
-   * docs/frontend/DESIGN_TOKENS.md and ADR-021) */
-  --morpho-color-background: #131312;
-  --morpho-color-surface: #1b1b19;
-  --morpho-color-surface-raised: #242422;
-  --morpho-color-border: rgb(228 226 220 / 0.12);
-
-  --morpho-color-text-primary: #f2f1ee;
-  --morpho-color-text-secondary: #a8a5a0;
-  --morpho-color-text-muted: #8f8c85;
-
-  --morpho-color-accent: #d9a05b;
-  --morpho-color-accent-soft: rgb(217 160 91 / 0.12);
-  --morpho-color-accent-alt: #7fa5a3;
-
-  --morpho-color-success: #8fbf7f;
-  --morpho-color-warning: #cf7d54;
-  --morpho-color-error: #d47676;
-  --morpho-color-info: #8ca6bf;
-
-  /* Color — effect/layout expansion (ADR-013 structure, ADR-021 values):
-   * sunken shell surface, deep ink on brand fills, local avatar, overlay
-   * scrim + warm tint ladder, graph palette. */
-  --morpho-color-surface-sunken: #0e0e0d;
-  --morpho-color-text-on-brand: #1c1207;
-  --morpho-color-avatar-bg: #b8b3a8;
-  --morpho-color-avatar-ink: #21201d;
-  --morpho-color-scrim: rgb(5 5 5 / 0.6);
-  --morpho-color-overlay-hairline: rgb(242 241 238 / 0.02);
-  --morpho-color-overlay-soft: rgb(242 241 238 / 0.035);
-  --morpho-color-overlay-hover: rgb(242 241 238 / 0.06);
-  --morpho-color-overlay-strong: rgb(242 241 238 / 0.22);
-  --morpho-color-graph-node: #232320;
-  --morpho-color-graph-edge: rgb(217 160 91 / 0.28);
-  --morpho-color-graph-edge-hover: rgb(217 160 91 / 0.55);
-  --morpho-color-graph-edge-active: rgb(217 160 91 / 0.75);
-
   /* Spacing scale */
   --morpho-space-xs: 4px;
   --morpho-space-sm: 8px;
@@ -93,7 +68,7 @@
   --morpho-radius-brand: 10px; /* brand tile / floating menu surfaces */
   --morpho-radius-dock: 14px; /* assistant dock panel */
 
-  /* Shadow — deep neutral black (ADR-021 Amendment 1) */
+  /* Shadow — deep neutral black, shared by both skins (ADR-022) */
   --morpho-shadow-panel: 0 18px 45px rgb(5 5 5 / 0.35);
   --morpho-shadow-overlay: 0 20px 50px rgb(5 5 5 / 0.5);
 
@@ -105,11 +80,97 @@
 }
 
 /*
+ * Skin "lamplit-study" — the DEFAULT color skin (ADR-021 + Amendment 1
+ * values, unchanged by ADR-022; declared on plain `:root` so the absence
+ * of a data-theme attribute still renders this skin).
+ */
+:root {
+  --morpho-color-background: #131312;
+  --morpho-color-surface: #1b1b19;
+  --morpho-color-surface-raised: #242422;
+  --morpho-color-surface-sunken: #0e0e0d;
+  --morpho-color-border: rgb(228 226 220 / 0.12);
+
+  --morpho-color-text-primary: #f2f1ee;
+  --morpho-color-text-secondary: #a8a5a0;
+  --morpho-color-text-muted: #8f8c85;
+
+  --morpho-color-accent: #d9a05b;
+  --morpho-color-accent-soft: rgb(217 160 91 / 0.12);
+  --morpho-color-accent-alt: #7fa5a3;
+
+  --morpho-color-success: #8fbf7f;
+  --morpho-color-warning: #cf7d54;
+  --morpho-color-error: #d47676;
+  --morpho-color-info: #8ca6bf;
+
+  --morpho-color-text-on-brand: #1c1207;
+  --morpho-color-avatar-bg: #b8b3a8;
+  --morpho-color-avatar-ink: #21201d;
+  --morpho-color-scrim: rgb(5 5 5 / 0.6);
+  --morpho-color-overlay-hairline: rgb(242 241 238 / 0.02);
+  --morpho-color-overlay-soft: rgb(242 241 238 / 0.035);
+  --morpho-color-overlay-hover: rgb(242 241 238 / 0.06);
+  --morpho-color-overlay-strong: rgb(242 241 238 / 0.22);
+  --morpho-color-graph-node: #232320;
+  --morpho-color-graph-edge: rgb(217 160 91 / 0.28);
+  --morpho-color-graph-edge-hover: rgb(217 160 91 / 0.55);
+  --morpho-color-graph-edge-active: rgb(217 160 91 / 0.75);
+}
+
+/*
+ * Skin "bio-luminal" (ADR-022) — deep-sea dark field with bio-luminescent
+ * cyan/violet from the brand logo. WCAG-audited within the families:
+ * - every text token ≥4.5:1 on all four surfaces (worst: text-muted
+ *   4.78:1 on surface-raised — same margin pattern as lamplit's 4.63);
+ * - accent @ 0.55 selection/active border composites ≥3:1 (worst 3.77:1);
+ * - error was lightness-adjusted inside the salmon family: the draft
+ *   #ff7a8a failed the 0.55 state-border floor (2.77:1 on raised) —
+ *   shipped #ff8f9e passes everywhere (border worst 3.10:1).
+ * Cyan/violet here are brand-sanctioned (maintainer's logo) and are
+ * distinct from every banned-list literal (see tokens.test.ts).
+ */
+[data-theme="bio-luminal"] {
+  --morpho-color-background: #0c1220;
+  --morpho-color-surface: #111a2c;
+  --morpho-color-surface-raised: #18243a;
+  --morpho-color-surface-sunken: #090f1a;
+  --morpho-color-border: rgb(148 190 235 / 0.16);
+
+  --morpho-color-text-primary: #e8f2ff;
+  --morpho-color-text-secondary: #9fb4d0;
+  --morpho-color-text-muted: #7c90ae;
+
+  --morpho-color-accent: #53d7f5;
+  --morpho-color-accent-soft: rgb(83 215 245 / 0.13);
+  --morpho-color-accent-alt: #b8a5ff;
+
+  --morpho-color-success: #6fdda8;
+  --morpho-color-warning: #f5b04a;
+  --morpho-color-error: #ff8f9e;
+  --morpho-color-info: #6fa8ff;
+
+  --morpho-color-text-on-brand: #061018;
+  --morpho-color-avatar-bg: #9adcf0;
+  --morpho-color-avatar-ink: #0a1420;
+  --morpho-color-scrim: rgb(4 8 16 / 0.65);
+  --morpho-color-overlay-hairline: rgb(232 242 255 / 0.02);
+  --morpho-color-overlay-soft: rgb(232 242 255 / 0.035);
+  --morpho-color-overlay-hover: rgb(232 242 255 / 0.06);
+  --morpho-color-overlay-strong: rgb(232 242 255 / 0.22);
+  --morpho-color-graph-node: #142642;
+  --morpho-color-graph-edge: rgb(83 215 245 / 0.3);
+  --morpho-color-graph-edge-hover: rgb(83 215 245 / 0.55);
+  --morpho-color-graph-edge-active: rgb(83 215 245 / 0.75);
+}
+
+/*
  * Motion keyframes (added in the lamplit-study polish pass; additive —
  * no existing token values change). Entrances ease-out (arrive) on the
  * overlay tier; the progress loop is loading feedback and collapses under
  * the global prefers-reduced-motion override. morpho-tooltip-in animates
  * opacity only so it never overrides the tooltip's own centering transform.
+ * Shared by both skins (structure is theme-independent).
  */
 @keyframes morpho-overlay-in {
   from {

@@ -1,9 +1,26 @@
 # Design Tokens
 Define semantic CSS variables for background, surface, border, text, accent, success, warning, error, info; spacing xs 4, sm 8, md 12, lg 16, xl 24, xxl 32; typography Display/H1/H2/H3/Body/Caption/Label; radii and motion tiers. Components consume tokens; pages never hard-code colors outside the tint governance rule below.
 
-Values follow the "深夜研究室" (Lamplit Study) dark palette (ADR-021 + Amendment 1, `docs/architecture/adr/ADR-021-lamplit-study-token-palette.md`; Accepted 2026-09-13): semantic names are unchanged, only values moved (ADR-013 precedent), so consumers are affected only by value changes. Amendment 1 (same day, maintainer review) desaturated the first warm-stone surface cut to a neutral-warm graphite — warmth concentrates in the brass accent, not the surface family — avoiding one-note brown convergence. ADR-021 supersedes the ADR-013 value table; ADR-013's semantic names, token governance, and alpha-tint rule remain in force. Source of truth: `packages/ui/src/tokens.css`.
+## Theme system (ADR-022)
 
-## Color tokens (ADR-021 Amendment 1 values)
+Since ADR-022 the token layer is a **two-skin theme system**. Structure tokens (spacing/layout/typography/radii/shadows/motion/keyframes) are theme-independent and live in a shared `:root`; every color token (28 semantic slots) is defined by a skin:
+
+- **`lamplit-study`** (default) — the "深夜研究室" graphite + brass workbench (ADR-021 + Amendment 1 values, unchanged). Declared on plain `:root`, so the skin renders correctly even before any `data-theme` attribute is set.
+- **`bio-luminal`** (生物荧光) — deep-sea dark field with bio-luminescent cyan primary and violet secondary, derived from the brand logo's butterfly-brain artwork. Futuristic/youthful register for THIS skin only (maintainer direction overrides the quiet register here); glow is reserved for "living data" positions (focus rings, graph, active states, coverage) — never button fills.
+
+Mechanism (the contract for the future Settings switcher):
+
+| Aspect | Value |
+|---|---|
+| Theme ids | `lamplit-study` \| `bio-luminal` (whitelist; anything else falls back) |
+| Apply | `document.documentElement.dataset.theme = "<id>"` |
+| Persist | `localStorage["morpho.theme"]` (browser-local UI preference, journal precedent — no IPC/schema) |
+| Default | `lamplit-study` |
+| FOUC guard | Inline `<head>` script in `apps/desktop/index.html` resolves the key before first paint (whitelist + fallback, ≤10 lines) |
+
+`color-scheme` stays `dark` for both skins. Source of truth: `packages/ui/src/tokens.css`.
+
+## Color tokens — lamplit-study (default skin; ADR-021 Amendment 1 values)
 
 | Token | Value |
 |---|---|
@@ -14,7 +31,7 @@ Values follow the "深夜研究室" (Lamplit Study) dark palette (ADR-021 + Amen
 | `--morpho-color-text-primary` | `#f2f1ee` |
 | `--morpho-color-text-secondary` | `#a8a5a0` |
 | `--morpho-color-text-muted` | `#8f8c85` |
-| `--morpho-color-accent` | `#d9a05b` (brass; ≤12% surface coverage — the only strongly warm hue in the system) |
+| `--morpho-color-accent` | `#d9a05b` (brass; ≤12% surface coverage — the only strongly warm hue in this skin) |
 | `--morpho-color-accent-soft` | `rgb(217 160 91 / 0.12)` |
 | `--morpho-color-accent-alt` | `#7fa5a3` (celadon — source/technology badges, add-chip; takes over the former purple's role) |
 | `--morpho-color-success` | `#8fbf7f` |
@@ -22,7 +39,7 @@ Values follow the "深夜研究室" (Lamplit Study) dark palette (ADR-021 + Amen
 | `--morpho-color-error` | `#d47676` |
 | `--morpho-color-info` | `#8ca6bf` (slate blue; info semantics only, never the main accent) |
 
-### Contrast adjustments (ADR-021 + Amendment 1)
+### Contrast adjustments (lamplit-study; ADR-021 + Amendment 1)
 
 Contrast-driven values, kept within their families by the programmatic WCAG audit (ratios computed against background/surface/surface-raised/surface-sunken):
 
@@ -33,34 +50,55 @@ Contrast-driven values, kept within their families by the programmatic WCAG audi
 
 Audit result (WCAG 2.x, worst case per pair, Amendment 1 surfaces): text-primary 13.77:1, text-secondary 6.33:1, text-muted 4.63:1 (all on surface-raised); accent as text 6.76:1, accent-alt 5.79:1, success 7.35:1, warning 4.97:1, error 4.93:1, info 6.16:1; `text-on-brand` on brass 8.02:1; avatar ink on avatar fill 7.80:1; selection/active borders at alpha 0.55 composite ≥3:1 (the UI-component floor). The hairline border (0.12 alpha, ≈1.3:1 composite) is a decorative divider per WCAG 1.4.11 and does not carry state.
 
-## Radii and shadows (ADR-021 Amendment 1 values)
+## Color tokens — bio-luminal (ADR-022)
+
+Derived from the brand logo (deep-sea field, bio-luminescent cyan/violet). The cyan/violet pair is brand-sanctioned (maintainer's artwork) and deliberately distinct from every banned AI-slop literal (`#3b82f6`/`#b59aff`/`#72a7ff`…) — guarded by an explicit test assertion.
+
+| Token | Value | Worst-case contrast (on surface-raised `#18243a` unless noted) |
+|---|---|---|
+| `--morpho-color-background` | `#0c1220` | — |
+| `--morpho-color-surface` | `#111a2c` | — |
+| `--morpho-color-surface-raised` | `#18243a` | — |
+| `--morpho-color-surface-sunken` | `#090f1a` | — |
+| `--morpho-color-border` | `rgb(148 190 235 / 0.16)` | decorative hairline (1.41:1 composite), WCAG 1.4.11 divider |
+| `--morpho-color-text-primary` | `#e8f2ff` | 13.74:1 |
+| `--morpho-color-text-secondary` | `#9fb4d0` | 7.33:1 |
+| `--morpho-color-text-muted` | `#7c90ae` | 4.78:1 (passes ≥4.5 everywhere; same margin pattern as lamplit's muted) |
+| `--morpho-color-accent` | `#53d7f5` (bio-luminescent cyan) | 9.17:1 as text |
+| `--morpho-color-accent-soft` | `rgb(83 215 245 / 0.13)` | decorative face tint |
+| `--morpho-color-accent-alt` | `#b8a5ff` (violet — brand hue) | 7.29:1 as text |
+| `--morpho-color-success` | `#6fdda8` | 9.31:1 (own 10% pill tint: 7.42:1) |
+| `--morpho-color-warning` | `#f5b04a` | 8.28:1 (own pill tint: 6.83:1) |
+| `--morpho-color-error` | `#ff8f9e` | 7.15:1 (own pill tint: 6.01:1); 0.55 state-border composite worst 3.10:1 |
+| `--morpho-color-info` | `#6fa8ff` | 6.45:1 (own pill tint: 5.40:1) |
+| `--morpho-color-text-on-brand` | `#061018` | 11.33:1 on cyan brand fill |
+| `--morpho-color-avatar-bg` / `--morpho-color-avatar-ink` | `#9adcf0` / `#0a1420` | 12.23:1 ink on fill |
+| `--morpho-color-scrim` | `rgb(4 8 16 / 0.65)` | — |
+| `--morpho-color-overlay-hairline` / `soft` / `hover` / `strong` | `rgb(232 242 255 / 0.02 / 0.035 / 0.06 / 0.22)` | decorative tint ladder |
+| `--morpho-color-graph-node` | `#142642` | — |
+| `--morpho-color-graph-edge` / `hover` / `active` | `rgb(83 215 245 / 0.3 / 0.55 / 0.75)` | states ≥3.73:1 on node fill; base edge is a decorative stroke (2.06:1, stronger than lamplit's 1.74 baseline) |
+
+### Contrast adjustments (bio-luminal)
+
+| Token | Draft | Shipped | Why |
+|---|---|---|---|
+| `--morpho-color-error` | `#ff7a8a` | `#ff8f9e` | Draft passes ≥4.5 as text (6.21) but fails the 0.55 state-border floor (2.77:1 on raised, 2.94 on surface); brightened within the salmon family so text (7.15), pill tint (6.01) and border (worst 3.10:1) all pass |
+
+Accent `@ 0.55` selection/active borders composite ≥3:1 on every surface (worst 3.77:1 on raised). All other draft values passed the audit unchanged.
+
+## Radii and shadows (theme-independent)
 
 | Token | Value |
 |---|---|
 | `--morpho-radius-sm` / `--morpho-radius-md` / `--morpho-radius-lg` | `6px` / `8px` / `12px` |
-| `--morpho-shadow-panel` | `0 18px 45px rgb(5 5 5 / 0.35)` |
-| `--morpho-shadow-overlay` | `0 20px 50px rgb(5 5 5 / 0.5)` |
+| `--morpho-shadow-panel` | `0 18px 45px rgb(5 5 5 / 0.35)` (shared neutral, both skins) |
+| `--morpho-shadow-overlay` | `0 20px 50px rgb(5 5 5 / 0.5)` (shared neutral, both skins) |
 
-## Effect and layout token expansion (ADR-013 structure, ADR-021 values)
+## Effect and layout token expansion (structure from ADR-013; values per skin)
 
-Originally added in the token-foundation wave (ADR-013) so pages could drop one-off literals for scrim, overlay tints, avatar, graph, and shell/dock scaffolding; values now follow ADR-021 Amendment 1.
+Originally added in the token-foundation wave (ADR-013) so pages could drop one-off literals for scrim, overlay tints, avatar, graph, and shell/dock scaffolding. Since ADR-022 these are color tokens: each skin defines the full set (lamplit-study values: sunken `#0e0e0d`, text-on-brand `#1c1207`, avatar `#b8b3a8`/`#21201d`, scrim `rgb(5 5 5 / 0.6)`, overlay ladder `rgb(242 241 238 / 0.02–0.22)`, graph-node `#232320`, graph edges `rgb(217 160 91 / 0.28–0.75)`; bio-luminal values in the table above).
 
-| Token | Value | Notes |
-|---|---|---|
-| `--morpho-color-surface-sunken` | `#0e0e0d` | Shell/sidebar deep surface |
-| `--morpho-color-text-on-brand` | `#1c1207` | Deep ink atop brass brand fills (was light-on-gradient in ADR-013) |
-| `--morpho-color-avatar-bg` / `--morpho-color-avatar-ink` | `#b8b3a8` / `#21201d` | Local avatar (topbar) |
-| `--morpho-color-scrim` | `rgb(5 5 5 / 0.6)` | Modal/drawer backdrop |
-| `--morpho-color-overlay-hairline` | `rgb(242 241 238 / 0.02)` | Plan-summary style wash |
-| `--morpho-color-overlay-soft` | `rgb(242 241 238 / 0.035)` | Tint ladder rung |
-| `--morpho-color-overlay-hover` | `rgb(242 241 238 / 0.06)` | Tint ladder rung |
-| `--morpho-color-overlay-strong` | `rgb(242 241 238 / 0.22)` | On-brand translucent fill |
-| `--morpho-color-graph-node` | `#232320` | Graph node fill |
-| `--morpho-color-graph-edge` | `rgb(217 160 91 / 0.28)` | Graph edge stroke |
-| `--morpho-color-graph-edge-hover` | `rgb(217 160 91 / 0.55)` | Edge hover state |
-| `--morpho-color-graph-edge-active` | `rgb(217 160 91 / 0.75)` | Edge selected/active state |
-
-Tailwind color utilities: `bg-surface-sunken`, `text-text-on-brand`, `bg-avatar-bg`, `text-avatar-ink`, `bg-scrim`, `bg-overlay-hairline` / `bg-overlay-soft` / `bg-overlay-hover` / `bg-overlay-strong`, `bg-graph-node`, `border-graph-edge` / `border-graph-edge-hover` / `border-graph-edge-active` (all `*-` variants work per the standard Tailwind color namespace).
+Tailwind color utilities: `bg-surface-sunken`, `text-text-on-brand`, `bg-avatar-bg`, `text-avatar-ink`, `bg-scrim`, `bg-overlay-hairline` / `bg-overlay-soft` / `bg-overlay-hover` / `bg-overlay-strong`, `bg-graph-node`, `border-graph-edge` / `border-graph-edge-hover` / `border-graph-edge-active` (all `*-` variants work per the standard Tailwind color namespace). Because `app.css` binds utilities to token names, every utility automatically follows the active skin.
 
 ## Type tier expansion
 
@@ -87,39 +125,39 @@ Tailwind color utilities: `bg-surface-sunken`, `text-text-on-brand`, `bg-avatar-
 
 ## Prototype effect layer (`apps/desktop/src/styles/prototype.css`)
 
-Visual effects that Tailwind utilities cannot express cleanly. The effect layer defines no new color system — it references tokens; the raw gradient/glow composites in it were approved with the active palette (ADR-021; class names are the consumer contract and outlived the ADR-013 composites). Registered classes:
+Visual effects that Tailwind utilities cannot express cleanly. Since ADR-022 the layer is **theme-agnostic**: it defines no colors of its own — every composite is `color-mix(in srgb, var(--morpho-color-<token>) N%, transparent)` over a semantic token (supported in the target runtimes: Chromium/WebView2). The percentages are the tuned intensities from the ADR-021 polish pass, carried over unchanged, so both skins get identical effect geometry. Class names are the consumer contract and outlived both the ADR-013 composites and the ADR-021 literals. The only raw literal left is the shared neutral shadow color on `brand-gradient-button` (guard-pinned).
 
-| Class | Purpose |
+| Class | Purpose (color-mix form) |
 |---|---|
 | `kicker` | Eyebrow text: 10px / 800 / uppercase / letter-spacing 0.12em, text-muted |
 | `view-fade` | View-switch fade-in (opacity 0→1, translateY 4px→0, 220ms) |
-| ~~`brand-mark`~~ | **Retired 2026-09-13** — the sidebar/topbar now render the real brand logo (`/brand-mark.png`, 96px asset generated from the committed brand icon) inside a rounded frame; the brass "M" tile and its gradient composite are gone (guard-pinned in `prototype.test.ts`) |
-| `main-glow` | Weak lamp-warm radial glow on the main canvas (brass 0.06) |
-| `metric-accent` | Accent metric-card: flat accent-soft face + brass corner ring (no gradient dependence) |
-| `card-active-accent` | Active project card: 3:1 brass border (0.55) on a flat brass wash (0.06) |
-| `card-active-error` | Conflicting knowledge card: 3:1 error border (0.55) on a flat error wash (0.07) |
-| `pill` + `pill-success` / `pill-warning` / `pill-accent` / `pill-neutral` / `pill-error` | Rounded status pills (new semantic triples; `pill-accent` wears the slate-blue info color) |
-| `badge-mono` + `node-badge-accent` / `node-badge-alt` / `node-badge-warning` / `node-badge-error` | Monospace type badges (info slate blue / celadon accent-alt / terracotta / error) |
-| `progress-track` / `progress-fill` | 4px warm track + solid brass fill (gradient fills are a banned combination) |
-| `brand-gradient-button` | Assistant launcher: solid brass + deep-ink text + warm shadow (class name kept; gradient implementation retired) |
-| `graph-canvas-bg` | Dark neutral vignette (`#111110` radial) over the background token |
-| `timeline-connector` | Dashed connector between overview research-path rows (parent is position-relative) |
+| ~~`brand-mark`~~ | **Retired 2026-09-13** — the sidebar/topbar now render the real brand logo (`/brand-mark.png`) inside a rounded frame; guard-pinned in `prototype.test.ts` |
+| `main-glow` | Weak accent radial glow on the main canvas — accent 6% (lamplit: lamp-warm brass; bio-luminal: cyan haze) |
+| `metric-accent` | Accent metric-card: flat accent-soft face + accent corner ring (border 25%, ring 14%; no gradient dependence) |
+| `card-active-accent` | Active project card: accent 55% border (≥3:1 in both audited palettes) on a flat accent 6% wash |
+| `card-active-error` | Conflicting knowledge card: error 55% border on a flat error 7% wash |
+| `pill` + `pill-success` / `pill-warning` / `pill-accent` / `pill-neutral` / `pill-error` | Rounded status pills — semantic token at 10% (`pill-accent` wears the info color; `pill-neutral` = text-primary 5%) |
+| `badge-mono` + `node-badge-accent` / `node-badge-alt` / `node-badge-warning` / `node-badge-error` | Monospace type badges — info / accent-alt / warning / error at 10% |
+| `progress-track` / `progress-fill` | 4px track (text-primary 9%) + solid accent fill (gradient fills are a banned combination) |
+| `brand-gradient-button` | Assistant launcher: solid accent + deep-ink text + shared neutral shadow `rgb(5 5 5 / 0.4)` (class name kept; gradient retired; the layer's one allowed raw literal) |
+| `graph-canvas-bg` | Vignette that darkens the background token itself — `color-mix(in srgb, var(--morpho-color-background) 70%, black)` radial, so each skin deepens into its own hue |
+| `timeline-connector` | Dashed connector between overview research-path rows (`var(--morpho-color-border)`; parent is position-relative) |
 | ~~`chip-selected`~~ | **Retired 2026-09-13** — replaced by the registered `Chip` primitive (tokens-only selected face); rule removed, retirement guard-pinned |
-| `option-selected` (+ `:hover`) | Selected option card: brass 0.55 border (≥3:1) on brass 0.06 fill; hover deepens the fill to 0.1 instead of relaxing the border below 3:1 |
-| `dot-glow-accent` | 4px brass glow ring (project dot) |
-| `dot-glow-secondary` | 4px neutral glow ring (draft dot); retuned in the 2026-09-13 polish pass from the spec's `rgb(242 241 238 / 0.4)` to `rgb(242 241 238 / 0.1)` — at 0.4 the ring read ~4x brighter than its sibling glows (accent 0.11, warning 0.1), making the draft state the loudest on screen and inverting the status hierarchy; 0.1 matches the sibling ring intensity |
-| `dot-glow-warning` | 4px terracotta glow ring (paused dot) |
+| `option-selected` (+ `:hover`) | Selected option card: accent 55% border (≥3:1) on accent 6% fill; hover deepens the fill to 10% instead of relaxing the border below 3:1 |
+| `dot-glow-accent` | 4px accent glow ring (project dot) — accent 11% |
+| `dot-glow-secondary` | 4px neutral glow ring (draft dot) — text-secondary 10%; retuned in the 2026-09-13 polish pass from the spec's 0.4 (read ~4x brighter than its siblings, inverting the status hierarchy) |
+| `dot-glow-warning` | 4px warning glow ring (paused dot) — warning 10% |
 | `dot-muted` | Muted status dot fill — resolves to `text-secondary` |
-| `pulse` | 5px brass glow ring on the current overview timeline marker |
+| `pulse` | 5px accent glow ring on the current overview timeline marker — accent 8% |
 
-Rule (ADR-013 decision 2, still in force): base colors on pages must come from semantic tokens. Token-derived alpha tints — the same RGB triple as a named token with an `/alpha` suffix (e.g. `border-[rgb(217_160_91/0.3)]`) — are permitted in Tailwind arbitrary values. The former one-off literals (sidebar `#0d121b`, avatar `#b8c8ef`/`#151a24`, brand text `#f2f6ff`, graph node `#1b273b`) were promoted to named tokens in the ADR-013 follow-up wave and simply ride the ADR-021 values now; the only raw literals left in the effect layer are the ADR-021 glow composite (`#111110`) and documented flat washes (the `brand-mark` gradient literals `#e0b06b`/`#c8914e` left with the retired class).
+Rule (ADR-013 decision 2, still in force): base colors on pages must come from semantic tokens. Token-derived alpha tints — the same RGB triple as a named token with an `/alpha` suffix (e.g. `border-[rgb(217_160_91/0.3)]`) — are permitted in Tailwind arbitrary values; under ADR-022 prefer the token utility or a `color-mix` over the active skin's token when a one-off tint is unavoidable, so the tint follows the skin. A guard test pins the effect layer to zero raw rgb/hex composites (shared shadow excepted).
 
 ### Polish-pass semantic notes (2026-09-13 visual review)
 
-- `pill-accent` wears the slate-blue info color even though its name says "accent" (class names are the frozen consumer contract). Verified against every consumer: the journal date pill and the RUNNING task status are informational/transient states, so the info hue is the correct read — nothing that should carry brand-CTA emphasis consumes this class. Brass stays reserved for interactive emphasis (≤12% surface), so no "accent" pill competes with primary actions.
-- `node-badge-accent` (info slate blue: Concept/Event node types, `web_page` sources) and `node-badge-alt` (celadon accent-alt: source/technology badges, taking over the former purple's role per ADR-021) are type labels, not status semantics; the two cool counter-axis hues distinguish label families from the success/warning/error pills without ever reading as calls to action.
-- `option-selected:hover` (fill deepened 0.06 → 0.1 while the border holds 0.55 / ≥3:1) verified: selection is carried by the 3:1 brass border and wash, hover only deepens the wash, so selected-vs-hover stays legible; unselected option cards answer hover with the warm tint ladder (`bg-overlay-hover`), never a state border below 3:1.
-- Shared motion keyframes now live in `packages/ui/src/tokens.css` beside the motion tiers (additive): `morpho-overlay-in` (ease-out rise, `--morpho-motion-slow` for Dialog, base for Popover/Toast), `morpho-tooltip-in` (opacity-only fast fade, so the keyframe never overrides the tooltip's centering transform), and `morpho-progress-slide` (indeterminate Progress loop — a static full bar would read as complete). The Dialog previously referenced a `fade-in` keyframe that did not exist anywhere, so dialogs had no entrance at all.
+- `pill-accent` wears the info color even though its name says "accent" (class names are the frozen consumer contract). Verified against every consumer: the journal date pill and the RUNNING task status are informational/transient states, so the info hue is the correct read — nothing that should carry brand-CTA emphasis consumes this class. The accent stays reserved for interactive emphasis (≤12% surface), so no "accent" pill competes with primary actions.
+- `node-badge-accent` (info: Concept/Event node types, `web_page` sources) and `node-badge-alt` (accent-alt: source/technology badges) are type labels, not status semantics; the two counter-axis hues distinguish label families from the success/warning/error pills without ever reading as calls to action.
+- `option-selected:hover` (fill deepened 6% → 10% while the border holds 55% / ≥3:1) verified: selection is carried by the 3:1 accent border and wash, hover only deepens the wash, so selected-vs-hover stays legible; unselected option cards answer hover with the tint ladder (`bg-overlay-hover`), never a state border below 3:1.
+- Shared motion keyframes live in `packages/ui/src/tokens.css` beside the motion tiers: `morpho-overlay-in` (ease-out rise), `morpho-tooltip-in` (opacity-only fast fade, so it never overrides the tooltip's centering transform), and `morpho-progress-slide` (indeterminate Progress loop). Shared by both skins.
 
 ## Approved non-token values (documented exceptions)
 
@@ -154,6 +192,7 @@ If a second consumer appears for any value above, promote it to a numbered token
 
 - `border-[rgb(217_160_91/0.2)]` → JournalPage privacy note → single-site accent-alpha tint harmonizing with the note's `bg-accent-soft` face (former `rgb(114_167_255/0.2)`).
 - `border-[rgb(217_160_91/0.3)]` → AssistantDock popup border (`WorkspaceLayout.tsx`) → single-site accent-alpha tint on the assistant brand surface (former `rgb(114_167_255/0.3)`).
+- Note (ADR-022): these two lamplit accent tints ride the brass triple in the default skin; when the bio-luminal skin becomes switchable from Settings, prefer re-expressing them as token utilities (e.g. `border-accent/20`) so they follow the active skin.
 
 ### 2026-09-13 removal (lucide-react iconography, ADR-014 prep)
 

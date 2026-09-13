@@ -1,9 +1,13 @@
 /*
- * Prototype effect layer (ADR-013 structure, ADR-021 "深夜研究室"
- * composites — spec §3). Visual effects the Tailwind utilities cannot
- * express cleanly. All base colors come from tokens.css; raw values here
- * are gradient/glow composites approved with the ADR-021 palette. Class
- * names are the consumer contract and do not change across themes.
+ * Prototype effect layer (ADR-013 structure; theme-agnostic composites
+ * since ADR-022). Visual effects the Tailwind utilities cannot express
+ * cleanly. Every color derives from a semantic token via
+ * `color-mix(in srgb, <token> N%, transparent)` — the alpha percentages
+ * are the tuned intensities from the ADR-021 polish pass and carry over
+ * unchanged, so both skins (lamplit-study, bio-luminal) get identical
+ * effect geometry. Class names are the consumer contract and do not
+ * change across themes. The only raw literal left is the shared neutral
+ * shadow color on .brand-gradient-button.
  */
 
 .kicker {
@@ -26,18 +30,23 @@
  * now render the real brand logo image (/brand-mark.png, generated from the
  * committed brand asset) inside a rounded frame. */
 
-/* Lamp-warm atmosphere over the main canvas. */
+/* Weak accent atmosphere over the main canvas (lamplit: lamp-warm brass;
+ * bio-luminal: cyan haze — same 6% intensity). */
 .main-glow {
   background:
-    radial-gradient(circle at 70% -20%, rgb(217 160 91 / 0.06), transparent 38%);
+    radial-gradient(
+      circle at 70% -20%,
+      color-mix(in srgb, var(--morpho-color-accent) 6%, transparent),
+      transparent 38%
+    );
 }
 
 /* Accent metric card: flat accent-soft face (no gradient dependence) +
- * brass corner ring. */
+ * accent corner ring. */
 .metric-accent {
   position: relative;
   overflow: hidden;
-  border-color: rgb(217 160 91 / 0.25);
+  border-color: color-mix(in srgb, var(--morpho-color-accent) 25%, transparent);
   background-image: linear-gradient(var(--morpho-color-accent-soft), var(--morpho-color-accent-soft));
 }
 .metric-accent::after {
@@ -47,22 +56,30 @@
   top: -40px;
   width: 115px;
   height: 115px;
-  border: 1px solid rgb(217 160 91 / 0.14);
+  border: 1px solid color-mix(in srgb, var(--morpho-color-accent) 14%, transparent);
   border-radius: 50%;
 }
 
 /* Active/conflict card accents relocated from page code (ADR-013);
  * flat same-hue washes layered over the card's own surface color, with
  * 3:1 state borders. Single-color gradients keep the wash independent of
- * the cascade order against Tailwind's bg-surface utility. */
+ * the cascade order against Tailwind's bg-surface utility. The 0.55
+ * alpha border composites ≥3:1 against every surface in both audited
+ * palettes (ADR-021/ADR-022 contrast records). */
 .card-active-accent {
-  border-color: rgb(217 160 91 / 0.55);
-  background-image: linear-gradient(rgb(217 160 91 / 0.06), rgb(217 160 91 / 0.06));
+  border-color: color-mix(in srgb, var(--morpho-color-accent) 55%, transparent);
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--morpho-color-accent) 6%, transparent),
+    color-mix(in srgb, var(--morpho-color-accent) 6%, transparent)
+  );
 }
 
 .card-active-error {
-  border-color: rgb(212 118 118 / 0.55);
-  background-image: linear-gradient(rgb(212 118 118 / 0.07), rgb(212 118 118 / 0.07));
+  border-color: color-mix(in srgb, var(--morpho-color-error) 55%, transparent);
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--morpho-color-error) 7%, transparent),
+    color-mix(in srgb, var(--morpho-color-error) 7%, transparent)
+  );
 }
 
 .pill {
@@ -71,24 +88,25 @@
   padding: 5px 8px;
   font-size: 10px;
 }
-.pill-success { color: var(--morpho-color-success);     background: rgb(143 191 127 / 0.1); }
-.pill-warning { color: var(--morpho-color-warning);     background: rgb(207 125 84 / 0.1); }
-.pill-accent  { color: var(--morpho-color-info);        background: rgb(140 166 191 / 0.1); }
-.pill-neutral { color: var(--morpho-color-text-secondary); background: rgb(242 241 238 / 0.05); }
-.pill-error   { color: var(--morpho-color-error);       background: rgb(212 118 118 / 0.1); }
+.pill-success { color: var(--morpho-color-success);     background: color-mix(in srgb, var(--morpho-color-success) 10%, transparent); }
+.pill-warning { color: var(--morpho-color-warning);     background: color-mix(in srgb, var(--morpho-color-warning) 10%, transparent); }
+.pill-accent  { color: var(--morpho-color-info);        background: color-mix(in srgb, var(--morpho-color-info) 10%, transparent); }
+.pill-neutral { color: var(--morpho-color-text-secondary); background: color-mix(in srgb, var(--morpho-color-text-primary) 5%, transparent); }
+.pill-error   { color: var(--morpho-color-error);       background: color-mix(in srgb, var(--morpho-color-error) 10%, transparent); }
 
-/* Selection state for selectable option cards (ADR-013 structure; ADR-021
- * values). Selection borders hold 3:1 against their surfaces. The former
- * chip-selected effect class is retired: its consumers now use the
- * registered Chip/SegmentedControl primitives, which re-express the same
- * brass contract inline with tokens (packages/ui). */
+/* Selection state for selectable option cards (ADR-013 structure; alpha
+ * intensities from ADR-021). Selection borders hold 3:1 against their
+ * surfaces in both skins. The former chip-selected effect class is
+ * retired: its consumers now use the registered Chip/SegmentedControl
+ * primitives, which re-express the same selection contract inline with
+ * tokens (packages/ui). */
 .option-selected {
-  border-color: rgb(217 160 91 / 0.55);
-  background-color: rgb(217 160 91 / 0.06);
+  border-color: color-mix(in srgb, var(--morpho-color-accent) 55%, transparent);
+  background-color: color-mix(in srgb, var(--morpho-color-accent) 6%, transparent);
 }
 .option-selected:hover {
   /* Hover deepens the fill; the border stays at 3:1 instead of relaxing. */
-  background-color: rgb(217 160 91 / 0.1);
+  background-color: color-mix(in srgb, var(--morpho-color-accent) 10%, transparent);
 }
 
 .badge-mono {
@@ -98,28 +116,28 @@
   font-size: 9px;
   letter-spacing: 0.06em;
 }
-.node-badge-accent  { color: var(--morpho-color-info);       background: rgb(140 166 191 / 0.1); }
-.node-badge-alt     { color: var(--morpho-color-accent-alt); background: rgb(127 165 163 / 0.1); }
-.node-badge-warning { color: var(--morpho-color-warning);    background: rgb(207 125 84 / 0.1); }
-.node-badge-error   { color: var(--morpho-color-error);      background: rgb(212 118 118 / 0.1); }
+.node-badge-accent  { color: var(--morpho-color-info);       background: color-mix(in srgb, var(--morpho-color-info) 10%, transparent); }
+.node-badge-alt     { color: var(--morpho-color-accent-alt); background: color-mix(in srgb, var(--morpho-color-accent-alt) 10%, transparent); }
+.node-badge-warning { color: var(--morpho-color-warning);    background: color-mix(in srgb, var(--morpho-color-warning) 10%, transparent); }
+.node-badge-error   { color: var(--morpho-color-error);      background: color-mix(in srgb, var(--morpho-color-error) 10%, transparent); }
 
-/* Status-dot glows and muted dot (ADR-013 structure; ADR-021 values).
- * dot-muted resolves to text-secondary. The draft ring was retuned in the
- * polish pass: the spec's 0.4 parchment alpha read as a bright halo — 4x
- * its sibling glows — inverting the status hierarchy (draft must be the
- * quietest state); 0.1 matches the accent (0.11) and warning (0.1) rings. */
-.dot-glow-accent { box-shadow: 0 0 0 4px rgb(217 160 91 / 0.11); }
-.dot-glow-secondary { box-shadow: 0 0 0 4px rgb(242 241 238 / 0.1); }
-.dot-glow-warning { box-shadow: 0 0 0 4px rgb(207 125 84 / 0.1); }
+/* Status-dot glows and muted dot (ADR-013 structure; intensities from the
+ * ADR-021 polish pass). dot-muted resolves to text-secondary. The draft
+ * secondary ring was retuned in that pass (spec's 0.4 read as a bright
+ * halo — 4x its sibling glows — inverting the status hierarchy); 0.1
+ * matches the accent (0.11) and warning (0.1) rings. */
+.dot-glow-accent { box-shadow: 0 0 0 4px color-mix(in srgb, var(--morpho-color-accent) 11%, transparent); }
+.dot-glow-secondary { box-shadow: 0 0 0 4px color-mix(in srgb, var(--morpho-color-text-secondary) 10%, transparent); }
+.dot-glow-warning { box-shadow: 0 0 0 4px color-mix(in srgb, var(--morpho-color-warning) 10%, transparent); }
 .dot-muted { background-color: var(--morpho-color-text-secondary); }
 
 .progress-track {
   height: 4px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgb(242 241 238 / 0.09);
+  background: color-mix(in srgb, var(--morpho-color-text-primary) 9%, transparent);
 }
-/* Solid brass fill — gradient buttons/progress bars are a banned
+/* Solid accent fill — gradient buttons/progress bars are a banned
  * combination (spec §3). */
 .progress-fill {
   display: block;
@@ -127,17 +145,24 @@
   background: var(--morpho-color-accent);
 }
 
-/* Solid brass launcher (class name kept for consumers; the gradient
- * implementation is retired per ADR-021). */
+/* Solid accent launcher (class name kept for consumers; the gradient
+ * implementation is retired per ADR-021). The shadow uses the shared
+ * neutral shadow color — the one raw literal allowed in this layer. */
 .brand-gradient-button {
   background: var(--morpho-color-accent);
   box-shadow: 0 12px 30px rgb(5 5 5 / 0.4);
 }
 
-/* Warm dark vignette over the shell background. */
+/* Darkened vignette over the shell background (theme-agnostic: mixes the
+ * background token itself toward black, so each skin darkens into its own
+ * hue — graphite for lamplit, deep-sea blue for bio-luminal). */
 .graph-canvas-bg {
   background:
-    radial-gradient(circle at 45% 50%, #111110, transparent 38%),
+    radial-gradient(
+      circle at 45% 50%,
+      color-mix(in srgb, var(--morpho-color-background) 70%, black),
+      transparent 38%
+    ),
     var(--morpho-color-background);
 }
 
@@ -153,5 +178,5 @@
 
 /* Current-row pulse ring on the overview timeline marker. */
 .pulse {
-  box-shadow: 0 0 0 5px rgb(217 160 91 / 0.08);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--morpho-color-accent) 8%, transparent);
 }
