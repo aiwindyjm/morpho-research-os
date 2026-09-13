@@ -30,7 +30,7 @@ describe("lamplit-study effect layer (ADR-021, spec §3)", () => {
   it("renders the brand mark as a warm brass micro-gradient tile", () => {
     const body = rule(prototypeCss, ".brand-mark");
     expect(body).toContain("linear-gradient(145deg, #e0b06b, #c8914e)");
-    expect(body).toContain("rgb(15 9 4 / 0.35)");
+    expect(body).toContain("rgb(5 5 5 / 0.35)");
     expect(body).not.toMatch(/#2459aa|#8d5eea|rgb\(78 124 227/);
   });
 
@@ -65,7 +65,7 @@ describe("lamplit-study effect layer (ADR-021, spec §3)", () => {
     expect(rule(prototypeCss, ".pill-success")).toContain("rgb(143 191 127 / 0.1)");
     expect(rule(prototypeCss, ".pill-warning")).toContain("rgb(207 125 84 / 0.1)");
     expect(rule(prototypeCss, ".pill-accent")).toContain("rgb(140 166 191 / 0.1)");
-    expect(rule(prototypeCss, ".pill-neutral")).toContain("rgb(242 235 224 / 0.05)");
+    expect(rule(prototypeCss, ".pill-neutral")).toContain("rgb(242 241 238 / 0.05)");
     expect(rule(prototypeCss, ".pill-error")).toContain("rgb(212 118 118 / 0.1)");
     expect(rule(prototypeCss, ".node-badge-accent")).toContain("rgb(140 166 191 / 0.1)");
     expect(rule(prototypeCss, ".node-badge-alt")).toContain("rgb(127 165 163 / 0.1)");
@@ -96,7 +96,7 @@ describe("lamplit-study effect layer (ADR-021, spec §3)", () => {
     // Retuned in the polish pass from the spec's 0.4: the parchment ring
     // must sit at its siblings' intensity (accent 0.11 / warning 0.1), not
     // glow 4x brighter than every other status.
-    expect(rule(prototypeCss, ".dot-glow-secondary")).toContain("rgb(242 235 224 / 0.1)");
+    expect(rule(prototypeCss, ".dot-glow-secondary")).toContain("rgb(242 241 238 / 0.1)");
     expect(rule(prototypeCss, ".dot-glow-warning")).toContain("rgb(207 125 84 / 0.1)");
   });
 
@@ -104,19 +104,19 @@ describe("lamplit-study effect layer (ADR-021, spec §3)", () => {
     const body = rule(prototypeCss, ".progress-fill");
     expect(body).toContain("background: var(--morpho-color-accent)");
     expect(body).not.toContain("gradient");
-    expect(rule(prototypeCss, ".progress-track")).toContain("rgb(242 235 224 / 0.09)");
+    expect(rule(prototypeCss, ".progress-track")).toContain("rgb(242 241 238 / 0.09)");
   });
 
   it("renders the launcher button as solid brass with deep-ink text", () => {
     const body = rule(prototypeCss, ".brand-gradient-button");
     expect(body).toContain("background: var(--morpho-color-accent)");
     expect(body).not.toContain("gradient");
-    expect(body).toContain("rgb(15 9 4 / 0.4)");
+    expect(body).toContain("rgb(5 5 5 / 0.4)");
   });
 
   it("paints the graph canvas as a warm dark vignette over the shell background", () => {
     const body = rule(prototypeCss, ".graph-canvas-bg");
-    expect(body).toContain("#141009");
+    expect(body).toContain("#111110");
     expect(body).toContain("var(--morpho-color-background)");
     expect(body).not.toMatch(/rgb\(49 78 136|#0c111a/);
   });
@@ -154,7 +154,7 @@ describe("banned-palette guard across stylesheet layers (spec §1)", () => {
 
 describe("app.css stays in sync with the token shadows", () => {
   it("binds the warm-black shadow values", () => {
-    expect(appCss).toContain("--shadow-panel: 0 18px 45px rgb(15 9 4 / 0.35)");
-    expect(appCss).toContain("--shadow-overlay: 0 20px 50px rgb(15 9 4 / 0.5)");
+    expect(appCss).toContain("--shadow-panel: 0 18px 45px rgb(5 5 5 / 0.35)");
+    expect(appCss).toContain("--shadow-overlay: 0 20px 50px rgb(5 5 5 / 0.5)");
   });
 });

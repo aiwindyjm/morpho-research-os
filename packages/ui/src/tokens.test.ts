@@ -23,22 +23,22 @@ const expectToken = (name: string, value: string) => {
   expect(token(name), `--morpho-${name}`).toBe(value);
 };
 
-describe("lamplit-study token palette (ADR-021)", () => {
-  it("pins the warm shell and panel surfaces", () => {
-    expectToken("color-background", "#17130f");
-    expectToken("color-surface", "#1f1a15");
-    expectToken("color-surface-raised", "#292219");
-    expectToken("color-surface-sunken", "#120e0b");
-    expectToken("color-border", "rgb(222 200 172 / 0.14)");
+describe("lamplit-study token palette (ADR-021 + Amendment 1)", () => {
+  it("pins the graphite shell and panel surfaces", () => {
+    expectToken("color-background", "#131312");
+    expectToken("color-surface", "#1b1b19");
+    expectToken("color-surface-raised", "#242422");
+    expectToken("color-surface-sunken", "#0e0e0d");
+    expectToken("color-border", "rgb(228 226 220 / 0.12)");
   });
 
-  it("pins the parchment text ramp", () => {
-    expectToken("color-text-primary", "#f2ebe0");
-    expectToken("color-text-secondary", "#b3a695");
-    // #988a78 is the spec's #8a7e6d brightened within the hue family:
-    // the spec value falls to 3.95:1 on surface-raised; this passes 4.5:1
-    // on background/surface/raised/sunken (worst 4.67:1).
-    expectToken("color-text-muted", "#988a78");
+  it("pins the neutral text ramp", () => {
+    expectToken("color-text-primary", "#f2f1ee");
+    expectToken("color-text-secondary", "#a8a5a0");
+    // #8f8c85 is the Amendment 1 muted value: the first cut's warm-gray
+    // ramp read beige (sepia drift); this neutral gray passes 4.5:1 on
+    // background/surface/raised/sunken (worst 4.63:1 on raised).
+    expectToken("color-text-muted", "#8f8c85");
   });
 
   it("pins the brass accent with celadon counter-axis", () => {
@@ -59,22 +59,22 @@ describe("lamplit-study token palette (ADR-021)", () => {
   });
 
   it("pins the effect/layout expansion values", () => {
-    expectToken("color-avatar-bg", "#c9ab7c");
-    expectToken("color-avatar-ink", "#1c1207");
-    expectToken("color-scrim", "rgb(10 6 3 / 0.62)");
-    expectToken("color-overlay-hairline", "rgb(242 235 224 / 0.02)");
-    expectToken("color-overlay-soft", "rgb(242 235 224 / 0.035)");
-    expectToken("color-overlay-hover", "rgb(242 235 224 / 0.06)");
-    expectToken("color-overlay-strong", "rgb(242 235 224 / 0.22)");
-    expectToken("color-graph-node", "#2b241c");
+    expectToken("color-avatar-bg", "#b8b3a8");
+    expectToken("color-avatar-ink", "#21201d");
+    expectToken("color-scrim", "rgb(5 5 5 / 0.6)");
+    expectToken("color-overlay-hairline", "rgb(242 241 238 / 0.02)");
+    expectToken("color-overlay-soft", "rgb(242 241 238 / 0.035)");
+    expectToken("color-overlay-hover", "rgb(242 241 238 / 0.06)");
+    expectToken("color-overlay-strong", "rgb(242 241 238 / 0.22)");
+    expectToken("color-graph-node", "#232320");
     expectToken("color-graph-edge", "rgb(217 160 91 / 0.28)");
     expectToken("color-graph-edge-hover", "rgb(217 160 91 / 0.55)");
     expectToken("color-graph-edge-active", "rgb(217 160 91 / 0.75)");
   });
 
-  it("pins warm-black shadows", () => {
-    expectToken("shadow-panel", "0 18px 45px rgb(15 9 4 / 0.35)");
-    expectToken("shadow-overlay", "0 20px 50px rgb(15 9 4 / 0.5)");
+  it("pins deep neutral shadows", () => {
+    expectToken("shadow-panel", "0 18px 45px rgb(5 5 5 / 0.35)");
+    expectToken("shadow-overlay", "0 20px 50px rgb(5 5 5 / 0.5)");
   });
 
   it("keeps structure rules: radii and motion tiers unchanged", () => {

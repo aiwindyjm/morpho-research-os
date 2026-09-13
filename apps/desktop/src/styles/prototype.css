@@ -27,7 +27,7 @@
  * are the banned combination. */
 .brand-mark {
   background: linear-gradient(145deg, #e0b06b, #c8914e);
-  box-shadow: 0 7px 18px rgb(15 9 4 / 0.35);
+  box-shadow: 0 7px 18px rgb(5 5 5 / 0.35);
 }
 
 /* Lamp-warm atmosphere over the main canvas. */
@@ -78,7 +78,7 @@
 .pill-success { color: var(--morpho-color-success);     background: rgb(143 191 127 / 0.1); }
 .pill-warning { color: var(--morpho-color-warning);     background: rgb(207 125 84 / 0.1); }
 .pill-accent  { color: var(--morpho-color-info);        background: rgb(140 166 191 / 0.1); }
-.pill-neutral { color: var(--morpho-color-text-secondary); background: rgb(242 235 224 / 0.05); }
+.pill-neutral { color: var(--morpho-color-text-secondary); background: rgb(242 241 238 / 0.05); }
 .pill-error   { color: var(--morpho-color-error);       background: rgb(212 118 118 / 0.1); }
 
 /* Selection states for chips/filters and selectable option cards (ADR-013
@@ -116,7 +116,7 @@
  * its sibling glows — inverting the status hierarchy (draft must be the
  * quietest state); 0.1 matches the accent (0.11) and warning (0.1) rings. */
 .dot-glow-accent { box-shadow: 0 0 0 4px rgb(217 160 91 / 0.11); }
-.dot-glow-secondary { box-shadow: 0 0 0 4px rgb(242 235 224 / 0.1); }
+.dot-glow-secondary { box-shadow: 0 0 0 4px rgb(242 241 238 / 0.1); }
 .dot-glow-warning { box-shadow: 0 0 0 4px rgb(207 125 84 / 0.1); }
 .dot-muted { background-color: var(--morpho-color-text-secondary); }
 
@@ -124,7 +124,7 @@
   height: 4px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgb(242 235 224 / 0.09);
+  background: rgb(242 241 238 / 0.09);
 }
 /* Solid brass fill — gradient buttons/progress bars are a banned
  * combination (spec §3). */
@@ -138,13 +138,13 @@
  * implementation is retired per ADR-021). */
 .brand-gradient-button {
   background: var(--morpho-color-accent);
-  box-shadow: 0 12px 30px rgb(15 9 4 / 0.4);
+  box-shadow: 0 12px 30px rgb(5 5 5 / 0.4);
 }
 
 /* Warm dark vignette over the shell background. */
 .graph-canvas-bg {
   background:
-    radial-gradient(circle at 45% 50%, #141009, transparent 38%),
+    radial-gradient(circle at 45% 50%, #111110, transparent 38%),
     var(--morpho-color-background);
 }
 

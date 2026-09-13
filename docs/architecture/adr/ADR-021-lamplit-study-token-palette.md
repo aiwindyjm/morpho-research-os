@@ -61,3 +61,25 @@ Accepted (2026-09-13)
 ## Consequences
 
 消费方（组件/页面）只受令牌值变化影响：语义类名、Tailwind 工具类、effect-layer 类名、IPC/契约全部不变。两处页面 alpha tint（JournalPage、WorkspaceLayout）与 `app.css` 阴影绑定随本役同步。`DESIGN_TOKENS.md` 值表与批准字面量清单已按新现实更新；值断言类测试（新增 `tokens.test.ts`/`prototype.test.ts`）钉住新值。明确范围外（记录不实施）：字体维持系统栈（emfont 引入留待专项 ADR）；IA/导航外壳不动（PRD §12）；ADR-014（shadcn 迁移）独立推进；组件 8 态与动效细则、Playwright 截图人工审查属后续打磨波次。视觉验收以反模式清单逐条核对 + 对比度程序化复核为准。
+
+## Amendment 1 — Neutral graphite surfaces (2026-09-13, Accepted)
+
+维护者在浏览器中评审第一刀实现后否定了观感：面层全部带明显棕色相、层间过近、文字偏米褐，整体呈"棕褐泥/旧照片滤镜"，恰好落入反模式清单的 one-note 暖棕收敛（本 ADR §1 明令规避的单色相失败，辅色轴占比过低不足以对冲）。修正：**暖意集中于黄铜强调色，面层族彻底转中性石墨**——语义名、令牌结构、效果层类名全部不变，仅值再置换：
+
+| Token | cut 1（已废） | Amendment 1 |
+|---|---|---|
+| `--morpho-color-background` | `#17130f` | `#131312` |
+| `--morpho-color-surface` | `#1f1a15` | `#1b1b19` |
+| `--morpho-color-surface-raised` | `#292219` | `#242422` |
+| `--morpho-color-surface-sunken` | `#120e0b` | `#0e0e0d` |
+| `--morpho-color-border` | `rgb(222 200 172 / 0.14)` | `rgb(228 226 220 / 0.12)` |
+| `--morpho-color-text-primary` | `#f2ebe0` | `#f2f1ee` |
+| `--morpho-color-text-secondary` | `#b3a695`（米褐） | `#a8a5a0`（中性灰） |
+| `--morpho-color-text-muted` | `#988a78` | `#8f8c85`（最差 4.63:1） |
+| `--morpho-color-avatar-bg` / `ink` | `#c9ab7c` / `#1c1207` | `#b8b3a8` / `#21201d` |
+| `--morpho-color-scrim` | `rgb(10 6 3 / 0.62)` | `rgb(5 5 5 / 0.6)` |
+| overlay 梯 | `rgb(242 235 224 / …)` | `rgb(242 241 238 / …)` |
+| `--morpho-color-graph-node` | `#2b241c` | `#232320` |
+| 阴影 | `rgb(15 9 4 / …)` | `rgb(5 5 5 / …)`（中性深黑） |
+
+accent/accent-soft/accent-alt/success/warning/error/info/text-on-brand 不变。效果层同步：`graph-canvas-bg` 径向 `#141009`→`#111110`，阴影与 tint 梯字面量随上表。对比度复核：全部文字对照 ≥4.63:1（最差 muted 于 raised），UI 组件 ≥3:1 不变。本节取代上文 Decision 中的表值；其余决策（语义名不变、类名契约、禁项守卫、范围外清单）继续有效。

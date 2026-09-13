@@ -3,22 +3,24 @@
  * typography, radius, shadow, and motion. Components consume these tokens;
  * pages never hard-code raw values.
  *
- * Visual direction: "深夜研究室" (Lamplit Study) warm-dark research
- * workbench — warm-stone shell, brass accent, celadon/slate counter-axis
- * (ADR-021; supersedes the ADR-013 value table, semantic names unchanged).
+ * Visual direction: "深夜研究室" (Lamplit Study) dark research workbench —
+ * neutral-warm graphite shell, brass accent, celadon/slate counter-axis
+ * (ADR-021 + Amendment 1: surfaces desaturated from the first warm-stone
+ * cut after maintainer review — warmth concentrates in the accent, not the
+ * surface family, avoiding one-note brown convergence).
  */
 :root {
-  /* Color — semantic (ADR-021; text-muted and error are contrast-driven
-   * brightenings of the spec values within their hue families — see
+  /* Color — semantic (ADR-021 Amendment 1 values; text-muted and error are
+   * contrast-driven adjustments within their families — see
    * docs/frontend/DESIGN_TOKENS.md and ADR-021) */
-  --morpho-color-background: #17130f;
-  --morpho-color-surface: #1f1a15;
-  --morpho-color-surface-raised: #292219;
-  --morpho-color-border: rgb(222 200 172 / 0.14);
+  --morpho-color-background: #131312;
+  --morpho-color-surface: #1b1b19;
+  --morpho-color-surface-raised: #242422;
+  --morpho-color-border: rgb(228 226 220 / 0.12);
 
-  --morpho-color-text-primary: #f2ebe0;
-  --morpho-color-text-secondary: #b3a695;
-  --morpho-color-text-muted: #988a78;
+  --morpho-color-text-primary: #f2f1ee;
+  --morpho-color-text-secondary: #a8a5a0;
+  --morpho-color-text-muted: #8f8c85;
 
   --morpho-color-accent: #d9a05b;
   --morpho-color-accent-soft: rgb(217 160 91 / 0.12);
@@ -32,16 +34,16 @@
   /* Color — effect/layout expansion (ADR-013 structure, ADR-021 values):
    * sunken shell surface, deep ink on brand fills, local avatar, overlay
    * scrim + warm tint ladder, graph palette. */
-  --morpho-color-surface-sunken: #120e0b;
+  --morpho-color-surface-sunken: #0e0e0d;
   --morpho-color-text-on-brand: #1c1207;
-  --morpho-color-avatar-bg: #c9ab7c;
-  --morpho-color-avatar-ink: #1c1207;
-  --morpho-color-scrim: rgb(10 6 3 / 0.62);
-  --morpho-color-overlay-hairline: rgb(242 235 224 / 0.02);
-  --morpho-color-overlay-soft: rgb(242 235 224 / 0.035);
-  --morpho-color-overlay-hover: rgb(242 235 224 / 0.06);
-  --morpho-color-overlay-strong: rgb(242 235 224 / 0.22);
-  --morpho-color-graph-node: #2b241c;
+  --morpho-color-avatar-bg: #b8b3a8;
+  --morpho-color-avatar-ink: #21201d;
+  --morpho-color-scrim: rgb(5 5 5 / 0.6);
+  --morpho-color-overlay-hairline: rgb(242 241 238 / 0.02);
+  --morpho-color-overlay-soft: rgb(242 241 238 / 0.035);
+  --morpho-color-overlay-hover: rgb(242 241 238 / 0.06);
+  --morpho-color-overlay-strong: rgb(242 241 238 / 0.22);
+  --morpho-color-graph-node: #232320;
   --morpho-color-graph-edge: rgb(217 160 91 / 0.28);
   --morpho-color-graph-edge-hover: rgb(217 160 91 / 0.55);
   --morpho-color-graph-edge-active: rgb(217 160 91 / 0.75);
@@ -91,9 +93,9 @@
   --morpho-radius-brand: 10px; /* brand tile / floating menu surfaces */
   --morpho-radius-dock: 14px; /* assistant dock panel */
 
-  /* Shadow — warm black (ADR-021) */
-  --morpho-shadow-panel: 0 18px 45px rgb(15 9 4 / 0.35);
-  --morpho-shadow-overlay: 0 20px 50px rgb(15 9 4 / 0.5);
+  /* Shadow — deep neutral black (ADR-021 Amendment 1) */
+  --morpho-shadow-panel: 0 18px 45px rgb(5 5 5 / 0.35);
+  --morpho-shadow-overlay: 0 20px 50px rgb(5 5 5 / 0.5);
 
   /* Motion tiers: fast micro-feedback, base transitions, overlay entrances */
   --morpho-motion-fast: 120ms;
