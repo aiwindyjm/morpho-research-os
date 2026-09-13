@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="docs/assets/brand/morpho-icon.png" width="128" alt="Morpho Research OS 标志" />
+</div>
+
 # Morpho Research OS
 
 > 将一个研究问题转化为可持续演进的知识库。
@@ -61,4 +65,9 @@ React/Vite → Tauri IPC → Rust Core → Python Research Worker → SQLite 索
 
 ## 许可证
 
-Apache-2.0，详见 [LICENSE](LICENSE)。
+代码与文档以 **Apache-2.0** 授权（见 [LICENSE](LICENSE)）。
+
+**Morpho 名称、Logo 与图标集**是本项目的视觉品牌，**不在 Apache-2.0 授权范围内**，
+由维护者保留权利。Fork 或再分发版本必须使用自己的名称与图标。允许的用法
+（文章、评测、未修改截图等对本项目的指称性使用）见
+[TRADEMARKS.md](TRADEMARKS.md)。

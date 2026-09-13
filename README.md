@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="docs/assets/brand/morpho-icon.png" width="128" alt="Morpho Research OS logo" />
+</div>
+
 # Morpho Research OS
 
 > Turn a research question into a living knowledge base.
@@ -61,4 +65,10 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md), open an Issue or Discussion, and review
 
 ## License
 
-Apache-2.0 (see [LICENSE](LICENSE)).
+Code and documentation are licensed under **Apache-2.0** (see [LICENSE](LICENSE)).
+
+The **Morpho name, logo, and icon set** are the project's visual brand and
+are *not* licensed under Apache-2.0 — they are reserved by the maintainer.
+Forks and redistributions must use their own name and icons. Permitted uses
+(articles, reviews, unmodified screenshots referencing this project) are
+listed in [TRADEMARKS.md](TRADEMARKS.md).

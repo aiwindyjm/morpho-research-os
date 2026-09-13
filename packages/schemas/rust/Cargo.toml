@@ -3,7 +3,7 @@ name = "morpho-schemas"
 version = "0.0.1"
 edition = "2021"
 description = "Serde bindings for the canonical Morpho Research OS JSON Schemas"
-license = "MIT"
+license = "Apache-2.0"
 publish = false
 
 [dependencies]

@@ -4,6 +4,7 @@ name = "morpho-research-worker"
 # authoritative version-sync rule.
 version = "0.0.1"
 description = "Morpho Research OS local research worker (planning, DAG, search, extraction, normalization, validation)."
+license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7",
