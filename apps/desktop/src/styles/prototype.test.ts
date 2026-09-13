@@ -73,11 +73,10 @@ describe("lamplit-study effect layer (ADR-021, spec §3)", () => {
     expect(rule(prototypeCss, ".node-badge-error")).toContain("rgb(212 118 118 / 0.1)");
   });
 
-  it("selects chips with brass text on a 3:1 brass border", () => {
-    const body = rule(prototypeCss, ".chip-selected");
-    expect(body).toContain("color: var(--morpho-color-accent)");
-    expect(body).toContain("rgb(217 160 91 / 0.55)");
-    expect(body).toContain("background-color: var(--morpho-color-accent-soft)");
+  it("retires .chip-selected — chip selection now lives in the registered primitives", () => {
+    // The Chip/SegmentedControl primitives re-express the brass selection
+    // contract inline with tokens; the app effect class must not return.
+    expect(prototypeCss).not.toContain(".chip-selected");
   });
 
   it("selects option cards with a 3:1 brass border and keeps hover contrast-safe", () => {

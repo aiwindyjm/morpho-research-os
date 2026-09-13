@@ -1,3 +1,4 @@
+import { Badge, Button } from "@morpho/ui";
 import { useProjects } from "@/services/queries";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 
@@ -22,27 +23,30 @@ export function Topbar() {
         </strong>
       </nav>
       <div className="flex items-center gap-lg">
-        <span className="flex items-center gap-sm text-caption text-text-muted">
-          <span aria-hidden="true" className="inline-block size-dot rounded-full bg-success" />
+        {/* Prototype status dot promoted to the registered Badge primitive;
+            the label gains the shared pill face (bg-success/10 + border). */}
+        <Badge variant="success" dot>
           已保存
-        </span>
-        <button
-          type="button"
+        </Badge>
+        <Button
+          size="icon"
+          variant="ghost"
           disabled
           title="本地版暂未提供帮助文档"
           aria-label="帮助"
-          className="flex size-7 cursor-not-allowed items-center justify-center rounded-full border border-border text-caption text-text-muted"
+          className="rounded-full! border-border! text-caption"
         >
           ?
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
           title="本地用户"
           aria-label="本地用户"
-          className="flex size-7 items-center justify-center rounded-full bg-avatar-bg text-micro font-extrabold text-avatar-ink"
+          className="rounded-full! bg-avatar-bg! text-avatar-ink! text-micro font-extrabold"
         >
           A
-        </button>
+        </Button>
       </div>
     </header>
   );

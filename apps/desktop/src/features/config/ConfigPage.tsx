@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Button, Card, Checkbox, Input } from "@morpho/ui";
+import { Alert, Button, Card, Checkbox, Chip, Input, SegmentedControl } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import { PurposeSelect } from "@/components/research";
@@ -7,6 +7,7 @@ import {
   DEFAULT_DIMENSIONS,
   DEPTH_LEVELS,
   type ResearchConfig,
+  type ResearchDepth,
   type SourceType,
 } from "@/types/domain";
 import {
@@ -334,36 +335,21 @@ export function ConfigPage({ projectId }: { projectId: string }) {
             <div className="grid grid-cols-1 gap-lg md:grid-cols-2">
               <div className="flex flex-col gap-xs">
                 <span className="text-label text-text-secondary">研究深度</span>
-                <div
-                  role="group"
-                  aria-label="研究深度"
-                  className="flex"
-                >
-                  {DEPTH_LEVELS.map((level, index) => {
-                    const selected = current.depth === level.value;
-                    return (
-                      <button
-                        key={level.value}
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() => update({ depth: level.value })}
-                        className={`h-9 w-[52px] border text-caption transition-colors duration-[var(--morpho-motion-fast)] ${
-                          index > 0 ? "-ml-px" : ""
-                        } ${
-                          index === 0 ? "rounded-l-md" : ""
-                        } ${
-                          index === DEPTH_LEVELS.length - 1 ? "rounded-r-md" : ""
-                        } ${
-                          selected
-                            ? "relative z-10 chip-selected"
-                            : "border-border bg-surface text-text-secondary hover:text-text-primary"
-                        }`}
-                      >
-                        {level.value}
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Registered SegmentedControl: controlled radiogroup with
+                    roving tabindex and arrow-key movement; the value is the
+                    numeric depth level re-expressed as the primitive's
+                    string option value. */}
+                <SegmentedControl
+                  label="研究深度"
+                  options={DEPTH_LEVELS.map((level) => ({
+                    value: String(level.value),
+                    label: String(level.value),
+                  }))}
+                  value={String(current.depth)}
+                  onChange={(depth) =>
+                    update({ depth: Number(depth) as ResearchDepth })
+                  }
+                />
                 <small className="text-caption text-text-muted">
                   {DEPTH_LABELS[current.depth]}
                 </small>
@@ -442,33 +428,23 @@ export function ConfigPage({ projectId }: { projectId: string }) {
               {[...DEFAULT_DIMENSIONS, ...customDimensions].map((dimension) => {
                 const selected = current.dimensions.includes(dimension);
                 return (
-                  <button
+                  <Chip
                     key={dimension}
-                    type="button"
-                    aria-pressed={selected}
+                    selected={selected}
                     onClick={() =>
                       update({
                         dimensions: toggleValue(current.dimensions, dimension),
                       })
                     }
-                    className={`rounded-full border px-md py-1.5 text-caption transition-colors duration-[var(--morpho-motion-fast)] ${
-                      selected
-                        ? "chip-selected"
-                        : "border-border text-text-secondary hover:text-text-primary"
-                    }`}
+                    className="py-1.5"
                   >
                     {dimensionLabel(dimension)}
-                  </button>
+                  </Chip>
                 );
               })}
-              <button
-                type="button"
-                disabled
-                title="桌面版提供"
-                className="rounded-full border border-dashed border-border px-md py-1.5 text-caption text-accent-alt disabled:cursor-not-allowed disabled:text-text-muted"
-              >
+              <Chip disabled title="桌面版提供" className="border-dashed text-accent-alt">
                 ＋ 自定义维度
-              </button>
+              </Chip>
             </div>
           </FormSection>
 
@@ -527,7 +503,8 @@ export function ConfigPage({ projectId }: { projectId: string }) {
         <p className="py-md text-caption text-text-muted">
           更新频率当前固定为手动（update_frequency: manual）；自动增量研究将在后续版本提供。
         </p>
-        <button type="submit" className="sr-only" />
+        {/* Hidden native submit target so Enter in any field submits the form. */}
+        <Button type="submit" className="sr-only" />
       </form>
     </PageShell>
   );

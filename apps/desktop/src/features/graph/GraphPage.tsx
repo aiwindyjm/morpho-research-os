@@ -8,7 +8,7 @@ import {
   forceX,
   forceY,
 } from "d3";
-import { Button, Card, Input, Select } from "@morpho/ui";
+import { Chip, Button, Card, Input, Select } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import { NODE_TYPE_BADGE_CLASS, ResearchStatusBadge } from "@/components/cards";
@@ -48,12 +48,6 @@ const TYPE_FILTERS: Array<{ id: "all" | KnowledgeNodeType; label: string }> = [
   { id: "Company", label: "企业" },
   { id: "Paper", label: "论文" },
 ];
-
-/** Prototype chip styles (shared pattern with the sources view). */
-const CHIP_CLASS =
-  "rounded-full border px-md py-1 text-caption transition-colors duration-[var(--morpho-motion-fast)]";
-const CHIP_SELECTED_CLASS = "chip-selected";
-const CHIP_IDLE_CLASS = "text-text-muted border-border hover:text-text-secondary";
 
 /** Inspector panel: scrollable content, overlay on the canvas edge from lg up. */
 const INSPECTOR_BASE_CLASS =
@@ -272,32 +266,24 @@ export function GraphPage({ projectId }: { projectId: string }) {
           <div className="flex min-h-[63px] flex-wrap items-center justify-between gap-sm border-b border-border pb-md">
             <div className="flex flex-wrap items-center gap-sm" role="group" aria-label="按类型过滤">
               {TYPE_FILTERS.map(({ id, label }) => (
-                <button
+                <Chip
                   key={id}
-                  type="button"
-                  aria-pressed={typeFilter === id}
+                  selected={typeFilter === id}
                   onClick={() => setTypeFilter(id)}
-                  className={`${CHIP_CLASS} ${
-                    typeFilter === id ? CHIP_SELECTED_CLASS : CHIP_IDLE_CLASS
-                  }`}
                 >
                   {label}
-                </button>
+                </Chip>
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-sm">
-              <button
-                type="button"
-                aria-pressed={clusterMode}
+              <Chip
+                selected={clusterMode}
                 onClick={() => setClusterMode((v) => !v)}
                 data-testid="graph-cluster-toggle"
                 title="按研究维度分列布局"
-                className={`${CHIP_CLASS} ${
-                  clusterMode ? CHIP_SELECTED_CLASS : CHIP_IDLE_CLASS
-                }`}
               >
                 按维度聚类
-              </button>
+              </Chip>
               <Input
                 type="search"
                 aria-label="搜索节点"

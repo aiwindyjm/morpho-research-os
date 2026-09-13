@@ -49,13 +49,13 @@ export function ProjectSwitcher() {
       <Popover
         align="start"
         trigger={({ onClick, "aria-expanded": expanded }) => (
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={onClick}
             aria-expanded={expanded}
             aria-haspopup="dialog"
             data-testid="project-switcher"
-            className="flex w-full items-center gap-sm rounded-md border border-border bg-surface px-md py-sm text-left"
+            className="h-auto w-full justify-start gap-sm bg-surface! px-md! py-sm text-left"
           >
             <span
               aria-hidden="true"
@@ -70,19 +70,20 @@ export function ProjectSwitcher() {
             <span aria-hidden="true" className="text-text-muted">
               ⌄
             </span>
-          </button>
+          </Button>
         )}
       >
         <div className="flex items-center justify-between px-md pb-sm pt-xs">
           <span className="kicker">当前工作区</span>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             data-testid="project-menu-manage"
-            className="text-nano text-info"
+            className="h-auto px-xs py-0 text-nano text-info!"
             onClick={() => setActiveView("projects")}
           >
             管理全部
-          </button>
+          </Button>
         </div>
         <div className="flex max-h-72 flex-col gap-xs overflow-y-auto" role="listbox" aria-label="项目列表">
           {(projects ?? []).map((project) => (
@@ -174,14 +175,14 @@ function ProjectMenuRow({ projectId, name }: { projectId: string; name: string }
         : { label: "已暂停 · 100%", dot: "bg-warning dot-glow-warning" };
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       role="option"
       aria-selected={isActive}
       data-testid="project-menu-item"
       onClick={() => setActiveProject(projectId)}
-      className={`flex w-full items-center gap-sm rounded-md px-md py-sm text-left ${
-        isActive ? "bg-accent-soft" : "hover:bg-accent-soft"
+      className={`h-auto w-full justify-start gap-sm border-0 px-md! py-sm text-left ${
+        isActive ? "bg-accent-soft!" : "hover:bg-accent-soft!"
       }`}
     >
       <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${status.dot}`} />
@@ -194,6 +195,6 @@ function ProjectMenuRow({ projectId, name }: { projectId: string; name: string }
           ✓
         </span>
       ) : null}
-    </button>
+    </Button>
   );
 }

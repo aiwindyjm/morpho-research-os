@@ -99,22 +99,23 @@ function AssistantDock() {
 
   return (
     <>
-      {/* Prototype fidelity (spec §8): the gradient launcher stays mounted
-          beneath the popup while the panel is open; the panel renders above
-          it and focus management is unchanged. */}
-      <button
-        type="button"
+      {/* Prototype fidelity (spec §8): the launcher stays mounted beneath
+          the popup while the panel is open; the panel renders above it and
+          focus management is unchanged. .brand-gradient-button carries the
+          brass face and shadow; shape/padding come from className. */}
+      <Button
         ref={launcherRef}
+        variant="primary"
         aria-label="打开 AI 助手"
         onClick={() => setAssistantOpen(true)}
-        className="brand-gradient-button fixed bottom-xl right-xl z-30 flex items-center gap-sm rounded-full px-md py-sm text-micro font-bold text-text-on-brand transition-transform duration-[var(--morpho-motion-fast)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+        className="brand-gradient-button fixed bottom-xl right-xl z-30 h-auto gap-sm rounded-full! px-md! py-sm text-micro font-bold!"
         data-testid="assistant-launcher"
       >
         <span aria-hidden="true" className="flex size-5 items-center justify-center rounded-full bg-overlay-strong">
           ✦
         </span>
         AI 助手
-      </button>
+      </Button>
 
       {assistantOpen ? (
         // Intentionally non-modal per the prototype: Escape closes and focus

@@ -1,3 +1,4 @@
+import { Button } from "@morpho/ui";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { WORKSPACE_VIEWS, useWorkspaceStore, type ViewId } from "@/stores/workspaceStore";
 import { ProjectSwitcher } from "./ProjectSwitcher";
@@ -56,21 +57,21 @@ export function Sidebar({
       <ul className="mt-lg flex flex-col gap-[3px]" data-testid="view-nav">
         {navViews.map((view) => (
           <li key={view.id}>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               aria-current={activeView === view.id ? "page" : undefined}
               onClick={() => setActiveView(view.id as ViewId)}
-              className={`flex w-full items-center gap-[11px] rounded-md px-md py-sm text-left text-caption transition-colors duration-[var(--morpho-motion-fast)] ${
+              className={`h-auto w-full justify-start gap-[11px]! border-0 px-md! py-sm text-left text-caption ${
                 activeView === view.id
-                  ? "bg-accent-soft text-text-primary shadow-[inset_2px_0_0_var(--morpho-color-accent)]"
-                  : "text-text-secondary hover:bg-overlay-hover hover:text-text-primary"
+                  ? "bg-accent-soft! text-text-primary! shadow-[inset_2px_0_0_var(--morpho-color-accent)]"
+                  : ""
               }`}
             >
               <span aria-hidden="true" className="w-4 text-center text-base leading-none">
                 {view.icon}
               </span>
               {view.label}
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
@@ -84,21 +85,19 @@ export function Sidebar({
           </span>
         </div>
         {settingsView ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             aria-current={activeView === settingsView.id ? "page" : undefined}
             onClick={() => setActiveView(settingsView.id as ViewId)}
-            className={`flex w-full items-center gap-[11px] rounded-md px-md py-sm text-left text-caption ${
-              activeView === settingsView.id
-                ? "bg-accent-soft text-text-primary"
-                : "text-text-secondary hover:bg-overlay-hover hover:text-text-primary"
+            className={`h-auto w-full justify-start gap-[11px]! border-0 px-md! py-sm text-left text-caption ${
+              activeView === settingsView.id ? "bg-accent-soft! text-text-primary!" : ""
             }`}
           >
             <span aria-hidden="true" className="w-4 text-center text-base leading-none">
               {settingsView.icon}
             </span>
             {settingsView.label}
-          </button>
+          </Button>
         ) : null}
       </div>
     </nav>
@@ -171,10 +170,13 @@ function SidebarDrawer({
 
   return (
     <div className="fixed inset-0 z-40 lg:hidden" data-testid="sidebar-drawer">
-      <button
-        type="button"
+      {/* Scrim close target on the Button primitive: size/face classes are
+          neutralised so it keeps the plain full-bleed scrim of the drawer. */}
+      <Button
+        variant="ghost"
+        size="icon"
         aria-label="关闭导航"
-        className="absolute inset-0 bg-scrim"
+        className="absolute inset-0 h-auto w-auto rounded-none bg-scrim! hover:bg-scrim!"
         onClick={() => setDrawerOpen(false)}
       />
       <div

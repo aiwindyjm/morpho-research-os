@@ -81,14 +81,11 @@
 .pill-neutral { color: var(--morpho-color-text-secondary); background: rgb(242 241 238 / 0.05); }
 .pill-error   { color: var(--morpho-color-error);       background: rgb(212 118 118 / 0.1); }
 
-/* Selection states for chips/filters and selectable option cards (ADR-013
- * structure; ADR-021 values). Selection borders hold 3:1 against their
- * surfaces: brass text + 0.55 border + accent-soft face. */
-.chip-selected {
-  color: var(--morpho-color-accent);
-  border-color: rgb(217 160 91 / 0.55);
-  background-color: var(--morpho-color-accent-soft);
-}
+/* Selection state for selectable option cards (ADR-013 structure; ADR-021
+ * values). Selection borders hold 3:1 against their surfaces. The former
+ * chip-selected effect class is retired: its consumers now use the
+ * registered Chip/SegmentedControl primitives, which re-express the same
+ * brass contract inline with tokens (packages/ui). */
 .option-selected {
   border-color: rgb(217 160 91 / 0.55);
   background-color: rgb(217 160 91 / 0.06);

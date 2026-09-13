@@ -43,8 +43,8 @@ test.describe("first research journey (mock backend)", () => {
     const topic = page.getByLabel(/研究主题/);
     await expect(topic).toHaveValue("脑机接口在运动康复中的应用");
 
-    // 02 研究范围: depth segmented control; 03/04 numbered sections render.
-    await expect(page.getByRole("group", { name: "研究深度" })).toBeVisible();
+    // 02 研究范围: depth SegmentedControl radiogroup; 03/04 sections render.
+    await expect(page.getByRole("radiogroup", { name: "研究深度" })).toBeVisible();
     await expect(page.getByText("01", { exact: true })).toBeVisible();
     await expect(page.getByText("04", { exact: true })).toBeVisible();
 

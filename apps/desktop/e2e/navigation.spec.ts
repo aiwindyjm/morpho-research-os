@@ -18,6 +18,12 @@ test.describe("mobile navigation drawer", () => {
     await expect(menuButton).toBeVisible();
     await expect(menuButton).toHaveAttribute("aria-expanded", "false");
 
+    // Wait out the boot race: ProjectBootstrap selects the first project
+    // right after the first query resolves, and setActiveProject resets
+    // sidebarDrawerOpen. Clicking the menu before that lands would open the
+    // drawer into an immediate close.
+    await expect(page.getByTestId("topbar")).not.toContainText("未选择项目");
+
     await menuButton.click();
 
     const drawer = page.getByRole("dialog", { name: "导航菜单" });

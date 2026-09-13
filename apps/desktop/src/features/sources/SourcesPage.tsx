@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Card, Input } from "@morpho/ui";
+import { Button, Card, Chip, Input } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import { SourceCard, isQualitySource } from "@/components/cards";
@@ -116,19 +116,13 @@ export function SourcesPage({ projectId }: { projectId: string }) {
           />
           <div className="flex items-center gap-sm">
             {TYPE_FILTERS.map(({ id, label }) => (
-              <button
+              <Chip
                 key={id}
-                type="button"
-                aria-pressed={typeFilter === id}
+                selected={typeFilter === id}
                 onClick={() => setTypeFilter(id)}
-                className={`rounded-full border px-md py-1 text-caption transition-colors duration-[var(--morpho-motion-fast)] ${
-                  typeFilter === id
-                    ? "chip-selected"
-                    : "text-text-muted border-border hover:text-text-secondary"
-                }`}
               >
                 {label}
-              </button>
+              </Chip>
             ))}
           </div>
           <span className="ml-auto text-caption text-text-muted" role="status">

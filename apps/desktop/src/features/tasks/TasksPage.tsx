@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Button, Card, Popover } from "@morpho/ui";
+import { Badge, Button, Card, Chip, Popover } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import type { ResearchTask, TaskState } from "@/types/domain";
@@ -168,15 +168,13 @@ export function TasksPage({ projectId }: { projectId: string }) {
           <div className="flex min-h-[63px] flex-wrap items-center justify-between gap-sm border-b border-border">
             <div role="group" aria-label="任务状态筛选" className="flex items-center gap-md">
               {tabs.map(({ id, label, count }) => (
-                <button
+                <Chip
                   key={id}
-                  type="button"
+                  selected={tab === id}
                   onClick={() => setTab(id)}
-                  aria-pressed={tab === id}
-                  className={`text-caption ${tab === id ? "text-text-primary" : "text-text-muted"}`}
                 >
                   {label} <span>{count}</span>
-                </button>
+                </Chip>
               ))}
             </div>
             <span className="text-caption text-text-muted">

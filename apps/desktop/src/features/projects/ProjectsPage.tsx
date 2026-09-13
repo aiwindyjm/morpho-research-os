@@ -124,11 +124,11 @@ export function ProjectsPage() {
                 }}
               />
             ))}
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               data-testid="new-project-card"
               onClick={() => setDialogOpen(true)}
-              className="flex min-h-[190px] flex-col items-center justify-center rounded-lg border border-dashed border-border p-lg text-center transition-colors hover:border-accent"
+              className="h-auto min-h-[190px] w-full flex-col border-dashed border-border! p-lg text-center hover:border-accent!"
             >
               <span aria-hidden="true" className="text-[25px] text-info">
                 ＋
@@ -139,7 +139,7 @@ export function ProjectsPage() {
               <small className="mt-xs text-caption text-text-muted">
                 从一个问题开始
               </small>
-            </button>
+            </Button>
           </div>
         </div>
       </PageStates>
@@ -243,14 +243,9 @@ function ProjectCard({
     >
       <div className="flex items-center justify-between gap-sm">
         <span className={status.pill}>{status.label}</span>
-        <button
-          type="button"
-          aria-label="打开项目"
-          onClick={onOpen}
-          className="rounded px-xs text-body text-text-muted hover:text-text-primary"
-        >
+        <Button size="icon" variant="ghost" aria-label="打开项目" onClick={onOpen}>
           ⋯
-        </button>
+        </Button>
       </div>
       <h2 className="mt-md text-subhead font-semibold leading-tight text-text-primary">
         {name}

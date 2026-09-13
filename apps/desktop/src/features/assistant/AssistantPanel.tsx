@@ -231,13 +231,14 @@ export function AssistantPanel() {
           {journalSaveState === "saved" ? (
             <p className="mt-xs text-caption text-success" role="status">
               已保存 {transcript.length} 条消息到今天的对话日志。{" "}
-              <button
-                type="button"
-                className="text-info hover:underline"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto px-xs py-0 align-baseline text-info! hover:underline"
                 onClick={() => setActiveView("journal")}
               >
                 查看对话日志 →
-              </button>
+              </Button>
             </p>
           ) : null}
         </div>
@@ -285,13 +286,14 @@ export function AssistantPanel() {
 
       <footer className="flex items-center justify-between border-t border-border px-md pb-sm pt-xs text-[9px] text-text-muted">
         <span>AI 会基于当前项目工作区回答</span>
-        <button
-          type="button"
-          className="text-info hover:underline"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-auto px-xs py-0 text-info! hover:underline"
           onClick={() => setActiveView("journal")}
         >
           记录对话
-        </button>
+        </Button>
       </footer>
     </section>
   );

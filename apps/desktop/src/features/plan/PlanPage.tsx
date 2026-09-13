@@ -263,15 +263,16 @@ export function PlanPage({ projectId }: { projectId: string }) {
                       <span className="text-caption text-text-muted">
                         {section.tasks.length} tasks
                       </span>
-                      <button
-                        type="button"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         aria-label={isCollapsed ? "展开分组" : "折叠分组"}
                         aria-expanded={!isCollapsed}
-                        className="text-caption text-text-secondary transition-colors hover:text-text-primary"
+                        className="h-auto px-xs py-0 text-caption"
                         onClick={() => toggleGroup(section.id)}
                       >
                         {isCollapsed ? "⌄" : "⌃"}
-                      </button>
+                      </Button>
                     </div>
                     {isCollapsed
                       ? null
