@@ -1,6 +1,6 @@
 # 任务状态追踪
 
-本文件是公开的任务完成状态索引，与 `docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md` 的任务 ID 一一对应。它只记录真实公开工作结果，不记录个人日期、每日配额、私有批次或本地执行笔记。
+本文件是公开的任务完成状态索引，与 `docs/development/AI_PARALLEL_DEVELOPMENT_PLAN.md` 的任务 ID 一一对应。它只记录真实公开工作结果，不记录个人日期、每日配额、私有批次或本地执行笔记。计划外的收尾批次条目以文字标签记录在表末，不占用计划任务 ID。
 
 ## 使用规则
 
@@ -57,7 +57,7 @@
 | `W2-02` | `Review` | — | worker-health/version/job-request/job-response/job-status/cancel/event/error v1.0 冻结（闭合信封）；`docs/api/WORKER_PROTOCOL.md` 定义会话令牌、协议兼容拒绝、SSE 序号/重连/脱敏/终止语义 | 同上；C 组 RUST-05 草案需对齐：protocol 1.0、`seq` 字段、事件枚举与闭合信封 |
 | `W2-03` | `Review` | — | provider-config/usage-record v1.0 冻结；Token/Duration/Estimated Cost/CacheHit/Retries 可记录；`docs/api/PROVIDERS.md` 固化 key 引用、错误映射与路由规则 | 同上；Key 值仅经 Rust 注入进程环境 |
 | `W2-04` | `Review` | — | prompt-metadata.v1 冻结：prompt_id/stage/SemVer、输入输出 schema 引用、模型能力提示、必填 golden cases；`packages/prompts/README.md` 固化版本纪律与 Cache Key 参与 | 同上；Prompt 资产由 D 组按规范落盘 |
-| `W2-05` | `Blocked` | — | 原因：真实 IPC Transport 尚未接入（契约 W2-01/W2-02 已随 workgroup-a 合并入 main，但 `apps/desktop/src/services/transportProvider.ts` 仍默认 Mock）；按规则不得自行定义接口。解除条件：在 `apps/desktop/src/services/transportProvider.ts` 注册真实 Tauri Transport | 前端已预留类型化接入点与 Mock/真实一致的 Service 边界（`8082dc7`） |
+| `W2-05` | `Review` | `38c5ee3` | 真实 Tauri IPC Transport 落地：`tauriTransport.ts` 检测到 `window.__TAURI__` 时自动启用，Web 预览/vitest/E2E 自动回退 Mock；在 `transportProvider.ts` 完成注册（满足原解除条件）；请求/响应信封、错误、取消与事件类型 Mock/真实一致，`tauriTransport.test.ts` 覆盖命令映射、错误映射与回退行为 | CHANGELOG「Unreleased」已记录；仅自动化验证，待维护者验收 |
 | `W2-06` | `Review` | — | source/source-content/knowledge-node/claim/evidence/relation/artifact v1.0 冻结；Source→Evidence→Claim→Knowledge 链与冲突共存语义写入 schema 及 `docs/data/*` | 同上；Claim≠Knowledge、Evidence 必须引用 Source+locator |
 | **W3** |  |  |  |  |
 | `RES-01` | `Review` | `acb2819` | pytest 105 passed: Planner 仅生成 pending_review 草案；非法 Mock LLM 输出可恢复、永久失败无部分产物；维度回填与稳定 ID；PlanStore 审批门禁 require_approved | 批准前不执行 DAG（RES-02/集成测试再证） |
@@ -66,9 +66,9 @@
 | `RES-04` | `Review` | `ac84ff3` | 10 项抽取测试通过：内容指纹级去重（同内容一次抽取）、来源质量可解释四维评估、空白内容 SOURCE_PARSE_FAILED、非法输出重试后无部分产物 | 质量非真伪判定，note 字段固化 |
 | `RES-05` | `Review` | `9a00791` | 7 项归一化测试通过：别名合并、跨运行稳定节点/关系 ID、Provenance 并集、确定性排序、冲突不落入节点摘要、不可解析关系确定性丢弃 | Claim 不等于 Knowledge |
 | `RES-06` | `Review` | `fa4e923` | 7 项 Claim 测试通过：确定性 Claim ID 合并共存、Evidence 定位与 support 方向、无定位不可 confirmed、丢弃记录带原因、冲突共存进入 NEEDS_REVIEW、验证报告可校验 | 后 Claim 不覆盖前 Claim |
-| `RES-07` | `Planned` | — | — | — |
+| `RES-07` | `Review` | `39cab0e` | Vault Writer 落地：15 个 PRD Vault 目录与全部笔记类型（含 Sources/Claims/Maps MOC）、稳定 slug/frontmatter、幂等 wikilink、临时文件+原子改名写入、用户修改返回 Merge Proposal 而非覆盖；`vault.rs` 13 项单测 + `vault_sqlite.rs` 集成测试通过；`6f15d45` 接入 Map 导出与 orchestrator pump | 仅自动化验证（CHANGELOG「Unreleased」）；待维护者验收 |
 | `RES-08` | `Review` | `8082dc7` | 前端交付：D3 2D 力导向图谱（SVG）、搜索/类型/维度过滤、节点键盘选择与 GraphNodeInspector、无障碍列表降级；14 节点 Fixture 有测试（5 个 GraphPage 测试） | 图谱数据投影为 Mock 实现；接入真实 Knowledge/Relation 投影待 W2-06 与 RES-05 合并后完成 |
-| `RES-09` | `Planned` | — | — | — |
+| `RES-09` | `Review` | `20c7064` | Playwright 首条完整旅程套件：项目 → 研究配置 → 草案 Plan 批准并启动 Run → Sources → Knowledge/Claims/Evidence → Graph → Reports（含覆盖度指标）；`journey.spec.ts` 7 项、全套 11 specs 在 CI frontend-e2e 门禁对 Mock Transport 全绿 | 按 PRD 定义以 Mock 执行；Timeline/Gap 视图走查、Vault 导出与真实 worker 冒烟未含（见收尾批次条目） |
 | `RES-10` | `Review` | `8082dc7` | 前端交付：Timeline（倒序事件投影）、Coverage 面板逐维展示 PRD 公式分量/权重/原始输入/原因、Gap 卡（覆盖率<0.6 或独立高质量来源<2 的可解释判定）；建议批准前只读、批准后才创建任务（GapsPage 3 测试 + 后端投影测试） | 覆盖度/缺口投影当前由 Mock 服务按 PRD §14 公式实现；真实投影接入待 RES-02/RES-05/RES-06 与 W2-06 合并后完成 |
 | **分支集成与本地计算闭环** |  |  |  |  |
 | `INT-01` | `Review` | `94ab7aa` | 三组工作区分支串行合入 main：Fixture 工具链与边界检查（contracts.yml CI、check-contracts/check-architecture、TS Fixture Loader）、v1.0 契约与 Fixture 语料（packages/schemas、packages/prompts、ci.yml、WORKER_PROTOCOL.md 等，合并提交 `86d7c30`）、Python 研究引擎（合并时 160 项 pytest 通过，合并提交 `826abd4`）；`277f9c7` 对齐 golden fixture 与 research-config v1 并隔离 rust-loader；`3946720` 移除复活的前端视图并对齐 mock 配置 | 集成任务串行执行；合并后契约/架构/边界检查与各语言测试全绿 |
@@ -80,3 +80,20 @@
 | `REL-02` | `Planned` | — | — | — |
 | `REL-03` | `Planned` | — | — | — |
 | `REL-04` | `Planned` | — | — | — |
+| **收尾批次（计划外条目，不占用计划任务 ID）** |  |  |  |  |
+| 收尾·品牌资产 | `Review` | `0541100` | 桌面图标全套（icns/ico/多尺寸 png）与 Web favicon 替换；`docs/assets/brand/` 预留品牌资产及说明；`tauri.conf.json` 图标配置同步 | 资产与配置变更，无行为门禁；待维护者验收 |
+| 收尾·法律采用 | `Review` | `cab14ea` | Apache-2.0 全文 LICENSE、NOTICE 与 TRADEMARKS.md 预留商标政策落盘；根与各包 license 字段统一为 Apache-2.0 | 文档与包元数据变更；待维护者验收 |
+| 收尾·会话失效 | `Review` | `65b39b7` | `sessionState.ts` 主动会话失效服务接入 workspaceStore（项目锁定/权限收回/版本失效清理），配套测试覆盖失效路径 | 仅自动化验证；待维护者验收 |
+| 收尾·Token与a11y | `Review` | `1414d43` | 语义 Token 与效果层扩充、a11y 加固与原型整改；`DESIGN_TOKENS.md`/`COMPONENT_REGISTRY.md` 同步；App/Config/Overview/Tasks 页与 `packages/ui` overlays 测试扩充 | 仅自动化验证（vitest）；待维护者验收 |
+| 收尾·ADR-014提案 | `Review` | `74c64f8` | ADR-014（shadcn/ui + React Router）提案落盘（Proposed）；TECH_STACK 与 AGENTS 基线同步 | 提案文档；批准事项见下方延期条目 |
+| 收尾·Docker修复 | `Review` | `55a89da` | web 镜像 registry-mirror build arg 与缺失的 schemas 拷贝修复；`docs/deployment/DOCKER.md` 同步 | 构建配置修复；待维护者验收 |
+| 收尾·批次一前端接线 | `Planned` | — | — | config.get/config.update、run.get 接真实通道；Command Map 新增 run.cancel、secrets.setProviderKey、secrets.listProviders、vault.exportProject、project.archive（对应 Rust 命令已提交，映射见 docs/API.md「Frontend Tauri command registry」） |
+| 收尾·批次二Rust命令 | `Planned` | — | — | 经 ADR-020（Proposed）新增 Rust 命令并接线：plan_regenerate、plan_update_task、plan_reject、evidence_list_by_claim、graph_get、gap_approve_proposal、gap_dismiss_proposal |
+| 收尾·SSE事件消费 | `Planned` | — | — | 前端消费 `morpho://events` 事件流并接 sessionState 失效清理 |
+| 收尾·真实worker冒烟 | `Planned` | — | — | `python -m morpho_worker.serve` 真实进程端到端冒烟（RES-09 当前仅 Mock/Mock Transport 自动化验证） |
+| 收尾·Settings真实实现 | `Planned` | — | — | SettingsPage 由占位实现改为真实配置/密钥引用界面 |
+| 收尾·Vault导出入口 | `Planned` | — | — | 启用 Knowledge Vault 导出（RES-07 写入器与 `vault_export_project` 命令已落地，前端入口未接） |
+| 收尾·延期·任务操作 | `Deferred` | — | — | 延期原因：task.pause/task.resume/task.retry/task.cancel 依赖 ADR-019 phase 2（Rust 侧逐任务派发与任务 id 对齐）；phase 1 投影权威下无对应核心命令 |
+| 收尾·延期·助手真实AI | `Deferred` | — | — | 延期原因：assistant.* 真实 AI 交互按产品节奏推迟至 V0.2；当前仅 Mock 服务 |
+| 收尾·延期·ADR-014批准 | `Deferred` | — | — | 维护者决定项：ADR-014（shadcn/ui + React Router）现为 Proposed，待批准 |
+| 收尾·延期·wire漂移批准 | `Deferred` | — | — | 维护者决定项：docs/API.md 标记的六类 worker wire draft 漂移（协议版本串、job_id 铸造方、状态枚举、取消语义、传输层错误码、ProviderConfig 字段名）待冻结批准 |

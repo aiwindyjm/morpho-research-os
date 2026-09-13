@@ -75,3 +75,51 @@ Provider configuration lives in the worker's config boundary (`morpho_worker/con
 The conventional provider ids `anthropic` (base `https://api.anthropic.com`, key reference `env:ANTHROPIC_API_KEY`) and `gemini` (base `https://generativelanguage.googleapis.com`, key reference `env:GEMINI_API_KEY`) are registered in the default config but **unrouted and model-less**: opting in is an explicit configuration change (set the model and route a role to it), never a silent call to a real endpoint. Default routing stays planner/validation on a strong OpenAI-compatible model, extraction/summarization/classification on local Ollama, embeddings on the mock.
 
 Environment overrides (missing variables keep defaults; provider ids use hyphens in config and underscores in variable names): `MORPHO_PROVIDER_<NAME>_{KIND,BASE_URL,MODEL,KEY_REF,PROTOCOL,TIMEOUT,RETRIES}`, `MORPHO_ROLE_<ROLE>`, `MORPHO_PROFILE=local|offline|default` (the profile applies before explicit `MORPHO_ROLE_*` overrides, so a per-role variable always wins), plus `MORPHO_WORKER_OFFLINE`, `MORPHO_MAX_CONCURRENCY`, and `MORPHO_PROMPTS_DIR`. **Draft**: the worker's `ProviderConfig` field set (`timeout_seconds`, `max_retries`, `retry_backoff_seconds`, `protocol`, cost hints) has not yet been reconciled with the frozen `provider-config.v1.json` names (`timeout_ms`, `retry {max_attempts, backoff_ms}`).
+
+## Frontend Tauri command registry
+
+The typed frontend command surface is defined by [`apps/desktop/src/services/commands.ts`](../apps/desktop/src/services/commands.ts) (`CommandMap`) — the authoritative registry of command names, request/response payload types, and the Zod response-schema map. `apps/desktop/src/services/tauriTransport.ts` implements the real Tauri IPC transport (auto-selected when `window.__TAURI__` is present; the in-memory mock stays active for web preview, vitest, and Playwright) and maps each frontend command onto the Rust IPC surface in `apps/desktop/src-tauri/src/commands.rs`. Frontend commands without a Rust counterpart fail fast with a typed non-retryable error rather than degrading silently. Extending the surface with new Rust commands is decided by ADR-020 (Proposed).
+
+Status legend: **wired** — real Tauri invoke works today; **batch-1** — Rust command already committed, frontend adapter/registry entry planned in the closeout batch; **batch-2** — new Rust command planned via ADR-020 (Proposed); **deferred** — not this cycle, reason noted.
+
+| TS command (`commands.ts`) | Rust command(s) invoked | Status |
+|---|---|---|
+| `project.list` | `project_list` | wired |
+| `project.create` | `project_create` | wired |
+| `project.get` | `project_get` | wired |
+| `config.get` | `config_get` | batch-1 (adapter pending; Rust command committed) |
+| `config.update` | `config_put` | batch-1 (adapter pending; Rust command committed) |
+| `plan.get` | `plan_list` (latest plan entry) | wired |
+| `plan.approve` | `plan_approve`, then `plan_list` re-read | wired |
+| `run.start` | `run_start` (sends `approve_plan: true`) + `plan_list` | wired |
+| `run.get` | `run_get` | batch-1 (adapter pending; Rust command committed) |
+| `run.cancel` | `run_cancel` | batch-1 (new CommandMap entry; Rust command committed) |
+| `task.list` | `plan_list` (tasks embedded in plan records) | wired |
+| `source.list` | `sources_list` | wired |
+| `knowledge.list` | `knowledge_list` | wired |
+| `claim.list` | `claims_list` | wired |
+| `relation.list` | `relations_list` | wired |
+| `coverage.get` | `coverage_get` | wired |
+| `gap.list` | `coverage_get` (gap list embedded in the coverage report) | wired |
+| `timeline.get` | `events_list` | wired |
+| `secrets.setProviderKey` | `secrets_set_provider_key` | batch-1 (new CommandMap entry; Rust command committed) |
+| `secrets.listProviders` | `secrets_list_providers` | batch-1 (new CommandMap entry; Rust command committed) |
+| `vault.exportProject` | `vault_export_project` | batch-1 (new CommandMap entry; Rust command committed) |
+| `project.archive` | `project_archive` | batch-1 (new CommandMap entry; Rust command committed) |
+| `plan.regenerate` | `plan_regenerate` | batch-2 (ADR-020, Proposed) |
+| `plan.updateTask` | `plan_update_task` | batch-2 (ADR-020, Proposed) |
+| `plan.reject` | `plan_reject` | batch-2 (ADR-020, Proposed) |
+| `evidence.listByClaim` | `evidence_list_by_claim` | batch-2 (ADR-020, Proposed) |
+| `graph.get` | `graph_get` | batch-2 (ADR-020, Proposed) |
+| `gap.approveProposal` | `gap_approve_proposal` | batch-2 (ADR-020, Proposed) |
+| `gap.dismissProposal` | `gap_dismiss_proposal` | batch-2 (ADR-020, Proposed) |
+| `task.pause` | — | deferred (ADR-019 phase 2) |
+| `task.resume` | — | deferred (ADR-019 phase 2) |
+| `task.retry` | — | deferred (ADR-019 phase 2) |
+| `task.cancel` | — | deferred (ADR-019 phase 2) |
+| `assistant.getContext` | — | deferred (V0.2; mock service only today) |
+| `assistant.act` | — | deferred (V0.2; mock service only today) |
+| `assistant.saveDecision` | — | deferred (V0.2; mock service only today) |
+| `assistant.listDecisions` | — | deferred (V0.2; mock service only today) |
+
+Transport-level diagnostics `core_info` and `ping` exist on the Rust surface outside the domain `CommandMap`. Every response crosses the `{schema_version, request_id, data, error}` envelope and the Zod response-schema registry in `commands.ts` before reaching components. One known placeholder: until `config_get` is wired (batch-1), the `run.start` adapter synthesizes a schema-minimal `config_snapshot` default — run views must not treat it as user data.
