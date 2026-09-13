@@ -12,5 +12,5 @@ Interactions: 仅页面导航（config / journal）；无表单提交、无数�
 Empty State: 不适用
 Loading State: 不适用
 Error State: 不适用
-Responsive: 单列流式（<768 卡内布局收窄）
+Responsive: 单列流式（<768 卡内布局收窄）；报告维度覆盖表在窄窗口下于 overflow-x-auto 区域内横向滚动（min-w-[480px] 下限）
 Analytics/Events: 无

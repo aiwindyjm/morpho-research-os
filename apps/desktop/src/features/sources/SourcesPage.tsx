@@ -130,11 +130,15 @@ export function SourcesPage({ projectId }: { projectId: string }) {
           </span>
         </div>
 
-        <ol>
-          {visible.map((source) => (
-            <SourceCard key={source.id} source={source} variant="row" />
-          ))}
-        </ol>
+        {/* Narrow table strategy: the rows share one horizontal scroll
+            region so the row-grid minmax floors hold before squeezing. */}
+        <div className="overflow-x-auto" data-testid="sources-table">
+          <ol>
+            {visible.map((source) => (
+              <SourceCard key={source.id} source={source} variant="row" />
+            ))}
+          </ol>
+        </div>
         {visible.length === 0 ? (
           <Card className="text-center text-body text-text-secondary">
             没有匹配的来源；试试更换关键词或清除筛选条件。

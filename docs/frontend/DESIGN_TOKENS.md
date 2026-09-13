@@ -163,7 +163,7 @@ Rule (ADR-013 decision 2, still in force): base colors on pages must come from s
 
 The raw values below are approved one-offs; everything else must consume tokens, token-derived alpha tints, or the effect layer (value → location → rationale).
 
-- `grid-template-columns` values (e.g. `repeat(3/4, 1fr)`, `1.55fr 1fr`, `minmax(0, 1.55fr) minmax(260px, .75fr)`, task/source table column tracks) → metric/content/knowledge/project/source/settings grids (9 sites) → structural layout tracks, not theme values; they describe how many columns a specific composition has, not a reusable design decision.
+- `grid-template-columns` values → **narrow-window revision (2026-09-13)**: the page-composition grids (metric / content / knowledge / project / source / settings) are expressed as responsive Tailwind utilities (`grid-cols-1 md:grid-cols-2 xl:grid-cols-3/4`), so the former raw `repeat(3/4, 1fr)` and `1.55fr 1fr` literals no longer exist. What remains are single-consumer structural tracks: ConfigPage form-section gutter `grid-cols-[56px_1fr]`, ConfigPage preference cards `grid-cols-[auto_1fr]`, JournalPage entry rows `grid-cols-[48px_1fr]`, PlanPage tree headers `grid-cols-[22px_35px_1fr_auto_24px]` and task rows `grid-cols-[42px_1fr] md:grid-cols-[42px_1fr_auto]`, SettingsPage cards `grid-cols-[36px_1fr] md:grid-cols-[36px_1fr_auto]`, JournalPage two-panel `lg:grid-cols-[minmax(0,1.55fr)_minmax(260px,0.75fr)]`, and the task/source table row tracks below (structural layout tracks, not theme values).
 - `min-h-[45px]` → ProjectsPage project-card excerpt → single-site prototype measurement (`min-height: 45px`).
 - `min-h-[63px]` → TasksPage / GraphPage toolbars → toolbar strip height below the topbar token's role.
 - `min-h-[65px]` → KnowledgePage card summary → single-site prototype measurement.
@@ -173,9 +173,13 @@ The raw values below are approved one-offs; everything else must consume tokens,
 - `max-w-[180px]` → GraphPage mini progress → single-site prototype measurement.
 - `max-w-[850px]` → SettingsPage stack → reading-width cap specific to the settings composition.
 - `w-[52px]` → ConfigPage segmented control → control-specific button width.
+- `max-h-[70dvh]` → AssistantDock bottom sheet → viewport guard below lg only; the sheet never grows past 70% of the dynamic viewport (the desktop popup keeps the bare `h-dock` height).
 - `size-[34px]` → Sidebar brand tile → logo image frame (`/brand-mark.png`, pairs with `rounded-brand`; the Topbar breadcrumb uses an 18px copy of the same asset).
 - `lg:w-[245px]` → GraphPage inspector → inspector column width at desktop breakpoint.
-- `ml-[68px]` → PlanPage task indent → tree-indent structural offset.
+- `ml-6 md:ml-[68px]` → PlanPage task indent → tree-indent structural offset (steps down to the spacing token below md so narrow windows keep title width).
+- `grid-cols-[minmax(150px,2.2fr)_minmax(84px,1.2fr)_minmax(76px,0.85fr)_25px]` → TasksPage table rows → narrow table strategy floors (see below).
+- `grid-cols-[minmax(64px,74px)_minmax(150px,1fr)_minmax(60px,70px)_35px]` → SourceCard `variant="row"` → narrow table strategy floors (74px/70px/35px maxima preserve the desktop geometry).
+- `min-w-[480px]` → ReportsPage dimension coverage table → floor below which the table scrolls horizontally instead of wrapping headers character-by-character.
 - `pt-[3px]` / `mt-[7px]` → ConfigPage section number/help → optical alignment nudges inside the config form.
 - `gap-[3px]` / `gap-[11px]` → Sidebar nav list / nav items → prototype nav rhythm; promote to tokens if reused outside the sidebar.
 - `text-[9px]` → AssistantPanel timestamps → below the `nano` tier, single consumer.
@@ -193,6 +197,12 @@ If a second consumer appears for any value above, promote it to a numbered token
 - `border-[rgb(217_160_91/0.2)]` → JournalPage privacy note → single-site accent-alpha tint harmonizing with the note's `bg-accent-soft` face (former `rgb(114_167_255/0.2)`).
 - `border-[rgb(217_160_91/0.3)]` → AssistantDock popup border (`WorkspaceLayout.tsx`) → single-site accent-alpha tint on the assistant brand surface (former `rgb(114_167_255/0.3)`).
 - Note (ADR-022): these two lamplit accent tints ride the brass triple in the default skin; when the bio-luminal skin becomes switchable from Settings, prefer re-expressing them as token utilities (e.g. `border-accent/20`) so they follow the active skin.
+
+### 2026-09-13 narrow-window additions (PRD §12 responsive pass)
+
+**Narrow table strategy** (one pattern for TasksPage rows, SourcesPage rows via SourceCard `variant="row"`, and the ReportsPage dimension coverage table): table-like rows keep every column and gain `minmax(floor, track)` column floors inside a shared `overflow-x-auto` region — columns compress only down to their readable floors, then the header + rows scroll horizontally together (the real `<table>` in Reports uses the same idea as `w-full min-w-[480px]`). Above the point where the floors stop binding the tracks resolve to the exact former proportions, so ≥sm rendering is pixel-identical. Information-hiding (dropping secondary columns on narrow windows) was the considered alternative and rejected: no column is unreachable and the pattern extends to real `<table>` elements unchanged.
+
+**AssistantDock below lg** (registered-component behavior change): the 360px popup becomes a full-width bottom sheet — `max-lg:inset-x-0 max-lg:bottom-0`, top corners keep `rounded-dock`, height capped at `max-h-[70dvh]` — rendered over a `lg:hidden` scrim that closes it on tap (same contract as the sidebar drawer backdrop). The launcher stays mounted beneath the sheet (spec §8 fidelity), so it never floats over narrow-window form controls. Desktop (lg+) is byte-identical: popup position/width classes resolve to the same values and the scrim is `display:none`.
 
 ### 2026-09-13 removal (lucide-react iconography, ADR-014 prep)
 

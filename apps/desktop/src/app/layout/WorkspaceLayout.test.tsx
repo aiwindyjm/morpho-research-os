@@ -166,4 +166,26 @@ describe("assistant dock", () => {
     expect(await screen.findByTestId("assistant-launcher")).toHaveFocus();
     expect(screen.queryByTestId("assistant-panel")).not.toBeInTheDocument();
   });
+
+  // Narrow-window sheet behavior (below lg): the panel renders over a scrim
+  // whose only job is to close it — same contract as the sidebar drawer
+  // backdrop (hidden from lg up, so the desktop popup has no scrim).
+  it("closes via the scrim backdrop and returns focus to the launcher", async () => {
+    const user = userEvent.setup();
+    renderLayout();
+
+    const launcher = await screen.findByTestId("assistant-launcher");
+    await user.click(launcher);
+    await screen.findByTestId("assistant-panel");
+
+    const backdrop = screen.getByTestId("assistant-backdrop");
+    expect(backdrop).toHaveAttribute("aria-label", "关闭助手面板");
+    await user.click(backdrop);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("assistant-panel")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("assistant-backdrop")).not.toBeInTheDocument();
+    expect(launcher).toHaveFocus();
+  });
 });

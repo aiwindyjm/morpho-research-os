@@ -12,7 +12,7 @@ Interactions: 编辑任务（Dialog，仅 draft）；批准；拒绝；重新生
 Empty State: 「还没有研究计划」+ 生成按钮
 Loading State: PageLoading
 Error State: PageError + 重试；操作失败以 Alert 呈现（含 MorphoError user_message）
-Responsive: 操作按钮在页头自动换行；树列表单列流式
+Responsive: 操作按钮在页头自动换行；树列表单列流式；汇总条 <md 为 2×2，任务行的类型标签 <md 折行到标题下方
 Analytics/Events: 无
 
 ## Prototype alignment (ADR-013)

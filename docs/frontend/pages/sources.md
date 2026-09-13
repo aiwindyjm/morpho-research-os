@@ -12,7 +12,7 @@ Interactions: URL 新窗口打开（rel=noreferrer）
 Empty State: 「还没有来源」+ 引导
 Loading State: PageLoading
 Error State: PageError + 重试
-Responsive: 1 列（<1024）/ 2 列（≥1024）
+Responsive: 行式列表共享横向滚动区，行网格列设 minmax 下限（窄表策略，见 DESIGN_TOKENS.md）
 Analytics/Events: 无
 
 ## Prototype alignment (ADR-013)

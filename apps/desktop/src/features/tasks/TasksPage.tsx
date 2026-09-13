@@ -37,8 +37,18 @@ function statusPill(state: TaskState): { pill: string; label: string } {
   return TASK_STATE_PILLS[state] ?? { pill: "pill-neutral", label: TASK_STATE_LABELS[state] };
 }
 
+/**
+ * Prototype task-table grid (spec §4). Narrow-window strategy (shared with
+ * the sources rows and the reports dimension table, docs/frontend/
+ * DESIGN_TOKENS.md "narrow table strategy"): the fr tracks gain minmax()
+ * floors and the header + rows scroll together inside one overflow-x-auto
+ * region, so columns squeeze down to readable minimums and then scroll
+ * instead of crushing text. Above the point where the floors stop binding
+ * (≥sm) the tracks resolve to the exact same fr proportions as before, so
+ * the desktop layout is unchanged.
+ */
 const TASK_GRID =
-  "grid grid-cols-[2.2fr_1.2fr_0.85fr_25px] items-center gap-md border-b border-border";
+  "grid grid-cols-[minmax(150px,2.2fr)_minmax(84px,1.2fr)_minmax(76px,0.85fr)_25px] items-center gap-md border-b border-border";
 
 export function TasksPage({ projectId }: { projectId: string }) {
   const { data: tasks, isLoading, error, refetch } = useTasks(projectId);
@@ -182,66 +192,70 @@ export function TasksPage({ projectId }: { projectId: string }) {
               最后更新 {list[0]?.updated_at.slice(0, 10)}
             </span>
           </div>
-          <div role="presentation" className={`${TASK_GRID} py-sm text-caption text-text-muted`}>
-            <span>任务</span>
-            <span>阶段</span>
-            <span>状态</span>
-            <span />
-          </div>
-          <ol className="flex flex-col">
-            {visible.map((task) => {
-              const pill = statusPill(task.state);
-              const rowActions = taskActions(task);
-              return (
-                <li
-                  key={task.id}
-                  data-testid="task-row"
-                  data-state={task.state}
-                  className={`${TASK_GRID} py-md`}
-                >
-                  <div className="min-w-0">
-                    <strong className="text-body text-text-primary" data-testid="task-title">
-                      {task.title}
-                    </strong>
-                    <small className="block text-caption text-text-muted">
-                      {dimensionLabel(task.dimension)}
-                    </small>
-                  </div>
-                  <span className="text-caption text-text-secondary">
-                    {TASK_KIND_LABELS[task.kind]}
-                  </span>
-                  <span className={`pill ${pill.pill}`}>{pill.label}</span>
-                  {rowActions.length > 0 ? (
-                    <Popover
-                      align="end"
-                      trigger={({ onClick, "aria-expanded": expanded }) => (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label="任务操作"
-                          aria-expanded={expanded}
-                          onClick={onClick}
-                          className="px-xs"
-                        >
-                          <Ellipsis size={16} strokeWidth={1.75} aria-hidden="true" />
-                        </Button>
-                      )}
-                    >
-                      <div className="flex flex-col gap-sm">
-                        {rowActions.map(({ label, run: fn, variant }) => (
-                          <Button key={label} size="sm" variant={variant} onClick={fn}>
-                            {label}
+          {/* Narrow table strategy: header + rows share one horizontal
+              scroll region so the minmax floors keep columns readable. */}
+          <div className="overflow-x-auto" data-testid="tasks-table">
+            <div role="presentation" className={`${TASK_GRID} py-sm text-caption text-text-muted`}>
+              <span>任务</span>
+              <span>阶段</span>
+              <span>状态</span>
+              <span />
+            </div>
+            <ol className="flex flex-col">
+              {visible.map((task) => {
+                const pill = statusPill(task.state);
+                const rowActions = taskActions(task);
+                return (
+                  <li
+                    key={task.id}
+                    data-testid="task-row"
+                    data-state={task.state}
+                    className={`${TASK_GRID} py-md`}
+                  >
+                    <div className="min-w-0">
+                      <strong className="text-body text-text-primary" data-testid="task-title">
+                        {task.title}
+                      </strong>
+                      <small className="block text-caption text-text-muted">
+                        {dimensionLabel(task.dimension)}
+                      </small>
+                    </div>
+                    <span className="text-caption text-text-secondary">
+                      {TASK_KIND_LABELS[task.kind]}
+                    </span>
+                    <span className={`pill ${pill.pill}`}>{pill.label}</span>
+                    {rowActions.length > 0 ? (
+                      <Popover
+                        align="end"
+                        trigger={({ onClick, "aria-expanded": expanded }) => (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label="任务操作"
+                            aria-expanded={expanded}
+                            onClick={onClick}
+                            className="px-xs"
+                          >
+                            <Ellipsis size={16} strokeWidth={1.75} aria-hidden="true" />
                           </Button>
-                        ))}
-                      </div>
-                    </Popover>
-                  ) : (
-                    <span />
-                  )}
-                </li>
-              );
-            })}
-          </ol>
+                        )}
+                      >
+                        <div className="flex flex-col gap-sm">
+                          {rowActions.map(({ label, run: fn, variant }) => (
+                            <Button key={label} size="sm" variant={variant} onClick={fn}>
+                              {label}
+                            </Button>
+                          ))}
+                        </div>
+                      </Popover>
+                    ) : (
+                      <span />
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
         </Card>
       </PageStates>
     </PageShell>

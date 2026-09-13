@@ -23,7 +23,11 @@ function groupNumber(index: number): string {
   return String(index + 1).padStart(2, "0");
 }
 
-/** Prototype `plan-summary` cell; every cell but the first gets a leading rule. */
+/**
+ * Prototype `plan-summary` cell; every cell but the first gets a leading
+ * rule from md up (the strip is 2×2 below md, where rules would read as row
+ * separators instead of column dividers).
+ */
 function SummaryCell({
   label,
   value,
@@ -34,7 +38,7 @@ function SummaryCell({
   first?: boolean;
 }) {
   return (
-    <div className={`flex flex-col gap-xs ${first ? "" : "border-l border-border pl-lg"}`}>
+    <div className={`flex flex-col gap-xs ${first ? "" : "md:border-l md:border-border md:pl-lg"}`}>
       <span className="kicker">{label}</span>
       <strong className="text-h2 text-text-primary">{value}</strong>
     </div>
@@ -235,7 +239,7 @@ export function PlanPage({ projectId }: { projectId: string }) {
             {/* 汇总条：全部来自真实查询，不用原型里的示意数字。 */}
             <div
               data-testid="plan-summary"
-              className="grid grid-cols-4 border-b border-border bg-overlay-hairline px-lg py-md"
+              className="grid grid-cols-2 gap-y-md border-b border-border bg-overlay-hairline px-lg py-md md:grid-cols-4"
             >
               <SummaryCell label="预计任务" value={plannedTasks} first />
               <SummaryCell label="来源" value={(sources ?? []).length} />
@@ -287,7 +291,7 @@ export function PlanPage({ projectId }: { projectId: string }) {
                       : section.tasks.map((task, taskIndex) => (
                           <div
                             key={task.id}
-                            className="ml-[68px] grid grid-cols-[42px_1fr_auto] items-center gap-sm border-t border-border py-sm"
+                            className="ml-6 grid grid-cols-[42px_1fr] items-center gap-sm border-t border-border py-sm md:ml-[68px] md:grid-cols-[42px_1fr_auto]"
                           >
                             <span className="font-mono text-nano text-text-muted">
                               {groupNumber(sectionIndex)}.{taskIndex + 1}
@@ -295,7 +299,10 @@ export function PlanPage({ projectId }: { projectId: string }) {
                             <span className="min-w-0 text-body text-text-primary">
                               {task.title}
                             </span>
-                            <span className="flex items-center gap-sm">
+                            {/* Below md the kind/edit meta wraps to a second
+                                row in the title column instead of crushing
+                                the title against the tree indent. */}
+                            <span className="col-start-2 flex items-center gap-sm md:col-start-auto">
                               <span className="text-caption text-text-muted">
                                 {TASK_KIND_LABELS[task.kind] ?? task.kind}
                               </span>

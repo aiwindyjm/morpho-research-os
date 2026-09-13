@@ -122,7 +122,12 @@ export function ReportsPage({ projectId }: { projectId: string }) {
                 <p className="kicker">覆盖度</p>
                 <h2 className="text-h2 text-text-primary">维度覆盖表</h2>
               </div>
-              <Table className="w-full border-collapse text-body">
+              {/* Narrow table strategy (DESIGN_TOKENS.md): the real table
+                  keeps its columns and scrolls horizontally below the point
+                  where its 480px floor stops fitting; w-full keeps the
+                  desktop width identical. */}
+              <div className="overflow-x-auto" data-testid="report-dimensions-table">
+                <Table className="w-full min-w-[480px] border-collapse text-body">
                 <caption className="sr-only">
                   各研究维度的覆盖率与关键输入
                 </caption>
@@ -172,7 +177,8 @@ export function ReportsPage({ projectId }: { projectId: string }) {
                     </TR>
                   ))}
                 </TBody>
-              </Table>
+                </Table>
+              </div>
             </Card>
 
             {/* 最近研究运行 */}

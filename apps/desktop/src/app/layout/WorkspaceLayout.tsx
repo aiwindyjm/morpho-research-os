@@ -11,8 +11,10 @@ import { Button } from "@morpho/ui";
  * Workspace pattern (docs/frontend/PAGE_PATTERNS.md): 240px sidebar,
  * flexible canvas, floating contextual assistant. The assistant is a
  * bottom-right launcher that opens a 360×530 popup; below the lg
- * breakpoint the docked sidebar is hidden and navigation moves into a
- * drawer opened from the 菜单 button.
+ * breakpoint the popup becomes a full-width bottom sheet over a scrim
+ * (so it never covers narrow-window form controls from the side) and the
+ * docked sidebar is hidden while navigation moves into a drawer opened
+ * from the 菜单 button.
  */
 export function WorkspaceLayout() {
   const activeView = useWorkspaceStore((s) => s.activeView);
@@ -104,7 +106,9 @@ function AssistantDock() {
       {/* Prototype fidelity (spec §8): the launcher stays mounted beneath
           the popup while the panel is open; the panel renders above it and
           focus management is unchanged. .brand-gradient-button carries the
-          brass face and shadow; shape/padding come from className. */}
+          brass face and shadow; shape/padding come from className. Below lg
+          the open sheet (z-40) covers the launcher entirely, so the compact
+          button never floats over its own panel. */}
       <Button
         ref={launcherRef}
         variant="primary"
@@ -120,19 +124,36 @@ function AssistantDock() {
       </Button>
 
       {assistantOpen ? (
-        // Intentionally non-modal per the prototype: Escape closes and focus
-        // returns to the launcher; no focus trap by design.
-        <div
-          ref={panelRef}
-          tabIndex={-1}
-          role="dialog"
-          aria-label="Morpho AI 助手"
-          data-testid="assistant-panel"
-          className="assistant-popup fixed bottom-dock-offset right-xl z-30 flex h-dock flex-col overflow-hidden rounded-dock border border-[rgb(217_160_91/0.3)] bg-surface shadow-[var(--morpho-shadow-overlay)] outline-none"
-          style={{ width: "min(var(--morpho-layout-dock-width), calc(100vw - 32px))" }}
-        >
-          <AssistantPanel />
-        </div>
+        <>
+          {/* Scrim close target below lg only (display:none from lg up, so
+              the desktop popup stays exactly as before): tapping beside the
+              bottom sheet closes it, mirroring the sidebar drawer. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="关闭助手面板"
+            data-testid="assistant-backdrop"
+            onClick={() => setAssistantOpen(false)}
+            className="fixed inset-0 z-20 h-auto w-auto rounded-none bg-scrim! hover:bg-scrim! lg:hidden"
+          />
+          {/* Desktop (lg+): prototype 360×530 popup anchored bottom-right.
+              Below lg the same element becomes a full-width bottom sheet
+              (max-lg utilities) so it slides up from the bottom edge instead
+              of floating over narrow-window form controls; content taller
+              than 70dvh scrolls inside AssistantPanel. Intentionally
+              non-modal per the prototype: Escape closes and focus returns to
+              the launcher; no focus trap by design. */}
+          <div
+            ref={panelRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-label="Morpho AI 助手"
+            data-testid="assistant-panel"
+            className="assistant-popup fixed bottom-dock-offset right-xl z-30 flex h-dock w-[min(var(--morpho-layout-dock-width),calc(100vw-32px))] flex-col overflow-hidden rounded-dock border border-[rgb(217_160_91/0.3)] bg-surface shadow-[var(--morpho-shadow-overlay)] outline-none max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:w-auto max-lg:max-h-[70dvh] max-lg:rounded-b-none"
+          >
+            <AssistantPanel />
+          </div>
+        </>
       ) : null}
     </>
   );

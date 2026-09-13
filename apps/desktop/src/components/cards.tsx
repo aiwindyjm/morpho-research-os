@@ -116,9 +116,16 @@ export function ResearchStatusBadge({
 /* SourceCard                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Prototype compact-row grid (spec §4, `view-sources`). */
+/**
+ * Prototype compact-row grid (spec §4, `view-sources`). Narrow-window
+ * strategy (DESIGN_TOKENS.md "narrow table strategy", shared with the tasks
+ * table and the reports dimension table): minmax floors on the fixed tracks
+ * plus an overflow-x-auto region around the list in SourcesPage — columns
+ * stop squeezing at readable minimums and the rows scroll horizontally
+ * instead. The 74px/70px/35px maxima keep the desktop geometry unchanged.
+ */
 const SOURCE_ROW_GRID =
-  "grid grid-cols-[74px_1fr_70px_35px] items-center gap-md border-b border-border py-md min-h-[70px]";
+  "grid grid-cols-[minmax(64px,74px)_minmax(150px,1fr)_minmax(60px,70px)_35px] items-center gap-md border-b border-border py-md min-h-[70px]";
 
 /** Prototype type-badge class per source type (spec §4). */
 function sourceTypeBadgeClass(type: Source["source_type"]): string {

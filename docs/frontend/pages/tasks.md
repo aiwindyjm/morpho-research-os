@@ -12,7 +12,7 @@ Interactions: 继续运行（计划已批准且无运行时）；行内任务操
 Empty State: 按计划状态给出下一步引导（draft → 去审查计划；approved → 继续运行）
 Loading State: PageLoading
 Error State: PageError + 重试
-Responsive: 任务行纵向堆叠；操作按钮换行
+Responsive: 窄窗口下任务列设 minmax 下限，表头与行共用横向滚动区（窄表策略，见 DESIGN_TOKENS.md），不挤压换行
 Analytics/Events: 无
 
 ## Prototype alignment (ADR-013)
