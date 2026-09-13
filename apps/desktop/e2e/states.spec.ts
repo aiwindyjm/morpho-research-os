@@ -9,7 +9,7 @@ import { openView, switchToProject } from "./support";
  */
 
 test.describe("project switch and empty states", () => {
-  test("switching projects swaps the assistant context strip and topbar", async ({
+  test("switching projects closes volatile UI and re-anchors the assistant", async ({
     page,
   }) => {
     await page.goto("/");
@@ -17,7 +17,7 @@ test.describe("project switch and empty states", () => {
     // The completed fixture is active on load.
     await expect(page.getByTestId("topbar")).toContainText("脑机接口康复应用");
 
-    // The assistant stays docked across the switch and re-anchors.
+    // Dock the assistant for the current project.
     await page.getByRole("button", { name: "打开 AI 助手" }).click();
     const panel = page.getByTestId("assistant-panel");
     await expect(panel).toBeVisible();
@@ -25,10 +25,18 @@ test.describe("project switch and empty states", () => {
     await expect(contextStrip).toContainText("脑机接口康复应用");
 
     // Switch through the project switcher — the isolation boundary users touch.
+    // The session purge treats the docked assistant as volatile per-project UI,
+    // so it closes instead of carrying the old project's context across.
     await switchToProject(page, "大语言模型推理优化");
 
     await expect(page.getByTestId("topbar")).toContainText("大语言模型推理优化");
-    await expect(contextStrip).toContainText("大语言模型推理优化");
+    await expect(panel).toBeHidden();
+
+    // Reopening re-anchors the assistant on the new project.
+    await page.getByRole("button", { name: "打开 AI 助手" }).click();
+    await expect(panel).toBeVisible();
+    const reopenedStrip = panel.getByText("正在使用").locator("..");
+    await expect(reopenedStrip).toContainText("大语言模型推理优化");
   });
 
   test("the draft-stage fixture shows plan-gated tasks and an empty graph", async ({
