@@ -80,39 +80,41 @@ Environment overrides (missing variables keep defaults; provider ids use hyphens
 
 The typed frontend command surface is defined by [`apps/desktop/src/services/commands.ts`](../apps/desktop/src/services/commands.ts) (`CommandMap`) — the authoritative registry of command names, request/response payload types, and the Zod response-schema map. `apps/desktop/src/services/tauriTransport.ts` implements the real Tauri IPC transport (auto-selected when `window.__TAURI__` is present; the in-memory mock stays active for web preview, vitest, and Playwright) and maps each frontend command onto the Rust IPC surface in `apps/desktop/src-tauri/src/commands.rs`. Frontend commands without a Rust counterpart fail fast with a typed non-retryable error rather than degrading silently. Extending the surface with new Rust commands is decided by ADR-020 (Proposed).
 
-Status legend: **wired** — real Tauri invoke works today; **batch-1** — Rust command already committed, frontend adapter/registry entry planned in the closeout batch; **batch-2** — new Rust command planned via ADR-020 (Proposed); **deferred** — not this cycle, reason noted.
+Status legend: **wired** — real Tauri invoke works today; **deferred** — not this cycle, reason noted. The former batch-1 (adapter wiring to already-committed Rust commands) and batch-2 (new Rust commands via ADR-020) closeout batches landed in `0ef7189`, `353435f`, and `c14e1cd`.
 
 | TS command (`commands.ts`) | Rust command(s) invoked | Status |
 |---|---|---|
 | `project.list` | `project_list` | wired |
 | `project.create` | `project_create` | wired |
 | `project.get` | `project_get` | wired |
-| `config.get` | `config_get` | batch-1 (adapter pending; Rust command committed) |
-| `config.update` | `config_put` | batch-1 (adapter pending; Rust command committed) |
-| `plan.get` | `plan_list` (latest plan entry) | wired |
+| `config.get` | `research_config_get` | wired |
+| `config.update` | `research_config_put` (appends a new config generation) | wired |
+| `plan.get` | `plan_list` (latest plan entry; sections served from the transport's plan-view cache) | wired |
 | `plan.approve` | `plan_approve`, then `plan_list` re-read | wired |
-| `run.start` | `run_start` (sends `approve_plan: true`) + `plan_list` | wired |
-| `run.get` | `run_get` | batch-1 (adapter pending; Rust command committed) |
-| `run.cancel` | `run_cancel` | batch-1 (new CommandMap entry; Rust command committed) |
-| `task.list` | `plan_list` (tasks embedded in plan records) | wired |
+| `run.start` | `run_start` (sends `approve_plan: true` + real config snapshot via `research_config_get`) + `plan_list` | wired |
+| `run.get` | `run_get` (transport-level session job registry maps project → worker job) | wired |
+| `run.cancel` | `run_cancel` | wired |
+| `task.list` | `plan_list` (tasks embedded in plan records; latest generation only) | wired |
 | `source.list` | `sources_list` | wired |
 | `knowledge.list` | `knowledge_list` | wired |
 | `claim.list` | `claims_list` | wired |
 | `relation.list` | `relations_list` | wired |
 | `coverage.get` | `coverage_get` | wired |
-| `gap.list` | `coverage_get` (gap list embedded in the coverage report) | wired |
+| `gap.list` | `coverage_get` (gap list embedded in the coverage report; approve/dismiss decisions merged transport-side) | wired |
 | `timeline.get` | `events_list` | wired |
-| `secrets.setProviderKey` | `secrets_set_provider_key` | batch-1 (new CommandMap entry; Rust command committed) |
-| `secrets.listProviders` | `secrets_list_providers` | batch-1 (new CommandMap entry; Rust command committed) |
-| `vault.exportProject` | `vault_export_project` | batch-1 (new CommandMap entry; Rust command committed) |
-| `project.archive` | `project_archive` | batch-1 (new CommandMap entry; Rust command committed) |
-| `plan.regenerate` | `plan_regenerate` | batch-2 (ADR-020, Proposed) |
-| `plan.updateTask` | `plan_update_task` | batch-2 (ADR-020, Proposed) |
-| `plan.reject` | `plan_reject` | batch-2 (ADR-020, Proposed) |
-| `evidence.listByClaim` | `evidence_list_by_claim` | batch-2 (ADR-020, Proposed) |
-| `graph.get` | `graph_get` | batch-2 (ADR-020, Proposed) |
-| `gap.approveProposal` | `gap_approve_proposal` | batch-2 (ADR-020, Proposed) |
-| `gap.dismissProposal` | `gap_dismiss_proposal` | batch-2 (ADR-020, Proposed) |
+| `secrets.setProviderKey` | `secrets_set_provider_key` | wired |
+| `secrets.listProviders` | `secrets_list_providers` | wired |
+| `vault.exportProject` | `vault_export_project` | wired |
+| `project.archive` | `project_archive` | wired |
+| `plan.regenerate` | `plan_regenerate` | wired |
+| `plan.updateTask` | `plan_update_task` | wired |
+| `plan.reject` | `plan_reject` | wired |
+| `evidence.listByClaim` | `evidence_list_by_claim` | wired |
+| `graph.get` | `graph_get` | wired |
+| `gap.approveProposal` | `gap_approve_proposal` | wired |
+| `gap.dismissProposal` | `gap_dismiss_proposal` | wired |
+| `core.info` | `core_info` | wired |
+| `core.ping` | `ping` | wired |
 | `task.pause` | — | deferred (ADR-019 phase 2) |
 | `task.resume` | — | deferred (ADR-019 phase 2) |
 | `task.retry` | — | deferred (ADR-019 phase 2) |
@@ -122,4 +124,6 @@ Status legend: **wired** — real Tauri invoke works today; **batch-1** — Rust
 | `assistant.saveDecision` | — | deferred (V0.2; mock service only today) |
 | `assistant.listDecisions` | — | deferred (V0.2; mock service only today) |
 
-Transport-level diagnostics `core_info` and `ping` exist on the Rust surface outside the domain `CommandMap`. Every response crosses the `{schema_version, request_id, data, error}` envelope and the Zod response-schema registry in `commands.ts` before reaching components. One known placeholder: until `config_get` is wired (batch-1), the `run.start` adapter synthesizes a schema-minimal `config_snapshot` default — run views must not treat it as user data.
+Note on `config.*`: the Rust `config_get`/`config_put` commands transport the **application** config (providers/worker/secrets) and are intentionally NOT mapped to the frontend's `config.get`/`config.update`, which carry the project-scoped **research** config — that role belongs to `research_config_get`/`research_config_put` (ADR-020). The `research_config_get` response always returns `time_range` as an object `{from, to}` (nullable members), unlike the worker-wire form which emits bare `null` when unbounded.
+
+Every response crosses the `{schema_version, request_id, data, error}` envelope and the Zod response-schema registry in `commands.ts` before reaching components. Two transport-level bridges cover read-side gaps pending future core read commands (candidates recorded in ADR-020): gap approve/dismiss decisions are merged into the coverage-bridged gap list in the transport, and plan sections are served from a per-session plan-view cache refreshed by regenerate/update/reject. The earlier `config_snapshot` placeholder on `run.start` is gone — the real config snapshot is read via `research_config_get`.
