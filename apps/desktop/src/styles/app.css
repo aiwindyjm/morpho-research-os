@@ -88,8 +88,8 @@
   --text-subhead--line-height: var(--morpho-text-subhead-line-height);
   --leading-caption: var(--morpho-text-caption-line-height);
 
-  --shadow-panel: 0 18px 45px rgb(0 0 0 / 0.18);
-  --shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.38);
+  --shadow-panel: 0 18px 45px rgb(15 9 4 / 0.35);
+  --shadow-overlay: 0 20px 50px rgb(15 9 4 / 0.5);
 }
 
 :root {

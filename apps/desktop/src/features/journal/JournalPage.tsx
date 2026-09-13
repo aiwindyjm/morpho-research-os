@@ -117,7 +117,7 @@ export function JournalPage() {
               ),
             )}
           </ul>
-          <div className="mt-lg rounded-md border border-[rgb(114_167_255/0.2)] bg-accent-soft p-md">
+          <div className="mt-lg rounded-md border border-[rgb(217_160_91/0.2)] bg-accent-soft p-md">
             <strong className="text-nano text-text-primary">当前版本限制</strong>
             <p className="mt-xs text-nano leading-relaxed text-text-muted">
               Web 预览无法直接写入工作区。正式桌面版会由 Rust Core 按日追加本地文件。

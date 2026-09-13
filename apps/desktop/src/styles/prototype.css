@@ -1,8 +1,9 @@
 /*
- * Prototype alignment effect layer (ADR-013, spec §2/§3).
- * Visual effects the Tailwind utilities cannot express cleanly. All colors
- * come from tokens.css; raw values here are gradient/glow composites that
- * were approved with the prototype.
+ * Prototype effect layer (ADR-013 structure, ADR-021 "深夜研究室"
+ * composites — spec §3). Visual effects the Tailwind utilities cannot
+ * express cleanly. All base colors come from tokens.css; raw values here
+ * are gradient/glow composites approved with the ADR-021 palette. Class
+ * names are the consumer contract and do not change across themes.
  */
 
 .kicker {
@@ -21,21 +22,27 @@
   to { opacity: 1; transform: none; }
 }
 
+/* Brass micro-gradient tile; the glyph rides --morpho-color-text-on-brand
+ * (deep ink). Background gradients are allowed — button/progress gradients
+ * are the banned combination. */
 .brand-mark {
-  background: linear-gradient(145deg, #2459aa, #8d5eea);
-  box-shadow: 0 7px 18px rgb(78 124 227 / 0.25);
+  background: linear-gradient(145deg, #e0b06b, #c8914e);
+  box-shadow: 0 7px 18px rgb(15 9 4 / 0.35);
 }
 
+/* Lamp-warm atmosphere over the main canvas. */
 .main-glow {
   background:
-    radial-gradient(circle at 70% -20%, rgb(53 74 119 / 0.13), transparent 38%);
+    radial-gradient(circle at 70% -20%, rgb(217 160 91 / 0.06), transparent 38%);
 }
 
+/* Accent metric card: flat accent-soft face (no gradient dependence) +
+ * brass corner ring. */
 .metric-accent {
   position: relative;
   overflow: hidden;
-  border-color: rgb(114 167 255 / 0.25);
-  background: linear-gradient(145deg, rgb(45 81 145 / 0.35), var(--morpho-color-surface) 65%);
+  border-color: rgb(217 160 91 / 0.25);
+  background-image: linear-gradient(var(--morpho-color-accent-soft), var(--morpho-color-accent-soft));
 }
 .metric-accent::after {
   content: "";
@@ -44,21 +51,22 @@
   top: -40px;
   width: 115px;
   height: 115px;
-  border: 1px solid rgb(114 167 255 / 0.14);
+  border: 1px solid rgb(217 160 91 / 0.14);
   border-radius: 50%;
 }
 
 /* Active/conflict card accents relocated from page code (ADR-013);
- * `to bottom right in oklab` mirrors the previous bg-gradient-to-br
- * utilities (Tailwind v4 default interpolation). */
+ * flat same-hue washes layered over the card's own surface color, with
+ * 3:1 state borders. Single-color gradients keep the wash independent of
+ * the cascade order against Tailwind's bg-surface utility. */
 .card-active-accent {
-  border-color: rgb(114 167 255 / 0.4);
-  background-image: linear-gradient(to bottom right in oklab, rgb(45 81 145 / 0.2), var(--morpho-color-surface));
+  border-color: rgb(217 160 91 / 0.55);
+  background-image: linear-gradient(rgb(217 160 91 / 0.06), rgb(217 160 91 / 0.06));
 }
 
 .card-active-error {
-  border-color: rgb(237 119 136 / 0.28);
-  background-image: linear-gradient(to bottom right in oklab, rgb(97 34 49 / 0.13), var(--morpho-color-surface));
+  border-color: rgb(212 118 118 / 0.55);
+  background-image: linear-gradient(rgb(212 118 118 / 0.07), rgb(212 118 118 / 0.07));
 }
 
 .pill {
@@ -67,26 +75,27 @@
   padding: 5px 8px;
   font-size: 10px;
 }
-.pill-success { color: var(--morpho-color-success); background: rgb(98 208 163 / 0.1); }
-.pill-warning { color: var(--morpho-color-warning); background: rgb(239 170 101 / 0.1); }
-.pill-accent  { color: var(--morpho-color-info);     background: rgb(114 167 255 / 0.1); }
-.pill-neutral { color: var(--morpho-color-text-secondary); background: rgb(255 255 255 / 0.05); }
-.pill-error   { color: var(--morpho-color-error);    background: rgb(237 119 136 / 0.1); }
+.pill-success { color: var(--morpho-color-success);     background: rgb(143 191 127 / 0.1); }
+.pill-warning { color: var(--morpho-color-warning);     background: rgb(207 125 84 / 0.1); }
+.pill-accent  { color: var(--morpho-color-info);        background: rgb(140 166 191 / 0.1); }
+.pill-neutral { color: var(--morpho-color-text-secondary); background: rgb(242 235 224 / 0.05); }
+.pill-error   { color: var(--morpho-color-error);       background: rgb(212 118 118 / 0.1); }
 
 /* Selection states for chips/filters and selectable option cards (ADR-013
- * effect-layer expansion; values from the prototype chips/filters and the
- * approved preference-card port). */
+ * structure; ADR-021 values). Selection borders hold 3:1 against their
+ * surfaces: brass text + 0.55 border + accent-soft face. */
 .chip-selected {
-  color: var(--morpho-color-info);
-  border-color: rgb(114 167 255 / 0.45);
+  color: var(--morpho-color-accent);
+  border-color: rgb(217 160 91 / 0.55);
   background-color: var(--morpho-color-accent-soft);
 }
 .option-selected {
-  border-color: rgb(114 167 255 / 0.4);
-  background-color: rgb(114 167 255 / 0.066);
+  border-color: rgb(217 160 91 / 0.55);
+  background-color: rgb(217 160 91 / 0.06);
 }
 .option-selected:hover {
-  border-color: rgb(114 167 255 / 0.3);
+  /* Hover deepens the fill; the border stays at 3:1 instead of relaxing. */
+  background-color: rgb(217 160 91 / 0.1);
 }
 
 .badge-mono {
@@ -96,40 +105,44 @@
   font-size: 9px;
   letter-spacing: 0.06em;
 }
-.node-badge-accent  { color: var(--morpho-color-info);       background: rgb(114 167 255 / 0.1); }
-.node-badge-alt     { color: var(--morpho-color-accent-alt); background: rgb(181 154 255 / 0.1); }
-.node-badge-warning { color: var(--morpho-color-warning);    background: rgb(239 170 101 / 0.1); }
-.node-badge-error   { color: var(--morpho-color-error);      background: rgb(237 119 136 / 0.1); }
+.node-badge-accent  { color: var(--morpho-color-info);       background: rgb(140 166 191 / 0.1); }
+.node-badge-alt     { color: var(--morpho-color-accent-alt); background: rgb(127 165 163 / 0.1); }
+.node-badge-warning { color: var(--morpho-color-warning);    background: rgb(207 125 84 / 0.1); }
+.node-badge-error   { color: var(--morpho-color-error);      background: rgb(212 118 118 / 0.1); }
 
-/* Status-dot glows and muted dot (ADR-013 effect-layer expansion; mirrors the
- * prototype project/paused/draft status dots). dot-muted resolves to
- * text-secondary — the prototype draft-dot value (#8490a5). */
-.dot-glow-accent { box-shadow: 0 0 0 4px rgb(181 154 255 / 0.11); }
-.dot-glow-secondary { box-shadow: 0 0 0 4px rgb(132 144 165 / 0.1); }
-.dot-glow-warning { box-shadow: 0 0 0 4px rgb(239 170 101 / 0.1); }
+/* Status-dot glows and muted dot (ADR-013 structure; ADR-021 values).
+ * dot-muted resolves to text-secondary. */
+.dot-glow-accent { box-shadow: 0 0 0 4px rgb(217 160 91 / 0.11); }
+.dot-glow-secondary { box-shadow: 0 0 0 4px rgb(242 235 224 / 0.4); }
+.dot-glow-warning { box-shadow: 0 0 0 4px rgb(207 125 84 / 0.1); }
 .dot-muted { background-color: var(--morpho-color-text-secondary); }
 
 .progress-track {
   height: 4px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.09);
+  background: rgb(242 235 224 / 0.09);
 }
+/* Solid brass fill — gradient buttons/progress bars are a banned
+ * combination (spec §3). */
 .progress-fill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--morpho-color-accent), var(--morpho-color-accent-alt));
+  background: var(--morpho-color-accent);
 }
 
+/* Solid brass launcher (class name kept for consumers; the gradient
+ * implementation is retired per ADR-021). */
 .brand-gradient-button {
-  background: linear-gradient(135deg, #315fae, #7250b8);
-  box-shadow: 0 12px 30px rgb(31 71 142 / 0.32);
+  background: var(--morpho-color-accent);
+  box-shadow: 0 12px 30px rgb(15 9 4 / 0.4);
 }
 
+/* Warm dark vignette over the shell background. */
 .graph-canvas-bg {
   background:
-    radial-gradient(circle at 45% 50%, rgb(49 78 136 / 0.16), transparent 38%),
-    #0c111a;
+    radial-gradient(circle at 45% 50%, #141009, transparent 38%),
+    var(--morpho-color-background);
 }
 
 /* Dashed connector on overview/path rows; parent is position:relative. */
@@ -142,8 +155,7 @@
   border-left: 1px dashed var(--morpho-color-border);
 }
 
-/* Current-row pulse ring on the overview timeline marker (ADR-013
- * effect-layer expansion; exact port of prototype/styles.css .pulse). */
+/* Current-row pulse ring on the overview timeline marker. */
 .pulse {
-  box-shadow: 0 0 0 5px rgb(114 167 255 / 0.08);
+  box-shadow: 0 0 0 5px rgb(217 160 91 / 0.08);
 }

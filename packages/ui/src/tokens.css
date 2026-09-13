@@ -3,45 +3,48 @@
  * typography, radius, shadow, and motion. Components consume these tokens;
  * pages never hard-code raw values.
  *
- * Visual direction (docs/frontend/DESIGN_SYSTEM.md): dark research
- * workspace, neutral surfaces, restrained accent color.
+ * Visual direction: "深夜研究室" (Lamplit Study) warm-dark research
+ * workbench — warm-stone shell, brass accent, celadon/slate counter-axis
+ * (ADR-021; supersedes the ADR-013 value table, semantic names unchanged).
  */
 :root {
-  /* Color — semantic (aligned with prototype/styles.css; ADR-013) */
-  --morpho-color-background: #0b0f17;
-  --morpho-color-surface: #111722;
-  --morpho-color-surface-raised: #1b2433;
-  --morpho-color-border: rgb(176 191 215 / 0.13);
+  /* Color — semantic (ADR-021; text-muted and error are contrast-driven
+   * brightenings of the spec values within their hue families — see
+   * docs/frontend/DESIGN_TOKENS.md and ADR-021) */
+  --morpho-color-background: #17130f;
+  --morpho-color-surface: #1f1a15;
+  --morpho-color-surface-raised: #292219;
+  --morpho-color-border: rgb(222 200 172 / 0.14);
 
-  --morpho-color-text-primary: #e8edf5;
-  --morpho-color-text-secondary: #8490a5;
-  --morpho-color-text-muted: #606b80;
+  --morpho-color-text-primary: #f2ebe0;
+  --morpho-color-text-secondary: #b3a695;
+  --morpho-color-text-muted: #988a78;
 
-  --morpho-color-accent: #3b82f6;
-  --morpho-color-accent-soft: rgb(114 167 255 / 0.11);
-  --morpho-color-accent-alt: #b59aff;
+  --morpho-color-accent: #d9a05b;
+  --morpho-color-accent-soft: rgb(217 160 91 / 0.12);
+  --morpho-color-accent-alt: #7fa5a3;
 
-  --morpho-color-success: #62d0a3;
-  --morpho-color-warning: #efaa65;
-  --morpho-color-error: #ed7788;
-  --morpho-color-info: #72a7ff;
+  --morpho-color-success: #8fbf7f;
+  --morpho-color-warning: #cf7d54;
+  --morpho-color-error: #d47676;
+  --morpho-color-info: #8ca6bf;
 
-  /* Color — effect/layout expansion (ADR-013): sunken shell surface,
-   * brand-gradient text, local avatar, overlay scrim + white tint ladder,
-   * graph palette. Values verified against prototype/styles.css. */
-  --morpho-color-surface-sunken: #0d121b;
-  --morpho-color-text-on-brand: #f2f6ff;
-  --morpho-color-avatar-bg: #b8c8ef;
-  --morpho-color-avatar-ink: #151a24;
-  --morpho-color-scrim: rgb(0 0 0 / 0.6);
-  --morpho-color-overlay-hairline: rgb(255 255 255 / 0.018);
-  --morpho-color-overlay-soft: rgb(255 255 255 / 0.03);
-  --morpho-color-overlay-hover: rgb(255 255 255 / 0.05);
-  --morpho-color-overlay-strong: rgb(255 255 255 / 0.2);
-  --morpho-color-graph-node: #1b273b;
-  --morpho-color-graph-edge: rgb(114 167 255 / 0.25);
-  --morpho-color-graph-edge-hover: rgb(114 167 255 / 0.55);
-  --morpho-color-graph-edge-active: rgb(114 167 255 / 0.7);
+  /* Color — effect/layout expansion (ADR-013 structure, ADR-021 values):
+   * sunken shell surface, deep ink on brand fills, local avatar, overlay
+   * scrim + warm tint ladder, graph palette. */
+  --morpho-color-surface-sunken: #120e0b;
+  --morpho-color-text-on-brand: #1c1207;
+  --morpho-color-avatar-bg: #c9ab7c;
+  --morpho-color-avatar-ink: #1c1207;
+  --morpho-color-scrim: rgb(10 6 3 / 0.62);
+  --morpho-color-overlay-hairline: rgb(242 235 224 / 0.02);
+  --morpho-color-overlay-soft: rgb(242 235 224 / 0.035);
+  --morpho-color-overlay-hover: rgb(242 235 224 / 0.06);
+  --morpho-color-overlay-strong: rgb(242 235 224 / 0.22);
+  --morpho-color-graph-node: #2b241c;
+  --morpho-color-graph-edge: rgb(217 160 91 / 0.28);
+  --morpho-color-graph-edge-hover: rgb(217 160 91 / 0.55);
+  --morpho-color-graph-edge-active: rgb(217 160 91 / 0.75);
 
   /* Spacing scale */
   --morpho-space-xs: 4px;
@@ -88,9 +91,9 @@
   --morpho-radius-brand: 10px; /* brand tile / floating menu surfaces */
   --morpho-radius-dock: 14px; /* assistant dock panel */
 
-  /* Shadow */
-  --morpho-shadow-panel: 0 18px 45px rgb(0 0 0 / 0.18);
-  --morpho-shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.38);
+  /* Shadow — warm black (ADR-021) */
+  --morpho-shadow-panel: 0 18px 45px rgb(15 9 4 / 0.35);
+  --morpho-shadow-overlay: 0 20px 50px rgb(15 9 4 / 0.5);
 
   /* Motion tiers: fast micro-feedback, base transitions, overlay entrances */
   --morpho-motion-fast: 120ms;

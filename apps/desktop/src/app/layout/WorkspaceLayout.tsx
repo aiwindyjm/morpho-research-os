@@ -125,7 +125,7 @@ function AssistantDock() {
           role="dialog"
           aria-label="Morpho AI 助手"
           data-testid="assistant-panel"
-          className="assistant-popup fixed bottom-dock-offset right-xl z-30 flex h-dock flex-col overflow-hidden rounded-dock border border-[rgb(114_167_255/0.3)] bg-surface shadow-[var(--morpho-shadow-overlay)] outline-none"
+          className="assistant-popup fixed bottom-dock-offset right-xl z-30 flex h-dock flex-col overflow-hidden rounded-dock border border-[rgb(217_160_91/0.3)] bg-surface shadow-[var(--morpho-shadow-overlay)] outline-none"
           style={{ width: "min(var(--morpho-layout-dock-width), calc(100vw - 32px))" }}
         >
           <AssistantPanel />

@@ -1,53 +1,64 @@
 # Design Tokens
 Define semantic CSS variables for background, surface, border, text, accent, success, warning, error, info; spacing xs 4, sm 8, md 12, lg 16, xl 24, xxl 32; typography Display/H1/H2/H3/Body/Caption/Label; radii and motion tiers. Components consume tokens; pages never hard-code colors outside the tint governance rule below.
 
-Values are aligned with the product prototype (ADR-013, `docs/architecture/adr/ADR-013-align-visual-tokens-with-prototype.md`): semantic names are unchanged, only values moved, so consumers are affected only by value changes. Source of truth: `packages/ui/src/tokens.css`.
+Values follow the "深夜研究室" (Lamplit Study) warm-dark palette (ADR-021, `docs/architecture/adr/ADR-021-lamplit-study-token-palette.md`; Accepted 2026-09-13): semantic names are unchanged, only values moved (ADR-013 precedent), so consumers are affected only by value changes. ADR-021 supersedes the ADR-013 value table; ADR-013's semantic names, token governance, and alpha-tint rule remain in force. Source of truth: `packages/ui/src/tokens.css`.
 
-## Color tokens (ADR-013 values)
+## Color tokens (ADR-021 values)
 
 | Token | Value |
 |---|---|
-| `--morpho-color-background` | `#0b0f17` |
-| `--morpho-color-surface` | `#111722` |
-| `--morpho-color-surface-raised` | `#1b2433` |
-| `--morpho-color-border` | `rgb(176 191 215 / 0.13)` |
-| `--morpho-color-text-primary` | `#e8edf5` |
-| `--morpho-color-text-secondary` | `#8490a5` |
-| `--morpho-color-text-muted` | `#606b80` |
-| `--morpho-color-accent` | `#3b82f6` |
-| `--morpho-color-accent-soft` | `rgb(114 167 255 / 0.11)` |
-| `--morpho-color-accent-alt` | `#b59aff` (new in ADR-013; purple — source/technology badges, add-chip) |
-| `--morpho-color-success` | `#62d0a3` |
-| `--morpho-color-warning` | `#efaa65` |
-| `--morpho-color-error` | `#ed7788` |
-| `--morpho-color-info` | `#72a7ff` |
+| `--morpho-color-background` | `#17130f` |
+| `--morpho-color-surface` | `#1f1a15` |
+| `--morpho-color-surface-raised` | `#292219` |
+| `--morpho-color-border` | `rgb(222 200 172 / 0.14)` |
+| `--morpho-color-text-primary` | `#f2ebe0` |
+| `--morpho-color-text-secondary` | `#b3a695` |
+| `--morpho-color-text-muted` | `#988a78` |
+| `--morpho-color-accent` | `#d9a05b` (brass; ≤12% surface coverage) |
+| `--morpho-color-accent-soft` | `rgb(217 160 91 / 0.12)` |
+| `--morpho-color-accent-alt` | `#7fa5a3` (celadon — source/technology badges, add-chip; takes over the former purple's role) |
+| `--morpho-color-success` | `#8fbf7f` |
+| `--morpho-color-warning` | `#cf7d54` |
+| `--morpho-color-error` | `#d47676` |
+| `--morpho-color-info` | `#8ca6bf` (slate blue; info semantics only, never the main accent) |
 
-## Radii and shadows (ADR-013 values)
+### Contrast-driven adjustments to the spec values (ADR-021)
+
+Two token values are brightenings of the design spec's targets within their hue families, required by the programmatic WCAG audit (all ratios below are computed against the four surfaces background/surface/surface-raised/surface-sunken):
+
+| Token | Spec target | Shipped | Why |
+|---|---|---|---|
+| `--morpho-color-text-muted` | `#8a7e6d` | `#988a78` | Spec value fails 4.5:1 on surface (4.34) and surface-raised (3.95); shipped value passes all four (worst 4.67 on surface-raised) |
+| `--morpho-color-error` | `#c96a6a` | `#d47676` | Spec value fails on surface-raised (4.30) and on its own pill tint (4.19); shipped value passes all uses (worst 4.78 on the pill tint) |
+
+Audit result (WCAG 2.x, worst case per pair): text-primary 13.26:1, text-secondary 6.59:1, text-muted 4.67:1 (all on surface-raised, the darkest-surface worst case); accent as text 6.83:1, accent-alt 5.84:1, success 7.42:1, warning 5.02:1, error 4.98:1, info 6.22:1; `text-on-brand` on brass 8.02:1; avatar ink on avatar fill 8.43:1; selection/active borders at alpha 0.55 composite ≥3.06:1 (the 3:1 UI-component floor); accent focus ring on background 8.03:1. The hairline border (0.14 alpha, ≈1.37:1 composite) is a decorative divider per WCAG 1.4.11 and does not carry state.
+
+## Radii and shadows (ADR-021 values)
 
 | Token | Value |
 |---|---|
 | `--morpho-radius-sm` / `--morpho-radius-md` / `--morpho-radius-lg` | `6px` / `8px` / `12px` |
-| `--morpho-shadow-panel` | `0 18px 45px rgb(0 0 0 / 0.18)` |
-| `--morpho-shadow-overlay` | `0 20px 50px rgb(0 0 0 / 0.38)` |
+| `--morpho-shadow-panel` | `0 18px 45px rgb(15 9 4 / 0.35)` |
+| `--morpho-shadow-overlay` | `0 20px 50px rgb(15 9 4 / 0.5)` |
 
-## Effect and layout token expansion (ADR-013 follow-up)
+## Effect and layout token expansion (ADR-013 structure, ADR-021 values)
 
-Added for the token-foundation wave so pages can drop one-off literals for scrim, overlay tints, avatar, graph, and shell/dock scaffolding. All values verified against `prototype/styles.css`.
+Originally added in the token-foundation wave (ADR-013) so pages could drop one-off literals for scrim, overlay tints, avatar, graph, and shell/dock scaffolding; values now follow ADR-021.
 
 | Token | Value | Notes |
 |---|---|---|
-| `--morpho-color-surface-sunken` | `#0d121b` | Shell/sidebar deep surface |
-| `--morpho-color-text-on-brand` | `#f2f6ff` | Text atop brand gradients |
-| `--morpho-color-avatar-bg` / `--morpho-color-avatar-ink` | `#b8c8ef` / `#151a24` | Local avatar (topbar) |
-| `--morpho-color-scrim` | `rgb(0 0 0 / 0.6)` | Modal/drawer backdrop (no prototype counterpart; contract value) |
-| `--morpho-color-overlay-hairline` | `rgb(255 255 255 / 0.018)` | Plan-summary style wash |
-| `--morpho-color-overlay-soft` | `rgb(255 255 255 / 0.03)` | White tint ladder rung |
-| `--morpho-color-overlay-hover` | `rgb(255 255 255 / 0.05)` | White tint ladder rung |
-| `--morpho-color-overlay-strong` | `rgb(255 255 255 / 0.2)` | On-gradient translucent fill |
-| `--morpho-color-graph-node` | `#1b273b` | Graph node fill |
-| `--morpho-color-graph-edge` | `rgb(114 167 255 / 0.25)` | Graph edge stroke |
-| `--morpho-color-graph-edge-hover` | `rgb(114 167 255 / 0.55)` | Edge hover state |
-| `--morpho-color-graph-edge-active` | `rgb(114 167 255 / 0.7)` | Edge selected/active state |
+| `--morpho-color-surface-sunken` | `#120e0b` | Shell/sidebar deep surface |
+| `--morpho-color-text-on-brand` | `#1c1207` | Deep ink atop brass brand fills (was light-on-gradient in ADR-013) |
+| `--morpho-color-avatar-bg` / `--morpho-color-avatar-ink` | `#c9ab7c` / `#1c1207` | Local avatar (topbar) |
+| `--morpho-color-scrim` | `rgb(10 6 3 / 0.62)` | Modal/drawer backdrop |
+| `--morpho-color-overlay-hairline` | `rgb(242 235 224 / 0.02)` | Plan-summary style wash |
+| `--morpho-color-overlay-soft` | `rgb(242 235 224 / 0.035)` | Warm tint ladder rung |
+| `--morpho-color-overlay-hover` | `rgb(242 235 224 / 0.06)` | Warm tint ladder rung |
+| `--morpho-color-overlay-strong` | `rgb(242 235 224 / 0.22)` | On-brand translucent fill |
+| `--morpho-color-graph-node` | `#2b241c` | Graph node fill |
+| `--morpho-color-graph-edge` | `rgb(217 160 91 / 0.28)` | Graph edge stroke |
+| `--morpho-color-graph-edge-hover` | `rgb(217 160 91 / 0.55)` | Edge hover state |
+| `--morpho-color-graph-edge-active` | `rgb(217 160 91 / 0.75)` | Edge selected/active state |
 
 Tailwind color utilities: `bg-surface-sunken`, `text-text-on-brand`, `bg-avatar-bg`, `text-avatar-ink`, `bg-scrim`, `bg-overlay-hairline` / `bg-overlay-soft` / `bg-overlay-hover` / `bg-overlay-strong`, `bg-graph-node`, `border-graph-edge` / `border-graph-edge-hover` / `border-graph-edge-active` (all `*-` variants work per the standard Tailwind color namespace).
 
@@ -76,30 +87,32 @@ Tailwind color utilities: `bg-surface-sunken`, `text-text-on-brand`, `bg-avatar-
 
 ## Prototype effect layer (`apps/desktop/src/styles/prototype.css`)
 
-Visual effects that Tailwind utilities cannot express cleanly. The effect layer defines no new color system — it references tokens; the raw gradient/glow composites in it were approved with the prototype (ADR-013). Registered classes:
+Visual effects that Tailwind utilities cannot express cleanly. The effect layer defines no new color system — it references tokens; the raw gradient/glow composites in it were approved with the active palette (ADR-021; class names are the consumer contract and outlived the ADR-013 composites). Registered classes:
 
 | Class | Purpose |
 |---|---|
 | `kicker` | Eyebrow text: 10px / 800 / uppercase / letter-spacing 0.12em, text-muted |
 | `view-fade` | View-switch fade-in (opacity 0→1, translateY 4px→0, 220ms) |
-| `brand-mark` | Gradient sidebar brand tile ("M") |
-| `main-glow` | Radial top glow on the main canvas |
-| `metric-accent` | Accent metric-card gradient + corner ring (overview coverage card) |
-| `pill` + `pill-success` / `pill-warning` / `pill-accent` / `pill-neutral` / `pill-error` | Rounded status pills |
-| `badge-mono` + `node-badge-accent` / `node-badge-alt` / `node-badge-warning` / `node-badge-error` | Monospace type badges |
-| `progress-track` / `progress-fill` | 4px track + accent→accent-alt gradient fill |
-| `brand-gradient-button` | Gradient assistant launcher button |
-| `graph-canvas-bg` | Radial dark graph canvas |
+| `brand-mark` | Brass micro-gradient brand tile ("M" in text-on-brand deep ink) |
+| `main-glow` | Weak lamp-warm radial glow on the main canvas (brass 0.06) |
+| `metric-accent` | Accent metric-card: flat accent-soft face + brass corner ring (no gradient dependence) |
+| `card-active-accent` | Active project card: 3:1 brass border (0.55) on a flat brass wash (0.06) |
+| `card-active-error` | Conflicting knowledge card: 3:1 error border (0.55) on a flat error wash (0.07) |
+| `pill` + `pill-success` / `pill-warning` / `pill-accent` / `pill-neutral` / `pill-error` | Rounded status pills (new semantic triples; `pill-accent` wears the slate-blue info color) |
+| `badge-mono` + `node-badge-accent` / `node-badge-alt` / `node-badge-warning` / `node-badge-error` | Monospace type badges (info slate blue / celadon accent-alt / terracotta / error) |
+| `progress-track` / `progress-fill` | 4px warm track + solid brass fill (gradient fills are a banned combination) |
+| `brand-gradient-button` | Assistant launcher: solid brass + deep-ink text + warm shadow (class name kept; gradient implementation retired) |
+| `graph-canvas-bg` | Warm dark vignette (`#141009` radial) over the background token |
 | `timeline-connector` | Dashed connector between overview research-path rows (parent is position-relative) |
-| `chip-selected` | Selected chip/filter state: info text, accent 0.45 border, accent-soft background |
-| `option-selected` (+ `:hover`) | Selected option card: accent 0.4 border on accent 0.066 fill; hover relaxes the border to 0.3 |
-| `dot-glow-accent` | 4px purple glow ring (project dot) |
-| `dot-glow-secondary` | 4px neutral glow ring (draft dot) |
-| `dot-glow-warning` | 4px orange glow ring (paused dot) |
-| `dot-muted` | Muted status dot fill — resolves to `text-secondary` (prototype draft-dot value `#8490a5`) |
-| `pulse` | 5px accent glow ring on the current overview timeline marker |
+| `chip-selected` | Selected chip/filter state: brass text, brass 0.55 border (≥3:1), accent-soft background |
+| `option-selected` (+ `:hover`) | Selected option card: brass 0.55 border (≥3:1) on brass 0.06 fill; hover deepens the fill to 0.1 instead of relaxing the border below 3:1 |
+| `dot-glow-accent` | 4px brass glow ring (project dot) |
+| `dot-glow-secondary` | 4px warm-neutral glow ring (draft dot; `rgb(242 235 224 / 0.4)` per spec — flag for the visual polish pass) |
+| `dot-glow-warning` | 4px terracotta glow ring (paused dot) |
+| `dot-muted` | Muted status dot fill — resolves to `text-secondary` |
+| `pulse` | 5px brass glow ring on the current overview timeline marker |
 
-Rule (ADR-013, decision 2): base colors on pages must come from semantic tokens. Token-derived alpha tints — the same RGB triple as a named token with an `/alpha` suffix (e.g. `border-[rgb(114_167_255/0.45)]`) — are permitted in Tailwind arbitrary values. One-off approved literals are limited to those listed in the ADR: sidebar background `#0d121b`, avatar `#b8c8ef`/`#151a24`, brand text `#f2f6ff`, graph node fill `#1b273b`, plus the gradient composites in `prototype.css` (ADR-013 boundary; DO_NOT_BREAK #4 — this is prototype alignment, not an arbitrary redesign).
+Rule (ADR-013 decision 2, still in force): base colors on pages must come from semantic tokens. Token-derived alpha tints — the same RGB triple as a named token with an `/alpha` suffix (e.g. `border-[rgb(217_160_91/0.3)]`) — are permitted in Tailwind arbitrary values. The former one-off literals (sidebar `#0d121b`, avatar `#b8c8ef`/`#151a24`, brand text `#f2f6ff`, graph node `#1b273b`) were promoted to named tokens in the ADR-013 follow-up wave and simply ride the ADR-021 values now; the only raw literals left in the effect layer are the ADR-021 gradient/glow composites (`#e0b06b`, `#c8914e`, `#141009`) and documented flat washes.
 
 ## Approved non-token values (documented exceptions)
 
@@ -130,5 +143,8 @@ If a second consumer appears for any value above, promote it to a numbered token
 
 - `min-h-[70px]` / `min-h-[65px]` → `components/cards.tsx` (`SourceCard variant="row"` / `KnowledgeCard`) → card minimum heights moved here from SourcesPage/KnowledgePage when the pages adopted the registered cards (commit `a10b7da`); same rationale as above.
 - `text-[21px]` / `text-[10px]` → `features/reports/ReportsPage.tsx` → metric numeral + timestamp, same roles as the SourcesPage/JournalPage exceptions.
-- `border-[rgb(114_167_255/0.2)]` → JournalPage privacy note → single-site info-alpha tint of the accent/info token triple (ADR-013 decision 2 permits token-derived alpha tints).
-- `border-[rgb(114_167_255/0.3)]` → AssistantDock popup border (`WorkspaceLayout.tsx`) → single-site info-alpha tint; adjacent to `.chip-selected`'s 0.45 but a distinct approved value.
+
+### 2026-09-13 additions (ADR-021 migration)
+
+- `border-[rgb(217_160_91/0.2)]` → JournalPage privacy note → single-site accent-alpha tint harmonizing with the note's `bg-accent-soft` face (former `rgb(114_167_255/0.2)`).
+- `border-[rgb(217_160_91/0.3)]` → AssistantDock popup border (`WorkspaceLayout.tsx`) → single-site accent-alpha tint on the assistant brand surface (former `rgb(114_167_255/0.3)`).
