@@ -83,12 +83,11 @@ export function Sidebar({
       className="flex h-full w-sidebar flex-col overflow-y-auto border-r border-border bg-surface-sunken p-md"
     >
       <div className="flex items-center gap-sm px-sm pb-lg pt-sm">
-        <span
-          aria-hidden="true"
-          className="brand-mark flex size-[34px] items-center justify-center rounded-brand text-[17px] font-extrabold text-text-on-brand"
-        >
-          M
-        </span>
+        <img
+          src="/brand-mark.png"
+          alt=""
+          className="size-[34px] rounded-brand border border-border object-cover"
+        />
         <span>
           <span className="kicker block">Research OS</span>
           <span className="block text-subhead font-bold leading-tight tracking-tight text-text-primary">

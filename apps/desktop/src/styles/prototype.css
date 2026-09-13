@@ -22,13 +22,9 @@
   to { opacity: 1; transform: none; }
 }
 
-/* Brass micro-gradient tile; the glyph rides --morpho-color-text-on-brand
- * (deep ink). Background gradients are allowed — button/progress gradients
- * are the banned combination. */
-.brand-mark {
-  background: linear-gradient(145deg, #e0b06b, #c8914e);
-  box-shadow: 0 7px 18px rgb(5 5 5 / 0.35);
-}
+/* The brand-mark brass tile was retired (2026-09-13): the sidebar and topbar
+ * now render the real brand logo image (/brand-mark.png, generated from the
+ * committed brand asset) inside a rounded frame. */
 
 /* Lamp-warm atmosphere over the main canvas. */
 .main-glow {

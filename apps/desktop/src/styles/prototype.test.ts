@@ -27,11 +27,10 @@ const rule = (css: string, selector: string): string => {
 };
 
 describe("lamplit-study effect layer (ADR-021, spec §3)", () => {
-  it("renders the brand mark as a warm brass micro-gradient tile", () => {
-    const body = rule(prototypeCss, ".brand-mark");
-    expect(body).toContain("linear-gradient(145deg, #e0b06b, #c8914e)");
-    expect(body).toContain("rgb(5 5 5 / 0.35)");
-    expect(body).not.toMatch(/#2459aa|#8d5eea|rgb\(78 124 227/);
+  it("keeps the brand-mark brass tile retired (logo image replaced it)", () => {
+    expect(prototypeCss).not.toContain(".brand-mark");
+    expect(prototypeCss).not.toContain("#e0b06b");
+    expect(prototypeCss).not.toContain("#c8914e");
   });
 
   it("keeps the main glow as a very weak lamp-warm radial", () => {

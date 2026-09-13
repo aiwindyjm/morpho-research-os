@@ -17,6 +17,11 @@ export function Topbar() {
       data-testid="topbar"
     >
       <nav aria-label="位置" className="flex items-center gap-sm text-caption text-text-muted">
+        <img
+          src="/brand-mark.png"
+          alt=""
+          className="size-[18px] rounded-sm border border-border object-cover"
+        />
         <span>Morpho</span>
         <span aria-hidden="true">/</span>
         <strong className="font-semibold text-text-primary">

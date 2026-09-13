@@ -93,7 +93,7 @@ Visual effects that Tailwind utilities cannot express cleanly. The effect layer 
 |---|---|
 | `kicker` | Eyebrow text: 10px / 800 / uppercase / letter-spacing 0.12em, text-muted |
 | `view-fade` | View-switch fade-in (opacity 0→1, translateY 4px→0, 220ms) |
-| `brand-mark` | Brass micro-gradient brand tile ("M" in text-on-brand deep ink) |
+| ~~`brand-mark`~~ | **Retired 2026-09-13** — the sidebar/topbar now render the real brand logo (`/brand-mark.png`, 96px asset generated from the committed brand icon) inside a rounded frame; the brass "M" tile and its gradient composite are gone (guard-pinned in `prototype.test.ts`) |
 | `main-glow` | Weak lamp-warm radial glow on the main canvas (brass 0.06) |
 | `metric-accent` | Accent metric-card: flat accent-soft face + brass corner ring (no gradient dependence) |
 | `card-active-accent` | Active project card: 3:1 brass border (0.55) on a flat brass wash (0.06) |
@@ -104,7 +104,7 @@ Visual effects that Tailwind utilities cannot express cleanly. The effect layer 
 | `brand-gradient-button` | Assistant launcher: solid brass + deep-ink text + warm shadow (class name kept; gradient implementation retired) |
 | `graph-canvas-bg` | Dark neutral vignette (`#111110` radial) over the background token |
 | `timeline-connector` | Dashed connector between overview research-path rows (parent is position-relative) |
-| `chip-selected` | Selected chip/filter state: brass text, brass 0.55 border (≥3:1), accent-soft background |
+| ~~`chip-selected`~~ | **Retired 2026-09-13** — replaced by the registered `Chip` primitive (tokens-only selected face); rule removed, retirement guard-pinned |
 | `option-selected` (+ `:hover`) | Selected option card: brass 0.55 border (≥3:1) on brass 0.06 fill; hover deepens the fill to 0.1 instead of relaxing the border below 3:1 |
 | `dot-glow-accent` | 4px brass glow ring (project dot) |
 | `dot-glow-secondary` | 4px neutral glow ring (draft dot); retuned in the 2026-09-13 polish pass from the spec's `rgb(242 241 238 / 0.4)` to `rgb(242 241 238 / 0.1)` — at 0.4 the ring read ~4x brighter than its sibling glows (accent 0.11, warning 0.1), making the draft state the loudest on screen and inverting the status hierarchy; 0.1 matches the sibling ring intensity |
@@ -112,7 +112,7 @@ Visual effects that Tailwind utilities cannot express cleanly. The effect layer 
 | `dot-muted` | Muted status dot fill — resolves to `text-secondary` |
 | `pulse` | 5px brass glow ring on the current overview timeline marker |
 
-Rule (ADR-013 decision 2, still in force): base colors on pages must come from semantic tokens. Token-derived alpha tints — the same RGB triple as a named token with an `/alpha` suffix (e.g. `border-[rgb(217_160_91/0.3)]`) — are permitted in Tailwind arbitrary values. The former one-off literals (sidebar `#0d121b`, avatar `#b8c8ef`/`#151a24`, brand text `#f2f6ff`, graph node `#1b273b`) were promoted to named tokens in the ADR-013 follow-up wave and simply ride the ADR-021 values now; the only raw literals left in the effect layer are the ADR-021 gradient/glow composites (`#e0b06b`, `#c8914e`, `#111110`) and documented flat washes.
+Rule (ADR-013 decision 2, still in force): base colors on pages must come from semantic tokens. Token-derived alpha tints — the same RGB triple as a named token with an `/alpha` suffix (e.g. `border-[rgb(217_160_91/0.3)]`) — are permitted in Tailwind arbitrary values. The former one-off literals (sidebar `#0d121b`, avatar `#b8c8ef`/`#151a24`, brand text `#f2f6ff`, graph node `#1b273b`) were promoted to named tokens in the ADR-013 follow-up wave and simply ride the ADR-021 values now; the only raw literals left in the effect layer are the ADR-021 glow composite (`#111110`) and documented flat washes (the `brand-mark` gradient literals `#e0b06b`/`#c8914e` left with the retired class).
 
 ### Polish-pass semantic notes (2026-09-13 visual review)
 
@@ -135,7 +135,7 @@ The raw values below are approved one-offs; everything else must consume tokens,
 - `max-w-[180px]` → GraphPage mini progress → single-site prototype measurement.
 - `max-w-[850px]` → SettingsPage stack → reading-width cap specific to the settings composition.
 - `w-[52px]` → ConfigPage segmented control → control-specific button width.
-- `size-[34px]` → Sidebar brand tile → brand-mark glyph box (pairs with `rounded-brand`).
+- `size-[34px]` → Sidebar brand tile → logo image frame (`/brand-mark.png`, pairs with `rounded-brand`; the Topbar breadcrumb uses an 18px copy of the same asset).
 - `lg:w-[245px]` → GraphPage inspector → inspector column width at desktop breakpoint.
 - `ml-[68px]` → PlanPage task indent → tree-indent structural offset.
 - `pt-[3px]` / `mt-[7px]` → ConfigPage section number/help → optical alignment nudges inside the config form.
