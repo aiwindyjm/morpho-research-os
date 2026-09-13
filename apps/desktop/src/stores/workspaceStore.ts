@@ -7,8 +7,9 @@ import { create } from "zustand";
  * a fixed set of project views.
  *
  * Note: switching the active project changes every query key (see
- * services/queries.ts) and the assistant context, so project data and
- * assistant state never cross projects.
+ * services/queries.ts) and remounts view content (see WorkspaceLayout,
+ * which keys the view container by the project id), so project data and
+ * per-view local state never cross projects.
  */
 
 export const WORKSPACE_VIEWS = [
@@ -42,6 +43,13 @@ interface WorkspaceState {
   setAssistantOpen: (open: boolean) => void;
   toggleAssistant: () => void;
   setSidebarDrawerOpen: (open: boolean) => void;
+  /**
+   * Clears only the volatile overlay flags (assistantOpen, sidebarDrawerOpen)
+   * when a session is invalidated proactively (services/sessionState.ts).
+   * Deliberately does NOT touch activeProjectId/activeView — the caller that
+   * reacts to the invalidation event decides the navigation.
+   */
+  resetVolatileState: () => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -55,4 +63,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setAssistantOpen: (open) => set({ assistantOpen: open }),
   toggleAssistant: () => set((s) => ({ assistantOpen: !s.assistantOpen })),
   setSidebarDrawerOpen: (open) => set({ sidebarDrawerOpen: open }),
+  resetVolatileState: () =>
+    set({ assistantOpen: false, sidebarDrawerOpen: false }),
 }));
