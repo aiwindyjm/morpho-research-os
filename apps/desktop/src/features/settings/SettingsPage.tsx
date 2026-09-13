@@ -1,9 +1,14 @@
-import { useState, type ReactNode } from "react";
-import { ScrollText, Server, Sparkles, type LucideIcon } from "lucide-react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Palette, ScrollText, Server, Sparkles, type LucideIcon } from "lucide-react";
 import { Alert, Badge, Button, Card, Input, useToast } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
+import {
+  THEME_IDS,
+  useThemeStore,
+  type ThemeId,
+} from "@/stores/themeStore";
 import { getTransportKind } from "@/services/transportProvider";
 import {
   useCoreInfo,
@@ -60,6 +65,130 @@ function SettingsCard({
         </span>
       ) : null}
     </Card>
+  );
+}
+
+/** 外观主题卡的展示元数据（store 保持 data-only，文案跟随 workspaceStore 先例）。 */
+const THEME_OPTION_META: Record<ThemeId, { name: string; description: string }> =
+  {
+    "lamplit-study": { name: "深夜研究室", description: "石墨黄铜·安静书房" },
+    "bio-luminal": { name: "生物荧光", description: "深海暗场·荧光青紫" },
+  };
+
+/**
+ * Preview-only palette literals (ADR-022 preview swatches): each option must
+ * depict its own skin's FIXED palette — background / accent / accent-alt from
+ * packages/ui/src/tokens.css — so these dots deliberately do NOT ride the
+ * live theme tokens; reading tokens would render both options identically
+ * and the preview would carry no information. This is the page's one
+ * sanctioned literal use; all surrounding chrome still consumes tokens only
+ * (DESIGN_TOKENS.md / ADR-013).
+ */
+const THEME_PREVIEW_COLORS: Record<ThemeId, [string, string, string]> = {
+  "lamplit-study": ["#131312", "#d9a05b", "#7fa5a3"],
+  "bio-luminal": ["#0c1220", "#53d7f5", "#b8a5ff"],
+};
+
+/**
+ * 外观主题卡：双皮肤即时切换（无保存按钮）。A11y 沿用 SegmentedControl 的
+ * radiogroup 模式（role=radiogroup/radio + aria-checked + roving tabindex，
+ * Arrow/Home/End 移动选择、焦点跟随并首尾回绕）；选中态复用效果层
+ * `option-selected` 类，与 ConfigPage 来源偏好卡的视觉一致。
+ */
+function ThemePickerCard() {
+  const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.setTheme);
+  const groupRef = useRef<HTMLDivElement>(null);
+
+  function moveTo(index: number) {
+    const count = THEME_IDS.length;
+    const bounded = ((index % count) + count) % count;
+    setTheme(THEME_IDS[bounded]);
+    const radios = groupRef.current?.querySelectorAll<HTMLButtonElement>(
+      '[role="radio"]',
+    );
+    radios?.[bounded]?.focus();
+  }
+
+  function handleKeydown(event: KeyboardEvent<HTMLDivElement>) {
+    const radios = Array.from(
+      groupRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ??
+        [],
+    );
+    if (radios.length === 0) return;
+    const currentIndex = Math.max(
+      0,
+      radios.indexOf(document.activeElement as HTMLButtonElement),
+    );
+    let next: number | null = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = currentIndex + 1;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = currentIndex - 1;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = THEME_IDS.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    moveTo(next);
+  }
+
+  return (
+    <SettingsCard
+      testId="theme-card"
+      icon={Palette}
+      title="外观主题"
+      description="切换即时生效；皮肤偏好只保存在本机浏览器。"
+      value={THEME_OPTION_META[theme].name}
+    >
+      <div
+        ref={groupRef}
+        role="radiogroup"
+        aria-label="外观主题"
+        onKeyDown={handleKeydown}
+        data-testid="theme-options"
+        className="grid grid-cols-1 gap-sm sm:grid-cols-2"
+      >
+        {THEME_IDS.map((id) => {
+          const selected = id === theme;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              tabIndex={selected ? 0 : -1}
+              data-testid={`theme-option-${id}`}
+              onClick={() => setTheme(id)}
+              className={`grid cursor-pointer grid-cols-[auto_1fr] gap-sm rounded-md border p-md text-left transition-colors duration-[var(--morpho-motion-fast)] ${
+                selected
+                  ? "option-selected"
+                  : "border-border hover:bg-overlay-hover"
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                title="背景 / 强调 / 次强调"
+                className="flex flex-col justify-center gap-xs"
+              >
+                {THEME_PREVIEW_COLORS[id].map((hex) => (
+                  <span
+                    key={hex}
+                    className="size-3 rounded-full border border-border"
+                    style={{ backgroundColor: hex }}
+                  />
+                ))}
+              </span>
+              <span>
+                <strong className="block text-caption text-text-primary">
+                  {THEME_OPTION_META[id].name}
+                </strong>
+                <small className="mt-1 block text-caption text-text-muted">
+                  {THEME_OPTION_META[id].description}
+                </small>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </SettingsCard>
   );
 }
 
@@ -312,6 +441,10 @@ export function SettingsPage() {
       description="保持最少配置，只设置研究真正需要的内容。"
     >
       <div className="grid max-w-[850px] gap-md" data-testid="settings-grid">
+        {/* 外观主题置顶：页面里唯一纯本地、同步、无加载/失败态的即时偏好，
+            先给用户一个稳定可操作的锚点；其余三张卡都是集成面（连接诊断、
+            钥匙串写入、日志导航），可能进入 loading/error。 */}
+        <ThemePickerCard />
         <CoreStatusCard />
         <ProviderKeysCard />
         <SettingsCard

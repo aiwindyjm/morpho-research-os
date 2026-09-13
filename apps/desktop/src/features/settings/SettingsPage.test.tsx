@@ -6,6 +6,7 @@ import { ToastProvider } from "@morpho/ui";
 import { createQueryClient } from "@/app/queryClient";
 import { SettingsPage } from "./SettingsPage";
 import { mockBackend } from "@/services/mocks/backend";
+import { THEME_STORAGE_KEY, useThemeStore } from "@/stores/themeStore";
 
 /**
  * Real desktop wiring (batch 1): the connection card reads core.info and
@@ -127,5 +128,81 @@ describe("SettingsPage desktop wiring", () => {
       expect(within(glmRow).getByLabelText("glm API Key")).toHaveValue("");
     });
     expect(document.body.textContent ?? "").not.toContain(key);
+  });
+});
+
+describe("SettingsPage 外观主题 card (ADR-022 skin picker)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    delete document.documentElement.dataset.theme;
+    useThemeStore.setState({ theme: "lamplit-study" });
+  });
+
+  it("renders both skin options as a named radiogroup with the default selected", async () => {
+    renderPage();
+
+    const group = screen.getByRole("radiogroup", { name: "外观主题" });
+    const lamplit = within(group).getByTestId("theme-option-lamplit-study");
+    const bio = within(group).getByTestId("theme-option-bio-luminal");
+
+    expect(lamplit).toHaveAttribute("role", "radio");
+    expect(within(lamplit).getByText("深夜研究室")).toBeInTheDocument();
+    expect(within(lamplit).getByText("石墨黄铜·安静书房")).toBeInTheDocument();
+    expect(within(bio).getByText("生物荧光")).toBeInTheDocument();
+    expect(within(bio).getByText("深海暗场·荧光青紫")).toBeInTheDocument();
+
+    expect(lamplit).toHaveAttribute("aria-checked", "true");
+    expect(bio).toHaveAttribute("aria-checked", "false");
+    // Roving tabindex: only the selected option is tabbable.
+    expect(lamplit).toHaveAttribute("tabindex", "0");
+    expect(bio).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("applies 生物荧光 instantly — dataset.theme, localStorage and selected state", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const bio = screen.getByTestId("theme-option-bio-luminal");
+    await user.click(bio);
+
+    expect(bio).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("theme-option-lamplit-study")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(document.documentElement.dataset.theme).toBe("bio-luminal");
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("bio-luminal");
+  });
+
+  it("reflects a persisted 生物荧光 preference in the selected state", () => {
+    useThemeStore.setState({ theme: "bio-luminal" });
+    renderPage();
+
+    expect(screen.getByTestId("theme-option-bio-luminal")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByTestId("theme-option-lamplit-study")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
+  it("is keyboard operable: arrow keys move the selection with focus", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const lamplit = screen.getByTestId("theme-option-lamplit-study");
+    lamplit.focus();
+    await user.keyboard("{ArrowRight}");
+
+    const bio = screen.getByTestId("theme-option-bio-luminal");
+    expect(bio).toHaveAttribute("aria-checked", "true");
+    expect(document.documentElement.dataset.theme).toBe("bio-luminal");
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("bio-luminal");
+    // Selection follows focus: the newly selected option owns the roving tab stop.
+    expect(bio).toHaveFocus();
+    expect(lamplit).toHaveAttribute("tabindex", "-1");
+    expect(bio).toHaveAttribute("tabindex", "0");
   });
 });
