@@ -9,6 +9,7 @@ import {
   assistantService,
   claimService,
   configService,
+  coreService,
   coverageService,
   gapService,
   graphService,
@@ -16,15 +17,20 @@ import {
   planService,
   projectService,
   runService,
+  secretsService,
   sourceService,
   taskService,
   timelineService,
+  vaultService,
 } from "./api";
 
 /**
  * Centralized query keys (docs/frontend/AI_FRONTEND_RULES.md). Every key
  * includes the project id so switching projects can never leak another
- * project's data across caches.
+ * project's data across caches. The non-project keys (`projects`, `core`,
+ * `secrets`) are global; `core`/`secrets` deliberately refetch on every
+ * Settings visit because they describe the live desktop core, not cached
+ * research data.
  */
 
 export const queryKeys = {
@@ -46,6 +52,10 @@ export const queryKeys = {
   assistantContext: (projectId: string) => ["assistant", "context", projectId] as const,
   assistantDecisions: (projectId: string) =>
     ["assistant", "decisions", projectId] as const,
+  /** Desktop-core capability/protocol info (Settings connection status). */
+  coreInfo: ["core", "info"] as const,
+  /** Provider keychain presence rows (Settings provider keys). */
+  providerKeys: ["secrets", "providers"] as const,
 };
 
 /** Task states that mean "the run is still moving" — poll while active. */
@@ -274,7 +284,16 @@ export function useRunActions(projectId: string) {
         queryKeys.assistantContext(projectId),
       ]),
   });
-  return { start };
+  const cancel = useMutation({
+    mutationFn: () => runService.cancel({ project_id: projectId }),
+    onSuccess: () =>
+      invalidate([
+        queryKeys.run(projectId),
+        queryKeys.tasks(projectId),
+        queryKeys.assistantContext(projectId),
+      ]),
+  });
+  return { start, cancel };
 }
 
 export function useTaskActions(projectId: string) {
@@ -349,4 +368,46 @@ export function useAssistantActions(projectId: string) {
     onSuccess: () => invalidate([queryKeys.assistantDecisions(projectId)]),
   });
   return { act, saveDecision };
+}
+
+/* ------------------------------------------------------------------ */
+/* Desktop-core surface (Settings / Knowledge export)                  */
+/* ------------------------------------------------------------------ */
+
+/** Capability info for the Settings connection-status card. */
+export function useCoreInfo() {
+  return useQuery({
+    queryKey: queryKeys.coreInfo,
+    queryFn: () => coreService.info(),
+  });
+}
+
+/** Provider rows with keychain presence (Settings provider keys). */
+export function useProviderKeys() {
+  return useQuery({
+    queryKey: queryKeys.providerKeys,
+    queryFn: () => secretsService.listProviders(),
+  });
+}
+
+/**
+ * Stores a provider key in the OS keychain. The key value lives only in
+ * the submitting form and the mutation call — never in persisted state.
+ */
+export function useSetProviderKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: { provider: string; api_key: string }) =>
+      secretsService.setProviderKey(request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providerKeys });
+    },
+  });
+}
+
+/** Exports the project's knowledge into the vault (RES-07). */
+export function useExportVault(projectId: string) {
+  return useMutation({
+    mutationFn: () => vaultService.exportProject({ project_id: projectId }),
+  });
 }

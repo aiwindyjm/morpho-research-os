@@ -8,12 +8,14 @@ import {
   type AssistantContext,
   type AssistantResponse,
   type Claim,
+  type CoreInfo,
   type CoverageReport,
   type Evidence,
   type GapReport,
   type GraphProjection,
   type KnowledgeNode,
   type Project,
+  type ProviderKeyStatus,
   type ResearchConfig,
   type ResearchGap,
   type ResearchPlan,
@@ -21,8 +23,10 @@ import {
   type ResearchTask,
   type Relation,
   type SavedDecision,
+  type SecretRef,
   type Source,
   type TimelineEntry,
+  type VaultExportSummary,
 } from "./domain";
 
 /**
@@ -310,6 +314,51 @@ export const savedDecisionSchema = z.object({
   content: z.string().min(1),
   saved_at: isoTimestampSchema,
 }) satisfies z.ZodType<SavedDecision>;
+
+/* ------------------------------------------------------------------ */
+/* Desktop-core surface (src-tauri/src/commands.rs)                     */
+/* ------------------------------------------------------------------ */
+
+/** Keychain reference path; a value here would be a contract violation. */
+export const secretRefSchema = z.object({
+  provider: z.string().min(1),
+  key_name: z.string().min(1),
+}) satisfies z.ZodType<SecretRef>;
+
+export const providerKeyStatusSchema = z.object({
+  name: z.string().min(1),
+  base_url: z.string(),
+  model: z.string(),
+  key_ref: secretRefSchema,
+  has_key: z.boolean(),
+}) satisfies z.ZodType<ProviderKeyStatus>;
+
+export const vaultExportSummarySchema = z.object({
+  written: z.number().int().min(0),
+  unchanged: z.number().int().min(0),
+  conflicts: z.number().int().min(0),
+  skipped: z.number().int().min(0),
+  sources: z.number().int().min(0),
+  claims: z.number().int().min(0),
+  maps: z.number().int().min(0),
+  merge_proposals: z.array(
+    z.object({
+      path: z.string().min(1),
+      node_id: z.string().min(1),
+      reason: z.string(),
+    }),
+  ),
+  vault_root: z.string().min(1),
+}) satisfies z.ZodType<VaultExportSummary>;
+
+export const coreInfoSchema = z.object({
+  app_name: z.string().min(1),
+  app_version: z.string().min(1),
+  ipc_schema_version: z.string().min(1),
+  event_envelope: z.string().min(1),
+  worker_protocol_version: z.string().min(1),
+  database_schema_version: z.number().int().min(0),
+}) satisfies z.ZodType<CoreInfo>;
 
 export const coverageReportSchema = z.object({
   project_id: uuidSchema,

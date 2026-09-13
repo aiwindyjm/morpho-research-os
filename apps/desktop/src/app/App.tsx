@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@morpho/ui";
 import { createQueryClient } from "./queryClient";
 import { WorkspaceLayout } from "./layout/WorkspaceLayout";
+import { AppBridges } from "./bridges";
 import { useProjects } from "@/services/queries";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 
@@ -15,6 +16,10 @@ export function App({ client }: { client?: ReturnType<typeof createQueryClient> 
   return (
     <QueryClientProvider client={client ?? ownedClient}>
       <ToastProvider>
+        {/* Event-stream → cache invalidation and project-switch purges
+            (app/bridges.tsx); mounted above the layout so they survive
+            every view remount. */}
+        <AppBridges />
         <ProjectBootstrap />
         <WorkspaceLayout />
       </ToastProvider>

@@ -199,10 +199,11 @@ describe("assistant panel", () => {
     });
   });
 
-  it("switches context when the active project changes", async () => {
+  it("closes the assistant on project switch and reopens with the next context", async () => {
     const user = userEvent.setup();
     useWorkspaceStore.setState({ activeProjectId: PROJECT_A_ID, activeView: "projects" });
-    const { rerender } = render(<App client={createQueryClient()} />);
+    const client = createQueryClient();
+    const { rerender } = render(<App client={client} />);
 
     const launcher = await screen.findByRole("button", { name: "打开 AI 助手" });
     await user.click(launcher);
@@ -211,11 +212,23 @@ describe("assistant panel", () => {
       expect(within(panel).getByText("大语言模型推理优化")).toBeInTheDocument();
     });
 
-    useWorkspaceStore.setState({ activeProjectId: PROJECT_B_ID });
-    rerender(<App client={createQueryClient()} />);
+    // Switching projects triggers the proactive session purge
+    // (services/sessionState.ts via app/bridges.tsx): project-scoped caches
+    // and volatile overlay flags — including the open assistant — reset
+    // with the old project's context.
+    act(() => {
+      useWorkspaceStore.setState({ activeProjectId: PROJECT_B_ID });
+    });
+    rerender(<App client={client} />);
     await waitFor(() => {
-      expect(within(screen.getByTestId("assistant-panel")).getByText("脑机接口康复应用"))
-        .toBeInTheDocument();
+      expect(screen.queryByTestId("assistant-panel")).not.toBeInTheDocument();
+    });
+
+    // Reopening shows the new active project's context.
+    await user.click(launcher);
+    const nextPanel = await screen.findByTestId("assistant-panel");
+    await waitFor(() => {
+      expect(within(nextPanel).getByText("脑机接口康复应用")).toBeInTheDocument();
     });
   });
 });

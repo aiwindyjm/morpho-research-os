@@ -449,3 +449,125 @@ describe("assistant (UI-05 contract)", () => {
     expect(decisionsB).toHaveLength(0);
   });
 });
+
+describe("desktop-core surface (batch-1 Rust commands)", () => {
+  it("stores provider keys in the mock keychain without ever returning values", () => {
+    const initial = mockBackend.handle("secrets.listProviders", {});
+    expect(initial).toHaveLength(2);
+    expect(initial.every((provider) => provider.has_key === false)).toBe(true);
+    expect(initial[0].key_ref).toMatchObject({ key_name: "api_key" });
+
+    // Fake key material built at runtime; never a literal credential.
+    const fakeKey = Array.from({ length: 12 }, (_, i) => `k${i}`).join("-");
+    const stored = mockBackend.handle("secrets.setProviderKey", {
+      provider: "glm",
+      api_key: fakeKey,
+    });
+    expect(stored).toEqual({ provider: "glm", key_name: "api_key" });
+
+    const after = mockBackend.handle("secrets.listProviders", {});
+    const glm = after.find((provider) => provider.name === "glm");
+    expect(glm?.has_key).toBe(true);
+    // The value never crosses back over the command surface.
+    expect(JSON.stringify(after)).not.toContain(fakeKey);
+
+    expect(() =>
+      mockBackend.handle("secrets.setProviderKey", { provider: " ", api_key: fakeKey }),
+    ).toThrowError(MorphoError);
+  });
+
+  it("resets the mock keychain with the fixture state", () => {
+    const fakeKey = Array.from({ length: 8 }, () => "x").join("");
+    mockBackend.handle("secrets.setProviderKey", { provider: "glm", api_key: fakeKey });
+    mockBackend.reset();
+    expect(
+      mockBackend.handle("secrets.listProviders", {}).every((p) => !p.has_key),
+    ).toBe(true);
+  });
+
+  it("exports a project vault summary from the stored dataset", () => {
+    const summary = mockBackend.handle("vault.exportProject", {
+      project_id: PROJECT_B_ID,
+    });
+    // Project B reveals knowledge: sources + nodes + claims + 1 map note.
+    const sources = mockBackend.handle("source.list", { project_id: PROJECT_B_ID });
+    const nodes = mockBackend.handle("knowledge.list", { project_id: PROJECT_B_ID });
+    const claims = mockBackend.handle("claim.list", { project_id: PROJECT_B_ID });
+    expect(summary.sources).toBe(sources.length);
+    expect(summary.claims).toBe(claims.length);
+    expect(summary.written).toBe(sources.length + nodes.length + claims.length + 1);
+    expect(summary.maps).toBe(1);
+    expect(summary.conflicts).toBe(0);
+    expect(summary.vault_root).toBe(`mock-vault/${PROJECT_B_ID}`);
+
+    const empty = mockBackend.handle("vault.exportProject", {
+      project_id: PROJECT_A_ID,
+    });
+    expect(empty.written).toBe(0);
+    expect(empty.maps).toBe(0);
+
+    expect(() =>
+      mockBackend.handle("vault.exportProject", { project_id: "ghost" }),
+    ).toThrowError(MorphoError);
+  });
+
+  it("archives a project out of the active list and reports unknown ids as null", () => {
+    const before = mockBackend.handle("project.list", {});
+    const archived = mockBackend.handle("project.archive", {
+      project_id: PROJECT_A_ID,
+    });
+    expect(archived?.id).toBe(PROJECT_A_ID);
+
+    const after = mockBackend.handle("project.list", {});
+    expect(after.map((p) => p.id)).not.toContain(PROJECT_A_ID);
+    expect(after).toHaveLength(before.length - 1);
+
+    expect(
+      mockBackend.handle("project.archive", { project_id: "ghost" }),
+    ).toBeNull();
+    // Archiving an already-archived project id also reads as unknown.
+    expect(
+      mockBackend.handle("project.archive", { project_id: PROJECT_A_ID }),
+    ).toBeNull();
+  });
+
+  it("cancels an active run and parks its non-terminal tasks", () => {
+    mockBackend.handle("plan.approve", { project_id: PROJECT_A_ID });
+    const run = mockBackend.handle("run.start", { project_id: PROJECT_A_ID });
+    expect(["PLANNING", "RUNNING"]).toContain(run.state);
+    mockBackend.step();
+
+    expect(
+      mockBackend.handle("run.cancel", { project_id: PROJECT_A_ID }),
+    ).toBe(true);
+    const cancelled = mockBackend.handle("run.get", { project_id: PROJECT_A_ID });
+    expect(cancelled?.state).toBe("CANCELLED");
+    const tasks = mockBackend.handle("task.list", { project_id: PROJECT_A_ID });
+    expect(tasks.length).toBeGreaterThan(0);
+    expect(
+      tasks.every((task) => ["CANCELLED", "COMPLETED", "NEEDS_REVIEW", "FAILED"].includes(task.state)),
+    ).toBe(true);
+
+    // A terminal run has nothing left to cancel.
+    expect(() =>
+      mockBackend.handle("run.cancel", { project_id: PROJECT_A_ID }),
+    ).toThrowError(MorphoError);
+    // Project B's seeded run is parked in NEEDS_REVIEW — also not cancellable.
+    expect(() =>
+      mockBackend.handle("run.cancel", { project_id: PROJECT_B_ID }),
+    ).toThrowError(MorphoError);
+  });
+
+  it("serves core capability info and echoes ping", () => {
+    const info = mockBackend.handle("core.info", {});
+    expect(info).toMatchObject({
+      app_name: "Morpho Research OS",
+      ipc_schema_version: "1.0",
+      event_envelope: "research.event.v1",
+    });
+    expect(info.database_schema_version).toBeGreaterThan(0);
+
+    const pong = mockBackend.handle("core.ping", { echo: "status" });
+    expect(pong).toEqual({ echo: "status" });
+  });
+});

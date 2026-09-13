@@ -3,50 +3,60 @@ import type {
   AssistantContext,
   AssistantResponse,
   Claim,
+  CoreInfo,
   CoverageReport,
   Evidence,
   GapReport,
   GraphProjection,
   KnowledgeNode,
   Project,
+  ProviderKeyStatus,
   ResearchConfig,
   ResearchPlan,
   ResearchRun,
   ResearchTask,
   Relation,
   SavedDecision,
+  SecretRef,
   Source,
   TimelineEntry,
+  VaultExportSummary,
 } from "@/types/domain";
 import {
   assistantContextSchema,
   assistantResponseSchema,
   claimSchema,
+  coreInfoSchema,
   coverageReportSchema,
   evidenceSchema,
   gapReportSchema,
   graphProjectionSchema,
   knowledgeNodeSchema,
   projectSchema,
+  providerKeyStatusSchema,
   relationSchema,
   researchConfigSchema,
   researchPlanSchema,
   researchRunSchema,
   researchTaskSchema,
   savedDecisionSchema,
+  secretRefSchema,
   sourceSchema,
   timelineEntrySchema,
+  vaultExportSummarySchema,
 } from "@/types/schemas";
 import type { ErrorPayload } from "./errors";
 
 /**
  * Typed command surface between the UI and the platform.
  *
- * IMPORTANT (W2-05 boundary): these command names and payloads describe the
- * frontend service contract used by the Mock Transport. They are NOT the
- * frozen Tauri IPC contract — that is defined by groups A/C (W2-01, W2-02,
- * RUST-01) and wired in W2-05. Until then, no real Tauri invoke is
- * implemented and no Rust types are imported.
+ * The names and payloads here are the frontend service contract used by
+ * BOTH transports: the mock transport (services/transport.ts over
+ * mocks/backend.ts) and the real Tauri IPC transport
+ * (services/tauriTransport.ts), which maps each frontend command onto the
+ * committed Rust command surface (apps/desktop/src-tauri/src/commands.rs)
+ * and adapts shapes in both directions. Rust types are never imported —
+ * the wire shapes are mirrored as zod schemas and adapted in the transport.
  *
  * Envelope shape follows docs/API.md: { schema_version, request_id, data,
  * error }.
@@ -101,6 +111,20 @@ export interface AssistantRecordDecisionRequest extends ProjectScopedRequest {
   content: string;
 }
 
+export interface SecretsSetProviderKeyRequest {
+  provider: string;
+  /**
+   * The secret value; crosses the boundary exactly once to be stored in the
+   * OS keychain and is never returned, logged, or persisted by the frontend
+   * beyond the submit action.
+   */
+  api_key: string;
+}
+
+export interface CorePingRequest {
+  echo: string;
+}
+
 /* ------------------------------------------------------------------ */
 /* Command map                                                         */
 /* ------------------------------------------------------------------ */
@@ -109,6 +133,8 @@ export interface CommandMap {
   "project.list": { request: EmptyRequest; response: Project[] };
   "project.create": { request: ProjectCreateRequest; response: Project };
   "project.get": { request: ProjectScopedRequest; response: Project };
+  /** Rust `project_archive`: null means the project id is unknown. */
+  "project.archive": { request: ProjectScopedRequest; response: Project | null };
 
   "config.get": { request: ProjectScopedRequest; response: ResearchConfig };
   "config.update": { request: ConfigUpdateRequest; response: ResearchConfig };
@@ -121,6 +147,8 @@ export interface CommandMap {
 
   "run.get": { request: ProjectScopedRequest; response: ResearchRun | null };
   "run.start": { request: ProjectScopedRequest; response: ResearchRun };
+  /** Rust `run_cancel`: true once the cancel request was accepted. */
+  "run.cancel": { request: ProjectScopedRequest; response: boolean };
 
   "task.list": { request: ProjectScopedRequest; response: ResearchTask[] };
   "task.pause": { request: TaskActionRequest; response: ResearchTask };
@@ -148,6 +176,22 @@ export interface CommandMap {
     response: SavedDecision;
   };
   "assistant.listDecisions": { request: ProjectScopedRequest; response: SavedDecision[] };
+
+  /** Rust `secrets_set_provider_key` → keychain reference (never a value). */
+  "secrets.setProviderKey": {
+    request: SecretsSetProviderKeyRequest;
+    response: SecretRef;
+  };
+  /** Rust `secrets_list_providers` → provider rows with keychain presence. */
+  "secrets.listProviders": { request: EmptyRequest; response: ProviderKeyStatus[] };
+
+  /** Rust `vault_export_project` → export outcome summary. */
+  "vault.exportProject": { request: ProjectScopedRequest; response: VaultExportSummary };
+
+  /** Rust `core_info` → static capability/protocol versions. */
+  "core.info": { request: EmptyRequest; response: CoreInfo };
+  /** Rust `ping` → envelope round-trip echo. */
+  "core.ping": { request: CorePingRequest; response: { echo: string } };
 }
 
 export type CommandName = keyof CommandMap;
@@ -172,8 +216,10 @@ export interface InvokeOptions {
 
 /**
  * Transport is the only way the UI reaches the backend. Components never
- * call invoke directly; they use services and query hooks. The real Tauri
- * transport arrives with W2-05 once the IPC contract is frozen.
+ * call invoke directly; they use services and query hooks. The active
+ * implementation is selected in services/transportProvider.ts: the real
+ * Tauri IPC transport inside the desktop window, the in-memory mock
+ * everywhere else (web preview, vitest, Playwright).
  */
 export interface Transport {
   invoke<K extends CommandName>(
@@ -196,6 +242,7 @@ export const responseSchemas: { [K in CommandName]: ZodType<CommandResponse<K>> 
   "project.list": z.array(projectSchema),
   "project.create": projectSchema,
   "project.get": projectSchema,
+  "project.archive": projectSchema.nullable(),
   "config.get": researchConfigSchema,
   "config.update": researchConfigSchema,
   "plan.get": researchPlanSchema.nullable(),
@@ -205,6 +252,7 @@ export const responseSchemas: { [K in CommandName]: ZodType<CommandResponse<K>> 
   "plan.reject": researchPlanSchema,
   "run.get": researchRunSchema.nullable(),
   "run.start": researchRunSchema,
+  "run.cancel": z.boolean(),
   "task.list": z.array(researchTaskSchema),
   "task.pause": researchTaskSchema,
   "task.resume": researchTaskSchema,
@@ -225,4 +273,9 @@ export const responseSchemas: { [K in CommandName]: ZodType<CommandResponse<K>> 
   "assistant.act": assistantResponseSchema,
   "assistant.saveDecision": savedDecisionSchema,
   "assistant.listDecisions": z.array(savedDecisionSchema),
+  "secrets.setProviderKey": secretRefSchema,
+  "secrets.listProviders": z.array(providerKeyStatusSchema),
+  "vault.exportProject": vaultExportSummarySchema,
+  "core.info": coreInfoSchema,
+  "core.ping": z.object({ echo: z.string() }),
 };

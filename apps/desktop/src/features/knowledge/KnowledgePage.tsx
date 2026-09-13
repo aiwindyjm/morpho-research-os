@@ -1,11 +1,18 @@
 import { useMemo, useState } from "react";
-import { Badge, Button, Card, Input, Select, Tabs } from "@morpho/ui";
+import { Badge, Button, Card, Input, Select, Tabs, useToast } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import { ClaimCard, KnowledgeCard } from "@/components/cards";
 import { KNOWLEDGE_NODE_TYPES } from "@/types/domain";
 import { NODE_TYPE_LABELS } from "@/types/labels";
-import { useClaims, useEvidence, useKnowledge, useSources } from "@/services/queries";
+import {
+  useClaims,
+  useEvidence,
+  useExportVault,
+  useKnowledge,
+  useSources,
+} from "@/services/queries";
+import { isMorphoError } from "@/services/errors";
 
 /**
  * Knowledge view (docs/PRD.md §6): nodes and claims stay separate record
@@ -22,10 +29,52 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
   const knowledge = useKnowledge(projectId);
   const claims = useClaims(projectId);
   const sources = useSources(projectId);
+  const exportVault = useExportVault(projectId);
+  const { showToast } = useToast();
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [openEvidence, setOpenEvidence] = useState<Set<string>>(new Set());
+
+  // One click does the whole export: the Rust core resolves the vault path
+  // from its own config (vault_export_project) — the UI asks nothing extra.
+  function exportVaultToDisk() {
+    void exportVault
+      .mutateAsync()
+      .then((result) => {
+        if (result.conflicts > 0) {
+          showToast({
+            title: "导出完成，但有冲突需要人工处理",
+            detail: `写入 ${result.written} 篇、无变化 ${result.unchanged} 篇；${
+              result.conflicts
+            } 篇因本地修改被保留为合并提案（${result.merge_proposals
+              .map((proposal) => proposal.path)
+              .slice(0, 3)
+              .join("、")}${result.merge_proposals.length > 3 ? "…" : ""}）。导出目录：${
+              result.vault_root
+            }`,
+            variant: "warning",
+          });
+          return;
+        }
+        showToast({
+          title: "Vault 导出完成",
+          detail: `写入 ${result.written} 篇（来源 ${result.sources}、论断 ${result.claims}、索引 ${
+            result.maps
+          }），无变化 ${result.unchanged} 篇。导出目录：${result.vault_root}`,
+          variant: "success",
+        });
+      })
+      .catch((error: unknown) => {
+        showToast({
+          title: "Vault 导出失败",
+          detail: isMorphoError(error)
+            ? error.userMessage
+            : "发生未知错误，请重试。",
+          variant: "error",
+        });
+      });
+  }
 
   const titleById = useMemo(() => {
     const map = new Map<string, string>();
@@ -119,7 +168,12 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
               </option>
             ))}
           </Select>
-          <Button variant="primary" disabled title="桌面版提供">
+          <Button
+            variant="primary"
+            onClick={exportVaultToDisk}
+            loading={exportVault.isPending}
+            title="把知识、来源与论断导出为 Markdown Vault"
+          >
             导出 Vault
           </Button>
         </>

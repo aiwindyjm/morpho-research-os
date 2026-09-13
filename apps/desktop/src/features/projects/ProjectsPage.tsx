@@ -108,7 +108,12 @@ export function ProjectsPage() {
                 description={project.description}
                 updatedAt={project.updated_at}
                 active={project.id === activeProjectId}
-                onOpen={() => setActiveProject(project.id)}
+                onOpen={() => {
+                  // "打开项目" must leave the list: switch the isolated
+                  // workspace AND land on its overview.
+                  setActiveProject(project.id);
+                  setActiveView("overview");
+                }}
                 onConfigure={() => {
                   setActiveProject(project.id);
                   setActiveView("config");

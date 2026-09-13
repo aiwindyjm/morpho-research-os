@@ -508,3 +508,63 @@ export interface SavedDecision {
   content: string;
   saved_at: string;
 }
+
+/* ------------------------------------------------------------------ */
+/* Desktop-core surface (src-tauri/src/commands.rs)                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Reference to a secret stored in the OS keychain
+ * (src-tauri/src/secrets.rs `SecretRef`). Only ever a path — values never
+ * cross the IPC boundary.
+ */
+export interface SecretRef {
+  provider: string;
+  key_name: string;
+}
+
+/** `secrets_list_providers` row: provider config + keychain presence. */
+export interface ProviderKeyStatus {
+  name: string;
+  base_url: string;
+  model: string;
+  /** Keychain reference; never a value. */
+  key_ref: SecretRef;
+  /** Whether the keychain currently holds a value for the reference. */
+  has_key: boolean;
+}
+
+/** `vault_export_project` outcome summary (repositories/services.rs). */
+export interface VaultMergeProposal {
+  path: string;
+  node_id: string;
+  reason: string;
+}
+
+export interface VaultExportSummary {
+  /** Notes (re)written atomically. */
+  written: number;
+  /** Notes whose rendered content already matched the last write. */
+  unchanged: number;
+  /** Notes refused because the on-disk file carries user modifications. */
+  conflicts: number;
+  /** Notes not written because their type has no vault folder yet. */
+  skipped: number;
+  sources: number;
+  claims: number;
+  /** Map (MOC index) notes produced this export (0 or 1). */
+  maps: number;
+  merge_proposals: VaultMergeProposal[];
+  /** Root directory the notes were written under. */
+  vault_root: string;
+}
+
+/** `core_info` payload: static capability/protocol versions. */
+export interface CoreInfo {
+  app_name: string;
+  app_version: string;
+  ipc_schema_version: string;
+  event_envelope: string;
+  worker_protocol_version: string;
+  database_schema_version: number;
+}

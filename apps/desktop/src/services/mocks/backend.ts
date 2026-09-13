@@ -1,10 +1,12 @@
 import type {
+  CoreInfo,
   ResearchConfig,
   ResearchGap,
   ResearchTask,
   RunEvent,
   SavedDecision,
 } from "@/types/domain";
+import { TERMINAL_TASK_STATES } from "@/types/domain";
 import { researchConfigSchema } from "@/types/schemas";
 import { MorphoError, type ErrorCode, type ErrorPayload } from "../errors";
 import type { CommandName, CommandRequest, CommandResponse } from "../commands";
@@ -163,12 +165,46 @@ export function defaultConfigForNewProject(topic: string): ResearchConfig {
   };
 }
 
+/**
+ * Mock app-config provider rows (the Rust side reads these from the app
+ * config file). The `.invalid` TLD keeps the URL an example; keys live in
+ * the mock keychain, never in this constant.
+ */
+const MOCK_PROVIDERS = [
+  {
+    name: "glm",
+    base_url: "https://open.bigmodel.example.invalid/api/paas/v4",
+    model: "mock-model",
+  },
+  {
+    name: "ollama-local",
+    base_url: "http://127.0.0.1:11434/v1",
+    model: "mock-model",
+  },
+] as const;
+
+/** Mock `core_info` — mirrors the Rust payload with mock transport markers. */
+const MOCK_CORE_INFO: CoreInfo = {
+  app_name: "Morpho Research OS",
+  app_version: "0.0.1-mock",
+  ipc_schema_version: "1.0",
+  event_envelope: "research.event.v1",
+  worker_protocol_version: "1.0",
+  database_schema_version: 2,
+};
+
 export class MockBackend {
   private projects = new Map<string, StoredProject>();
   private faultQueue: Array<{
     command?: CommandName;
     payload: ErrorPayload;
   }> = [];
+  /**
+   * Mock keychain: provider → API key. Mirrors the Rust keychain boundary
+   * (RUST-04) — values are stored for presence checks only and are never
+   * returned by any command; cleared with reset() for test isolation.
+   */
+  private providerKeys = new Map<string, string>();
 
   constructor() {
     this.reset();
@@ -180,6 +216,7 @@ export class MockBackend {
     this.projects.set(PROJECT_A_ID, seedProjectA());
     this.projects.set(PROJECT_B_ID, seedProjectB());
     this.faultQueue = [];
+    this.providerKeys = new Map();
   }
 
   /** Queue a fault for the next matching invoke (fault injection). */
@@ -308,6 +345,19 @@ export class MockBackend {
         return this.requireState((payload as { project_id: string }).project_id)
           .project as CommandResponse<K>;
 
+      case "project.archive": {
+        // Behavioral reference for Rust `project_archive`: an archived
+        // project leaves the active research list; an unknown id → null.
+        const projectId = (payload as { project_id: string }).project_id;
+        const stored = this.projects.get(projectId);
+        if (!stored) return null as CommandResponse<K>;
+        this.projects.delete(projectId);
+        if (stored.state.run && !TERMINAL_TASK_STATES.includes(stored.state.run.state)) {
+          stored.state.run.state = "CANCELLED";
+        }
+        return stored.state.project as CommandResponse<K>;
+      }
+
       case "config.get":
         return this.requireState((payload as { project_id: string }).project_id)
           .config as CommandResponse<K>;
@@ -429,6 +479,30 @@ export class MockBackend {
         }
         const run = startRun(state, state.plan, new Date().toISOString());
         return run as CommandResponse<K>;
+      }
+
+      case "run.cancel": {
+        const state = this.requireState((payload as { project_id: string }).project_id);
+        const run = state.run;
+        if (!run || TERMINAL_TASK_STATES.includes(run.state)) {
+          throw new MorphoError({
+            code: "NOT_FOUND",
+            user_message: "该项目当前没有可取消的研究运行。",
+            developer_detail: "run.cancel without an active run",
+            retryable: false,
+            correlation_id: nextUuid(),
+          });
+        }
+        const now = new Date().toISOString();
+        run.state = "CANCELLED";
+        run.updated_at = now;
+        for (const task of state.tasks) {
+          if (!TERMINAL_TASK_STATES.includes(task.state)) {
+            task.state = "CANCELLED";
+            task.updated_at = now;
+          }
+        }
+        return true as CommandResponse<K>;
       }
 
       case "task.list":
@@ -570,6 +644,66 @@ export class MockBackend {
       case "assistant.listDecisions":
         return this.requireStored((payload as { project_id: string }).project_id)
           .savedDecisions as CommandResponse<K>;
+
+      case "secrets.setProviderKey": {
+        const request = payload as CommandRequest<"secrets.setProviderKey">;
+        const provider = request.provider.trim();
+        if (!provider || !request.api_key) {
+          throw new MorphoError({
+            code: "VALIDATION_FAILED",
+            user_message: "Provider 名称和密钥都不能为空。",
+            developer_detail: "secrets.setProviderKey requires provider and api_key",
+            retryable: false,
+            correlation_id: nextUuid(),
+          });
+        }
+        // Stored for presence only (mock keychain); the value is never
+        // returned by any command.
+        this.providerKeys.set(`${provider}/api_key`, request.api_key);
+        return { provider, key_name: "api_key" } as CommandResponse<K>;
+      }
+
+      case "secrets.listProviders":
+        return MOCK_PROVIDERS.map((provider) => ({
+          name: provider.name,
+          base_url: provider.base_url,
+          model: provider.model,
+          key_ref: { provider: provider.name, key_name: "api_key" },
+          has_key: this.providerKeys.has(`${provider.name}/api_key`),
+        })) as CommandResponse<K>;
+
+      case "vault.exportProject": {
+        // Behavioral reference for Rust `vault_export_project`: every
+        // persisted source/node/claim note plus one per-project map note is
+        // written; the mock never fabricates user edits, so conflicts stay
+        // zero. It exports exactly the records the project has revealed
+        // (the mock's stand-in for "persisted in the core"), which for an
+        // unrevealed project is nothing.
+        const projectId = (payload as { project_id: string }).project_id;
+        const sources = this.revealedSources(projectId);
+        const nodes = this.revealedNodes(projectId);
+        const claims = this.revealedClaims(projectId);
+        const notes = [...sources, ...nodes, ...claims];
+        return {
+          written: notes.length + (notes.length > 0 ? 1 : 0),
+          unchanged: 0,
+          conflicts: 0,
+          skipped: 0,
+          sources: sources.length,
+          claims: claims.length,
+          maps: notes.length > 0 ? 1 : 0,
+          merge_proposals: [],
+          vault_root: `mock-vault/${projectId}`,
+        } as CommandResponse<K>;
+      }
+
+      case "core.info":
+        return MOCK_CORE_INFO as CommandResponse<K>;
+
+      case "core.ping":
+        return {
+          echo: (payload as CommandRequest<"core.ping">).echo,
+        } as CommandResponse<K>;
 
       default: {
         throw new MorphoError({

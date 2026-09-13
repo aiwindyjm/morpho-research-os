@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "@morpho/ui";
 import { createQueryClient } from "@/app/queryClient";
 import { KnowledgePage } from "./KnowledgePage";
 import { mockBackend } from "@/services/mocks/backend";
@@ -13,13 +14,16 @@ import { PROJECT_B_ID } from "@/services/mocks/fixtures-a";
  * styling. Project B seeds 14 nodes — 4 概念, 3 技术, 2 论文, 2 应用,
  * 1 公司, 1 事件, 1 争议 — and exactly one conflicting node
  * (消费级神经数据隐私争议). The 论断与证据 tab keeps its claim/evidence
- * interactions (8 claims, 1 conflicting) covered here as a regression guard.
+ * interactions (8 claims, 1 conflicting) covered here as a regression guard,
+ * alongside the Vault 导出 round-trip through vault.exportProject.
  */
 
 function renderPage() {
   return render(
     <QueryClientProvider client={createQueryClient()}>
-      <KnowledgePage projectId={PROJECT_B_ID} />
+      <ToastProvider>
+        <KnowledgePage projectId={PROJECT_B_ID} />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -67,13 +71,12 @@ describe("KnowledgePage prototype alignment", () => {
     expect(within(conflictCard).getByText("存在冲突")).toHaveClass("text-error");
   });
 
-  it("keeps 导出 Vault disabled and filters cards through the type select", async () => {
+  it("keeps 导出 Vault enabled and filters cards through the type select", async () => {
     const user = userEvent.setup();
     renderPage();
 
     const exportButton = await screen.findByRole("button", { name: "导出 Vault" });
-    expect(exportButton).toBeDisabled();
-    expect(exportButton).toHaveAttribute("title", "桌面版提供");
+    expect(exportButton).toBeEnabled();
 
     await screen.findAllByTestId("knowledge-card");
     await user.selectOptions(screen.getByLabelText("筛选类型"), "Controversy");
@@ -81,6 +84,44 @@ describe("KnowledgePage prototype alignment", () => {
       expect(screen.getAllByTestId("knowledge-card-conflict")).toHaveLength(1);
       expect(screen.queryByTestId("knowledge-card")).not.toBeInTheDocument();
     });
+  });
+
+  it("exports the vault on click and reports the outcome through a toast", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const exportButton = await screen.findByRole("button", { name: "导出 Vault" });
+    expect(exportButton).toBeEnabled();
+    await user.click(exportButton);
+
+    // Mock backend: revealed sources + nodes + claims + 1 map note.
+    const toastRegion = await screen.findByTestId("toast-region");
+    await waitFor(() => {
+      expect(within(toastRegion).getByText("Vault 导出完成")).toBeInTheDocument();
+    });
+    expect(
+      within(toastRegion).getByText(
+        new RegExp(`写入 \\d+ 篇.*导出目录：mock-vault/${PROJECT_B_ID}`),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("surfaces a failed export as an error toast", async () => {
+    mockBackend.armFault({
+      command: "vault.exportProject",
+      payload: { code: "VAULT_WRITE_FAILED", user_message: "Vault 写入失败。", retryable: false },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    const exportButton = await screen.findByRole("button", { name: "导出 Vault" });
+    await user.click(exportButton);
+
+    const toastRegion = await screen.findByTestId("toast-region-error");
+    await waitFor(() => {
+      expect(within(toastRegion).getByText("Vault 导出失败")).toBeInTheDocument();
+    });
+    expect(within(toastRegion).getByText("Vault 写入失败。")).toBeInTheDocument();
   });
 
   it("keeps the claims tab with its conflicting-claim evidence flow", async () => {

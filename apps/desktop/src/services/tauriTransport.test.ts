@@ -222,6 +222,83 @@ describe("tauri transport command mapping", () => {
     });
   });
 
+  it("run.get reads null before any session run and bridges onto run_get after run.start", async () => {
+    const invoke = vi.fn(async (command: string): Promise<unknown> => {
+      if (command === "run_get") {
+        return okEnvelope({
+          schema_version: "1",
+          job: {
+            job_id: JOB_ID,
+            run_id: RUN_ID,
+            status: "RUNNING",
+            created_at: "2023-11-14T22:13:20.000Z",
+            updated_at: "2023-11-14T22:13:25.000Z",
+          },
+          task_rollup: {
+            run_id: RUN_ID,
+            run_status: "needs_review",
+            task_counts: { RUNNING: 1 },
+            tasks: [{ task_id: TASK_ID, status: "RUNNING" }],
+          },
+        });
+      }
+      if (command === "plan_list") return okEnvelope([planWithTasks]);
+      if (command === "run_start") return okEnvelope(runStarted);
+      throw new Error(`unexpected rust command '${command}'`);
+    });
+    const transport = createTauriTransport({ invoke });
+
+    // No run started from this window → null, and no Rust round-trip.
+    expect(await transport.invoke("run.get", { project_id: PROJECT_ID })).toBeNull();
+    expect(invoke).not.toHaveBeenCalled();
+
+    await transport.invoke("run.start", { project_id: PROJECT_ID });
+    const run = await transport.invoke("run.get", { project_id: PROJECT_ID });
+
+    expect(invoke).toHaveBeenLastCalledWith("run_get", {
+      request: {
+        schema_version: "1.0",
+        request_id: expect.any(String),
+        data: { job_id: JOB_ID },
+      },
+    });
+    // The orchestrator rollup (needs_review) wins over the worker status.
+    expect(run).toMatchObject({
+      id: RUN_ID,
+      project_id: PROJECT_ID,
+      plan_id: PLAN_ID,
+      state: "NEEDS_REVIEW",
+      plan_snapshot_title: "T",
+      started_at: "2023-11-14T22:13:20.000Z",
+    });
+  });
+
+  it("run.cancel fails typed without a session job and maps onto run_cancel after run.start", async () => {
+    const invoke = vi.fn(async (command: string): Promise<unknown> => {
+      if (command === "plan_list") return okEnvelope([planWithTasks]);
+      if (command === "run_start") return okEnvelope(runStarted);
+      if (command === "run_cancel") return okEnvelope(true);
+      throw new Error(`unexpected rust command '${command}'`);
+    });
+    const transport = createTauriTransport({ invoke });
+
+    await expect(
+      transport.invoke("run.cancel", { project_id: PROJECT_ID }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(invoke).not.toHaveBeenCalled();
+
+    await transport.invoke("run.start", { project_id: PROJECT_ID });
+    await expect(
+      transport.invoke("run.cancel", { project_id: PROJECT_ID }),
+    ).resolves.toBe(true);
+    expect(invoke).toHaveBeenLastCalledWith(
+      "run_cancel",
+      expect.objectContaining({
+        request: expect.objectContaining({ data: { job_id: JOB_ID } }),
+      }),
+    );
+  });
+
   it("maps coverage.get onto coverage_get and adapts the Rust report", async () => {
     const invoke = vi.fn(async (): Promise<unknown> => okEnvelope(rustCoverageReport));
     const report = await createTauriTransport({ invoke }).invoke("coverage.get", {
@@ -280,6 +357,160 @@ describe("tauri transport command mapping", () => {
     );
     expect(timeline.map((entry) => entry.kind)).toEqual(["task", "run"]);
     expect(timeline[0].timestamp).toBe("2023-11-14T22:13:20.000Z");
+  });
+
+  it("maps secrets.setProviderKey onto secrets_set_provider_key and returns only the reference", async () => {
+    // Fake key material built at runtime; never a literal credential.
+    const fakeKey = Array.from({ length: 16 }, (_, i) => String.fromCharCode(97 + (i % 26))).join("");
+    const invoke = vi.fn(async (): Promise<unknown> =>
+      okEnvelope({ provider: "glm", key_name: "api_key" }),
+    );
+    const reference = await createTauriTransport({ invoke }).invoke(
+      "secrets.setProviderKey",
+      { provider: "glm", api_key: fakeKey },
+    );
+
+    expect(invoke).toHaveBeenCalledWith(
+      "secrets_set_provider_key",
+      expect.objectContaining({
+        request: expect.objectContaining({ data: { provider: "glm", api_key: fakeKey } }),
+      }),
+    );
+    expect(reference).toEqual({ provider: "glm", key_name: "api_key" });
+  });
+
+  it("maps secrets.listProviders onto secrets_list_providers", async () => {
+    const invoke = vi.fn(async (): Promise<unknown> =>
+      okEnvelope([
+        {
+          name: "glm",
+          base_url: "https://api.example.invalid/v4",
+          model: "m-test",
+          key_ref: { provider: "glm", key_name: "api_key" },
+          has_key: true,
+        },
+      ]),
+    );
+    const providers = await createTauriTransport({ invoke }).invoke(
+      "secrets.listProviders",
+      {},
+    );
+
+    expect(invoke).toHaveBeenCalledWith(
+      "secrets_list_providers",
+      expect.objectContaining({ request: expect.objectContaining({ data: {} }) }),
+    );
+    expect(providers).toEqual([
+      {
+        name: "glm",
+        base_url: "https://api.example.invalid/v4",
+        model: "m-test",
+        key_ref: { provider: "glm", key_name: "api_key" },
+        has_key: true,
+      },
+    ]);
+  });
+
+  it("maps vault.exportProject onto vault_export_project, projecting merge proposals", async () => {
+    const invoke = vi.fn(async (): Promise<unknown> =>
+      okEnvelope({
+        written: 3,
+        unchanged: 2,
+        conflicts: 1,
+        skipped: 0,
+        sources: 2,
+        claims: 1,
+        maps: 1,
+        merge_proposals: [
+          {
+            path: "vault/p/Concepts/x.md",
+            node_id: "node-1",
+            ours: "# generated content",
+            theirs_hash: "sha256:abc",
+            reason: "user edit on disk",
+          },
+        ],
+        vault_root: "C:/vault/p",
+      }),
+    );
+    const summary = await createTauriTransport({ invoke }).invoke(
+      "vault.exportProject",
+      { project_id: PROJECT_ID },
+    );
+
+    expect(invoke).toHaveBeenCalledWith(
+      "vault_export_project",
+      expect.objectContaining({ request: expect.objectContaining({ data: { project_id: PROJECT_ID } }) }),
+    );
+    expect(summary).toEqual({
+      written: 3,
+      unchanged: 2,
+      conflicts: 1,
+      skipped: 0,
+      sources: 2,
+      claims: 1,
+      maps: 1,
+      merge_proposals: [{ path: "vault/p/Concepts/x.md", node_id: "node-1", reason: "user edit on disk" }],
+      vault_root: "C:/vault/p",
+    });
+    // File content must not ride along into the UI payload.
+    expect(JSON.stringify(summary)).not.toContain("generated content");
+  });
+
+  it("maps project.archive onto project_archive with a null passthrough", async () => {
+    const invoke = vi.fn(async (): Promise<unknown> => okEnvelope(null));
+    expect(
+      await createTauriTransport({ invoke }).invoke("project.archive", {
+        project_id: PROJECT_ID,
+      }),
+    ).toBeNull();
+
+    const invokeRecord = vi.fn(async (): Promise<unknown> => okEnvelope(projectRecord));
+    const archived = await createTauriTransport({ invoke: invokeRecord }).invoke(
+      "project.archive",
+      { project_id: PROJECT_ID },
+    );
+    expect(invokeRecord).toHaveBeenCalledWith(
+      "project_archive",
+      expect.objectContaining({ request: expect.objectContaining({ data: { project_id: PROJECT_ID } }) }),
+    );
+    expect(archived).toEqual({
+      id: PROJECT_ID,
+      name: "BCI",
+      description: "notes",
+      created_at: "2023-11-14T22:13:20.000Z",
+      updated_at: "2023-11-14T22:13:20.500Z",
+    });
+  });
+
+  it("maps core.info and core.ping onto core_info/ping", async () => {
+    const invoke = vi.fn(async (command: string): Promise<unknown> => {
+      if (command === "core_info") {
+        return okEnvelope({
+          app_name: "Morpho Research OS",
+          app_version: "0.0.1",
+          ipc_schema_version: "1.0",
+          event_envelope: "research.event.v1",
+          worker_protocol_version: "1.0",
+          database_schema_version: 2,
+        });
+      }
+      if (command === "ping") return okEnvelope({ echo: "status" });
+      throw new Error(`unexpected rust command '${command}'`);
+    });
+    const transport = createTauriTransport({ invoke });
+
+    const info = await transport.invoke("core.info", {});
+    expect(info.app_name).toBe("Morpho Research OS");
+    expect(info.database_schema_version).toBe(2);
+
+    const pong = await transport.invoke("core.ping", { echo: "status" });
+    expect(pong).toEqual({ echo: "status" });
+    expect(invoke).toHaveBeenNthCalledWith(
+      2,
+      "ping",
+      expect.objectContaining({ request: expect.objectContaining({ data: { echo: "status" } }) }),
+    );
   });
 
   it("surfaces a Rust CoreError envelope as a typed MorphoError", async () => {

@@ -5,11 +5,15 @@ import {
 } from "@/types/schemas";
 import type {
   AssistantAction,
+  CoreInfo,
   Project,
+  ProviderKeyStatus,
   ResearchConfig,
   ResearchPlan,
+  ResearchRun,
   ResearchTask,
   SavedDecision,
+  VaultExportSummary,
 } from "@/types/domain";
 import { getTransport } from "./transportProvider";
 import type {
@@ -20,6 +24,7 @@ import type {
   PlanTaskUpdateRequest,
   ProjectCreateRequest,
   ProjectScopedRequest,
+  SecretsSetProviderKeyRequest,
   TaskActionRequest,
 } from "./commands";
 
@@ -37,6 +42,10 @@ export const projectService = {
   create(request: ProjectCreateRequest): Promise<Project> {
     const name = projectSchema.shape.name.parse(request.name);
     return getTransport().invoke("project.create", { name, description: request.description });
+  },
+  /** Rust `project_archive`; null means the project id was unknown. */
+  archive(request: ProjectScopedRequest): Promise<Project | null> {
+    return getTransport().invoke("project.archive", request);
   },
 };
 
@@ -76,11 +85,15 @@ export const planService = {
 };
 
 export const runService = {
-  get(request: ProjectScopedRequest) {
+  get(request: ProjectScopedRequest): Promise<ResearchRun | null> {
     return getTransport().invoke("run.get", request);
   },
-  start(request: ProjectScopedRequest) {
+  start(request: ProjectScopedRequest): Promise<ResearchRun> {
     return getTransport().invoke("run.start", request);
+  },
+  /** Rust `run_cancel`: cancels the project's session run. */
+  cancel(request: ProjectScopedRequest): Promise<boolean> {
+    return getTransport().invoke("run.cancel", request);
   },
 };
 
@@ -177,3 +190,38 @@ export const ASSISTANT_ACTIONS_UI: AssistantAction[] = [
   "suggest_next_task",
   "list_pending_reviews",
 ];
+
+/* ------------------------------------------------------------------ */
+/* Desktop-core surface                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Provider key management through the OS keychain (RUST-04 boundary):
+ * values cross the transport exactly once on set and never come back —
+ * the UI only ever sees keychain references and presence flags.
+ */
+export const secretsService = {
+  listProviders(): Promise<ProviderKeyStatus[]> {
+    return getTransport().invoke("secrets.listProviders", {});
+  },
+  setProviderKey(request: SecretsSetProviderKeyRequest) {
+    return getTransport().invoke("secrets.setProviderKey", request);
+  },
+};
+
+/** Vault export (RES-07): the core resolves the export path from config. */
+export const vaultService = {
+  exportProject(request: ProjectScopedRequest): Promise<VaultExportSummary> {
+    return getTransport().invoke("vault.exportProject", request);
+  },
+};
+
+/** Core capability/liveness probes (connection status in Settings). */
+export const coreService = {
+  info(): Promise<CoreInfo> {
+    return getTransport().invoke("core.info", {});
+  },
+  ping(): Promise<{ echo: string }> {
+    return getTransport().invoke("core.ping", { echo: "status" });
+  },
+};

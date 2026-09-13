@@ -45,8 +45,8 @@ import {
  *  - validates every adapted response against the same schema registry
  *    before anything reaches a component (docs/PRD.md §11).
  *
- * Commands the committed Rust surface does not expose (yet) fail fast with
- * a typed NOT_FOUND error instead of fabricated data.
+ * Frontend commands the committed Rust surface cannot serve yet fail fast
+ * with a typed NOT_FOUND error instead of fabricated data.
  */
 
 /* ------------------------------------------------------------------ */
@@ -148,10 +148,21 @@ function morphoErrorFromCore(error: WireCoreError, fallbackCorrelationId: string
  */
 interface AdapterContext {
   call(rustCommand: string, data: unknown): Promise<unknown>;
+  /**
+   * Per-transport session job registry (see `SessionJob`): records the
+   * worker job each run.start launched so the project-scoped run.get /
+   * run.cancel can bridge onto the job-keyed Rust commands.
+   */
+  sessionJobs: Map<string, SessionJob>;
 }
 
-function makeContext(invoke: TauriInvoke, signal?: AbortSignal): AdapterContext {
+function makeContext(
+  invoke: TauriInvoke,
+  sessionJobs: Map<string, SessionJob>,
+  signal?: AbortSignal,
+): AdapterContext {
   return {
+    sessionJobs,
     async call(rustCommand: string, data: unknown): Promise<unknown> {
       if (signal?.aborted) {
         throw new DOMException("The request was aborted", "AbortError");
@@ -353,6 +364,71 @@ interface EventRecordWire {
   event_type: string;
   payload: string;
   created_at: number;
+}
+
+/** Keychain reference path (src-tauri/src/secrets.rs `SecretRef`). */
+interface SecretRefWire {
+  provider: string;
+  key_name: string;
+}
+
+/** `secrets_list_providers` row (commands.rs `ProviderKeyStatus`). */
+interface ProviderKeyStatusWire {
+  name: string;
+  base_url: string;
+  model: string;
+  key_ref: SecretRefWire;
+  has_key: boolean;
+}
+
+/** `vault_export_project` result (repositories/services.rs). */
+interface VaultExportResultWire {
+  written: number;
+  unchanged: number;
+  conflicts: number;
+  skipped: number;
+  sources: number;
+  claims: number;
+  maps: number;
+  merge_proposals: Array<{
+    path: string;
+    node_id: string;
+    ours: string;
+    theirs_hash: string;
+    reason: string;
+  }>;
+  vault_root: string;
+}
+
+/** `core_info` payload (commands.rs `CoreInfo`). */
+interface CoreInfoWire {
+  app_name: string;
+  app_version: string;
+  ipc_schema_version: string;
+  event_envelope: string;
+  worker_protocol_version: string;
+  database_schema_version: number;
+}
+
+/**
+ * `run_get` payload: the worker job-status envelope with the core-side
+ * `task_rollup` attached when the envelope names a locally known run.
+ * Free-form on purpose — the Rust side returns `serde_json::Value`.
+ */
+interface RunGetEnvelopeWire {
+  job?: {
+    job_id?: string;
+    run_id?: string;
+    status?: string;
+    created_at?: string;
+    updated_at?: string;
+  };
+  task_rollup?: {
+    run_id: string;
+    run_status: string;
+    task_counts: Record<string, number>;
+    tasks: Array<{ task_id: string; status: string }>;
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -586,12 +662,16 @@ function notFound(userMessage: string, developerDetail: string): MorphoError {
   });
 }
 
-/** Typed error for frontend commands without a committed Rust command. */
-function unsupported(command: CommandName): MorphoError {
+/**
+ * Typed error for frontend commands the committed Rust surface cannot
+ * serve yet. `what` names the capability gap precisely (e.g. a command
+ * that exists but carries a different payload domain).
+ */
+function unsupported(command: CommandName, what: string): MorphoError {
   return new MorphoError({
     code: "NOT_FOUND",
     user_message: "该功能尚未接入桌面核心，目前仅在网页预览模式下可用。",
-    developer_detail: `command '${command}' has no counterpart in the committed Rust IPC surface (apps/desktop/src-tauri/src/commands.rs); wire it when the core command lands`,
+    developer_detail: `command '${command}' (${what}) has no counterpart in the committed Rust IPC surface (apps/desktop/src-tauri/src/commands.rs); wire it when the matching core command lands`,
     retryable: false,
     correlation_id: "local-unsupported",
   });
@@ -634,6 +714,50 @@ async function latestPlanWire(ctx: AdapterContext, projectId: string): Promise<P
   return latest;
 }
 
+/* ------------------------------------------------------------------ */
+/* Session job registry (run.get / run.cancel bridge)                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The committed Rust `run_get`/`run_cancel` commands key on the worker
+ * `job_id` returned by `run_start`, and no IPC command enumerates a
+ * project's jobs — so the frontend contract (project-scoped run.get /
+ * run.cancel) is bridged through a session-scoped map owned by the
+ * transport instance. It records the last run started from this window per
+ * project; runs started before app launch are invisible until the core
+ * exposes a job listing (Wave-2 candidate). Frontend-only transport state,
+ * never persisted.
+ */
+interface SessionJob {
+  job_id: string;
+  run_id: string;
+  plan_id: string;
+  plan_title: string;
+}
+
+/** Worker job statuses and DB run statuses (lowercased) → TaskState. */
+const RUN_STATE_BY_STATUS: Record<string, ResearchRun["state"]> = {
+  queued: "PENDING",
+  running: "RUNNING",
+  paused: "PAUSED",
+  needs_review: "NEEDS_REVIEW",
+  succeeded: "COMPLETED",
+  completed: "COMPLETED",
+  failed: "FAILED",
+  cancelled: "CANCELLED",
+};
+
+function runStateFrom(status: string | undefined): ResearchRun["state"] {
+  return RUN_STATE_BY_STATUS[(status ?? "").toLowerCase()] ?? "RUNNING";
+}
+
+function isoOr(value: string | undefined, fallback: string): string;
+function isoOr(value: string | undefined, fallback: null): string | null;
+function isoOr(value: string | undefined, fallback: string | null): string | null {
+  if (typeof value === "string" && !Number.isNaN(Date.parse(value))) return value;
+  return fallback;
+}
+
 type CommandAdapter<K extends CommandName> = (
   ctx: AdapterContext,
   payload: CommandRequest<K>,
@@ -666,12 +790,28 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     }
     return toProject(record);
   },
+  "project.archive": async (ctx, payload) => {
+    // Rust returns Option<ProjectRecord>: null for an unknown project id,
+    // the archived record otherwise.
+    const record = (await ctx.call("project_archive", {
+      project_id: payload.project_id,
+    })) as ProjectRecordWire | null;
+    return record === null || record === undefined ? null : toProject(record);
+  },
 
   "config.get": async () => {
-    throw unsupported("config.get");
+    // NOTE: the committed Rust surface DOES register `config_get`/`config_put`
+    // (src-tauri/src/commands.rs), but they transport the APP config
+    // (providers/worker/secrets — secrets.rs `AppConfig`), not a project's
+    // RESEARCH config (PRD §5: topic/purpose/depth/dimensions/…). No
+    // committed command reads or writes a project research config, so this
+    // frontend command stays mock-only until the core exposes one; mapping
+    // it onto config_get would silently hand ConfigPage the wrong payload.
+    throw unsupported("config.get", "research-config read");
   },
   "config.update": async () => {
-    throw unsupported("config.update");
+    // See config.get: `config_put` persists AppConfig, not ResearchConfig.
+    throw unsupported("config.update", "research-config write");
   },
 
   "plan.get": async (ctx, payload) => {
@@ -679,10 +819,10 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     return plans.length > 0 ? toResearchPlan(plans[plans.length - 1]) : null;
   },
   "plan.regenerate": async () => {
-    throw unsupported("plan.regenerate");
+    throw unsupported("plan.regenerate", "plan generation");
   },
   "plan.updateTask": async () => {
-    throw unsupported("plan.updateTask");
+    throw unsupported("plan.updateTask", "plan task editing");
   },
   "plan.approve": async (ctx, payload) => {
     const entry = await latestPlanWire(ctx, payload.project_id);
@@ -695,11 +835,32 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     return toResearchPlan(refreshed[refreshed.length - 1] ?? entry);
   },
   "plan.reject": async () => {
-    throw unsupported("plan.reject");
+    throw unsupported("plan.reject", "plan review decision");
   },
 
-  "run.get": async () => {
-    throw unsupported("run.get");
+  "run.get": async (ctx, payload) => {
+    // Bridged through the session job registry: no committed Rust command
+    // maps a project onto its worker job, so a run that was not started
+    // from this window reads as "no run" rather than fabricated state.
+    const job = ctx.sessionJobs.get(payload.project_id);
+    if (!job) return null;
+    const envelope = (await ctx.call("run_get", {
+      job_id: job.job_id,
+    })) as RunGetEnvelopeWire;
+    const now = new Date().toISOString();
+    return {
+      id: envelope.task_rollup?.run_id ?? envelope.job?.run_id ?? job.run_id,
+      project_id: payload.project_id,
+      plan_id: job.plan_id,
+      // The orchestrator-projected rollup is the authority (PRD §7: SQLite
+      // is authoritative); the worker envelope stands in when the run is
+      // not yet resolvable locally.
+      state: runStateFrom(envelope.task_rollup?.run_status ?? envelope.job?.status),
+      config_snapshot: RUN_CONFIG_SNAPSHOT_PLACEHOLDER,
+      plan_snapshot_title: job.plan_title,
+      started_at: isoOr(envelope.job?.created_at, null),
+      updated_at: isoOr(envelope.job?.updated_at, now),
+    } satisfies ResearchRun;
   },
   "run.start": async (ctx, payload) => {
     const entry = await latestPlanWire(ctx, payload.project_id);
@@ -709,6 +870,12 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
       // worker rejects the job without it (PLAN_NOT_APPROVED).
       approve_plan: true,
     })) as RunStartedWire;
+    ctx.sessionJobs.set(payload.project_id, {
+      job_id: started.job_id,
+      run_id: started.run_id,
+      plan_id: entry.plan.id,
+      plan_title: entry.plan.title,
+    });
     const now = new Date().toISOString();
     return {
       id: started.run_id,
@@ -721,6 +888,17 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
       updated_at: now,
     } satisfies ResearchRun;
   },
+  "run.cancel": async (ctx, payload) => {
+    // Same session job registry as run.get — see its comment.
+    const job = ctx.sessionJobs.get(payload.project_id);
+    if (!job) {
+      throw notFound(
+        "该项目当前没有可取消的研究运行。",
+        `no worker job recorded for project '${payload.project_id}' in this session`,
+      );
+    }
+    return (await ctx.call("run_cancel", { job_id: job.job_id })) === true;
+  },
 
   "task.list": async (ctx, payload) => {
     const plans = await planListWire(ctx, payload.project_id);
@@ -729,16 +907,16 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     );
   },
   "task.pause": async () => {
-    throw unsupported("task.pause");
+    throw unsupported("task.pause", "per-task worker dispatch (ADR-019 phase 2)");
   },
   "task.resume": async () => {
-    throw unsupported("task.resume");
+    throw unsupported("task.resume", "per-task worker dispatch (ADR-019 phase 2)");
   },
   "task.retry": async () => {
-    throw unsupported("task.retry");
+    throw unsupported("task.retry", "per-task worker dispatch (ADR-019 phase 2)");
   },
   "task.cancel": async () => {
-    throw unsupported("task.cancel");
+    throw unsupported("task.cancel", "per-task worker dispatch (ADR-019 phase 2)");
   },
 
   "source.list": async (ctx, payload) => {
@@ -760,7 +938,7 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     return records.map(toClaim);
   },
   "evidence.listByClaim": async () => {
-    throw unsupported("evidence.listByClaim");
+    throw unsupported("evidence.listByClaim", "evidence listing");
   },
   "relation.list": async (ctx, payload) => {
     const records = (await ctx.call("relations_list", {
@@ -769,7 +947,7 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     return records.map(toRelation);
   },
   "graph.get": async () => {
-    throw unsupported("graph.get");
+    throw unsupported("graph.get", "graph projection");
   },
 
   "coverage.get": async (ctx, payload) => {
@@ -790,10 +968,10 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     } satisfies GapReport;
   },
   "gap.approveProposal": async () => {
-    throw unsupported("gap.approveProposal");
+    throw unsupported("gap.approveProposal", "gap proposal actions");
   },
   "gap.dismissProposal": async () => {
-    throw unsupported("gap.dismissProposal");
+    throw unsupported("gap.dismissProposal", "gap proposal actions");
   },
   "timeline.get": async (ctx, payload) => {
     const records = (await ctx.call("events_list", {
@@ -808,16 +986,73 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
   },
 
   "assistant.getContext": async () => {
-    throw unsupported("assistant.getContext");
+    throw unsupported("assistant.getContext", "assistant context projection");
   },
   "assistant.act": async () => {
-    throw unsupported("assistant.act");
+    throw unsupported("assistant.act", "assistant actions");
   },
   "assistant.saveDecision": async () => {
-    throw unsupported("assistant.saveDecision");
+    throw unsupported("assistant.saveDecision", "decision journal persistence");
   },
   "assistant.listDecisions": async () => {
-    throw unsupported("assistant.listDecisions");
+    throw unsupported("assistant.listDecisions", "decision journal read");
+  },
+
+  "secrets.setProviderKey": async (ctx, payload) => {
+    // The key value crosses IPC exactly once; the response is only the
+    // keychain reference (RUST-04: values never leave the keychain).
+    const reference = (await ctx.call("secrets_set_provider_key", {
+      provider: payload.provider,
+      api_key: payload.api_key,
+    })) as SecretRefWire;
+    return { provider: reference.provider, key_name: reference.key_name };
+  },
+  "secrets.listProviders": async (ctx) => {
+    const providers = (await ctx.call("secrets_list_providers", {})) as ProviderKeyStatusWire[];
+    return providers.map((provider) => ({
+      name: provider.name,
+      base_url: provider.base_url,
+      model: provider.model,
+      key_ref: {
+        provider: provider.key_ref.provider,
+        key_name: provider.key_ref.key_name,
+      },
+      has_key: provider.has_key,
+    }));
+  },
+
+  "vault.exportProject": async (ctx, payload) => {
+    const result = (await ctx.call("vault_export_project", {
+      project_id: payload.project_id,
+    })) as VaultExportResultWire;
+    return {
+      written: result.written,
+      unchanged: result.unchanged,
+      conflicts: result.conflicts,
+      skipped: result.skipped,
+      sources: result.sources,
+      claims: result.claims,
+      maps: result.maps,
+      // `ours`/`theirs_hash` carry file content and hashes the UI has no
+      // use for; the projection keeps the decision-relevant fields only.
+      merge_proposals: result.merge_proposals.map((proposal) => ({
+        path: proposal.path,
+        node_id: proposal.node_id,
+        reason: proposal.reason,
+      })),
+      vault_root: result.vault_root,
+    };
+  },
+
+  "core.info": async (ctx) => {
+    // `core_info` declares no IpcRequest parameter; Tauri ignores the
+    // envelope argument, so it flows through the same call path.
+    const info = (await ctx.call("core_info", {})) as CoreInfoWire;
+    return info;
+  },
+  "core.ping": async (ctx, payload) => {
+    const pong = (await ctx.call("ping", { echo: payload.echo })) as { echo: string };
+    return { echo: pong.echo };
   },
 };
 
@@ -840,6 +1075,10 @@ export function createTauriTransport(options: TauriTransportOptions = {}): Trans
       "createTauriTransport: window.__TAURI__.core.invoke is unavailable; outside the desktop window the mock transport is the fallback.",
     );
   }
+  // One registry per transport instance: the app uses a single transport
+  // singleton (transportProvider), so run.start → run.get/run.cancel share
+  // it for the whole session.
+  const sessionJobs = new Map<string, SessionJob>();
   return {
     async invoke<K extends CommandName>(
       command: K,
@@ -849,7 +1088,7 @@ export function createTauriTransport(options: TauriTransportOptions = {}): Trans
       if (invokeOptions?.signal?.aborted) {
         throw new DOMException("The request was aborted", "AbortError");
       }
-      const ctx = makeContext(invoke, invokeOptions?.signal);
+      const ctx = makeContext(invoke, sessionJobs, invokeOptions?.signal);
       let candidate: unknown;
       try {
         candidate = await adapters[command](ctx, payload);

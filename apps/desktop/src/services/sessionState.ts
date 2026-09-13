@@ -6,16 +6,16 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
  * lock, permission revocation, or version invalidation must be cleared
  * proactively").
  *
- * W2-05 INTEGRATION POINT — read this before wiring event listeners.
+ * WIRED CALL SITES (app/bridges.tsx):
  * ---------------------------------------------------------------------
- * The real event sources arrive with W2-05 (Tauri IPC). The transport
- * contract is frozen until then, so NO event names are defined here and
- * NO speculative listeners exist in this codebase yet. When W2-05 lands:
- *
- *   1. Subscribe to the W2-05 transport events that report a project
- *      lock, a permission revocation, or a version invalidation for the
- *      active project (event names are W2-05's to define — do not guess).
- *   2. In the handler, call:
+ * 1. Project switch — SessionInvalidationBridge subscribes to the
+ *    workspace store and calls this function synchronously on every
+ *    activeProjectId change, before the next project's views mount.
+ * 2. Event kinds — the frozen research-event vocabulary
+ *    (packages/schemas/event.v1.json) defines NO project-lock,
+ *    permission-revocation, or version-invalidation kinds today, so no
+ *    event listener exists for them (inventing event names is forbidden).
+ *    When such a kind is ratified, its listener must call:
  *
  *        purgeVolatileSessionState(queryClient);
  *        useWorkspaceStore.getState().setActiveProject("");
@@ -25,16 +25,18 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
  *      gone, and moving to the projects view (a caller decision, not
  *      this function's) remounts only project-list content, so nothing
  *      refetches a project the user may no longer be allowed to read.
- *   3. Keep this call synchronous and immediate — the invalidation must
- *      happen proactively on the event, never lazily on the next render.
+ *    Keep that call synchronous and immediate — the invalidation must
+ *    happen proactively on the event, never lazily on the next render.
  *
  * What this function clears:
  *   - Every project-scoped TanStack Query cache entry. All keys built by
  *     `queryKeys` in services/queries.ts carry a project id in some
  *     position after the first element (e.g. ["plan", projectId],
  *     ["assistant", "context", projectId], ["evidence", projectId,
- *     claimId]); the only global key is ["projects"] (length 1). The
- *     predicate below removes exactly the scoped entries.
+ *     claimId]); the only global keys are ["projects"], ["core","info"],
+ *     and ["secrets","providers"] — the latter two simply refetch when
+ *     next mounted. The predicate below removes exactly the scoped
+ *     entries.
  *   - Volatile workspace-store overlay flags via the store's
  *     `resetVolatileState()` action.
  *
