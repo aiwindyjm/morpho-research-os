@@ -26,6 +26,23 @@
   --morpho-color-error: #ed7788;
   --morpho-color-info: #72a7ff;
 
+  /* Color — effect/layout expansion (ADR-013): sunken shell surface,
+   * brand-gradient text, local avatar, overlay scrim + white tint ladder,
+   * graph palette. Values verified against prototype/styles.css. */
+  --morpho-color-surface-sunken: #0d121b;
+  --morpho-color-text-on-brand: #f2f6ff;
+  --morpho-color-avatar-bg: #b8c8ef;
+  --morpho-color-avatar-ink: #151a24;
+  --morpho-color-scrim: rgb(0 0 0 / 0.6);
+  --morpho-color-overlay-hairline: rgb(255 255 255 / 0.018);
+  --morpho-color-overlay-soft: rgb(255 255 255 / 0.03);
+  --morpho-color-overlay-hover: rgb(255 255 255 / 0.05);
+  --morpho-color-overlay-strong: rgb(255 255 255 / 0.2);
+  --morpho-color-graph-node: #1b273b;
+  --morpho-color-graph-edge: rgb(114 167 255 / 0.25);
+  --morpho-color-graph-edge-hover: rgb(114 167 255 / 0.55);
+  --morpho-color-graph-edge-active: rgb(114 167 255 / 0.7);
+
   /* Spacing scale */
   --morpho-space-xs: 4px;
   --morpho-space-sm: 8px;
@@ -33,6 +50,14 @@
   --morpho-space-lg: 16px;
   --morpho-space-xl: 24px;
   --morpho-space-xxl: 32px;
+  --morpho-space-dot: 7px; /* status dot diameter */
+
+  /* Layout — shell and floating dock scaffolding */
+  --morpho-layout-sidebar-width: 236px;
+  --morpho-layout-topbar-height: 65px;
+  --morpho-layout-dock-width: 360px;
+  --morpho-layout-dock-height: 530px;
+  --morpho-layout-dock-offset: 76px;
 
   /* Typography — size/line-height pairs per tier */
   --morpho-text-display-size: 28px;
@@ -49,11 +74,19 @@
   --morpho-text-caption-line-height: 18px;
   --morpho-text-label-size: 13px;
   --morpho-text-label-line-height: 20px;
+  --morpho-text-micro-size: 11px;
+  --morpho-text-micro-line-height: 16px;
+  --morpho-text-nano-size: 10px;
+  --morpho-text-nano-line-height: 14px;
+  --morpho-text-subhead-size: 17px;
+  --morpho-text-subhead-line-height: 24px;
 
   /* Radii */
   --morpho-radius-sm: 6px;
   --morpho-radius-md: 8px;
   --morpho-radius-lg: 12px;
+  --morpho-radius-brand: 10px; /* brand tile / floating menu surfaces */
+  --morpho-radius-dock: 14px; /* assistant dock panel */
 
   /* Shadow */
   --morpho-shadow-panel: 0 18px 45px rgb(0 0 0 / 0.18);

@@ -106,7 +106,14 @@ function MetricCard({
         {meta}
       </span>
       {progress !== undefined ? (
-        <div className="progress-track mt-xs">
+        <div
+          className="progress-track mt-xs"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress)}
+          aria-label="覆盖度进度"
+        >
           <span className="progress-fill" style={{ width: `${progress}%` }} />
         </div>
       ) : null}
@@ -222,7 +229,11 @@ export function OverviewPage() {
         (g) => g.id === createdGapId && g.proposal_status === "approved",
       )
     : undefined;
-  const recentActivity = (timeline.data ?? []).slice(0, 5);
+  // Spec overview.md: 按 timestamp 倒序取前 5 条。Query 返回顺序不作保证，
+  // 这里对副本做防御性排序，绝不改动 query 缓存数据。
+  const recentActivity = [...(timeline.data ?? [])]
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 5);
 
   const planIsDraft = plan.data?.status === "draft";
   const runActive =
@@ -360,7 +371,9 @@ export function OverviewPage() {
                         ) : (
                           <span
                             aria-hidden="true"
-                            className={`w-7 shrink-0 text-center text-body ${marker.className}`}
+                            className={`w-7 shrink-0 text-center text-body ${marker.className} ${
+                              state === "current" ? "pulse" : ""
+                            }`}
                           >
                             {marker.glyph}
                           </span>
@@ -377,7 +390,14 @@ export function OverviewPage() {
                                 : "等待前置任务"}
                           </p>
                           {state === "current" ? (
-                            <div className="progress-track mt-xs">
+                            <div
+                              className="progress-track mt-xs"
+                              role="progressbar"
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={runProgressPct}
+                              aria-label="任务完成进度"
+                            >
                               <span
                                 className="progress-fill"
                                 style={{ width: `${runProgressPct}%` }}
@@ -493,7 +513,14 @@ export function OverviewPage() {
                         {Math.round(dim.coverage * 100)}%
                       </span>
                     </div>
-                    <div className="progress-track">
+                    <div
+                      className="progress-track"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(dim.coverage * 100)}
+                      aria-label={`${dimensionLabel(dim.dimension)}覆盖度进度`}
+                    >
                       <span
                         className="progress-fill"
                         style={{ width: `${Math.round(dim.coverage * 100)}%` }}

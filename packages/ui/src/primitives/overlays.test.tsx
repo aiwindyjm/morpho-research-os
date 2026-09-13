@@ -33,6 +33,8 @@ describe("Dialog primitive", () => {
 
     const dialog = screen.getByRole("dialog", { name: "创建项目" });
     expect(dialog).toHaveAttribute("aria-modal", "true");
+    // Scrim consumes the semantic token utility, not bg-black/60.
+    expect(screen.getByTestId("dialog-overlay")).toHaveClass("bg-scrim");
     expect(screen.getByRole("button", { name: "确认" })).toHaveFocus();
 
     // Tab from the last focusable wraps back to the first.
@@ -99,5 +101,40 @@ describe("Tooltip primitive", () => {
     await user.tab();
     expect(trigger).toHaveFocus();
     expect(screen.getByRole("tooltip")).toBeInTheDocument();
+  });
+
+  it("wires aria-describedby on the trigger to the tooltip id", async () => {
+    const user = userEvent.setup();
+    render(
+      <Tooltip label="导出日志">
+        <button>导出</button>
+      </Tooltip>,
+    );
+    const trigger = screen.getByRole("button", { name: "导出" });
+    expect(trigger).not.toHaveAttribute("aria-describedby");
+
+    await user.hover(trigger);
+    const tooltip = screen.getByRole("tooltip");
+    expect(trigger).toHaveAttribute("aria-describedby", tooltip.id);
+    expect(tooltip).toHaveTextContent("导出日志");
+
+    await user.unhover(trigger);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(trigger).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("preserves an existing aria-describedby on the trigger", async () => {
+    const user = userEvent.setup();
+    render(
+      <Tooltip label="格式说明">
+        <button aria-describedby="hint-1">格式</button>
+      </Tooltip>,
+    );
+    const trigger = screen.getByRole("button", { name: "格式" });
+    await user.hover(trigger);
+    const described = trigger.getAttribute("aria-describedby") ?? "";
+    const ids = described.split(" ");
+    expect(ids).toContain("hint-1");
+    expect(ids).toContain(screen.getByRole("tooltip").id);
   });
 });

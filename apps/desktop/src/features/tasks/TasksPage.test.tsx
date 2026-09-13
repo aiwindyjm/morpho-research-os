@@ -46,6 +46,18 @@ describe("TasksPage prototype alignment", () => {
     expect(screen.getAllByTestId("task-row")).toHaveLength(14);
   });
 
+  it("labels the filter tab group for assistive technology", async () => {
+    renderPage();
+
+    const group = await screen.findByRole("group", { name: "任务状态筛选" });
+    expect(
+      within(group).getByRole("button", { name: "全部 14" }),
+    ).toBeInTheDocument();
+    expect(
+      within(group).getByRole("button", { name: "已完成 12" }),
+    ).toBeInTheDocument();
+  });
+
   it("filters rows when a tab is selected", async () => {
     const user = userEvent.setup();
     renderPage();

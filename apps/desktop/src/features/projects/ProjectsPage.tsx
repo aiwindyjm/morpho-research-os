@@ -91,7 +91,7 @@ export function ProjectsPage() {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="搜索我的研究"
                 aria-label="搜索我的研究"
-                className="w-64 border-none bg-transparent text-body text-text-primary placeholder:text-text-muted focus:outline-none"
+                className="w-64 border-none bg-transparent text-body text-text-primary placeholder:text-text-muted"
               />
             </div>
             <span className="text-caption text-text-muted">
@@ -228,7 +228,7 @@ function ProjectCard({
       data-testid="project-card"
       className={`relative flex h-full min-h-[190px] flex-col overflow-hidden p-lg ${
         active
-          ? "border-[rgb(114_167_255/0.4)] bg-gradient-to-br from-[rgb(45_81_145/0.2)] to-surface"
+          ? "card-active-accent"
           : ""
       }`}
     >
@@ -236,14 +236,14 @@ function ProjectCard({
         <span className={status.pill}>{status.label}</span>
         <button
           type="button"
-          aria-label="项目操作"
+          aria-label="打开项目"
           onClick={onOpen}
           className="rounded px-xs text-body text-text-muted hover:text-text-primary"
         >
           ⋯
         </button>
       </div>
-      <h2 className="mt-md text-[17px] font-semibold leading-tight text-text-primary">
+      <h2 className="mt-md text-subhead font-semibold leading-tight text-text-primary">
         {name}
       </h2>
       <p className="mt-xs min-h-[45px] text-caption leading-relaxed text-text-secondary">
@@ -255,7 +255,14 @@ function ProjectCard({
         <span>更新于 {updatedAt.slice(0, 10)}</span>
       </div>
       <div className="mt-auto pt-md">
-        <div className="progress-track h-[3px]">
+        <div
+          className="progress-track"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+          aria-label="项目进度"
+        >
           <span className="progress-fill" style={{ width: `${pct}%` }} />
         </div>
       </div>

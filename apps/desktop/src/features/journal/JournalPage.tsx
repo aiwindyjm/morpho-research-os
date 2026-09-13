@@ -54,7 +54,7 @@ export function JournalPage() {
             <span className="pill pill-accent">{date}</span>
             <span data-testid="journal-count">{entries.length} 条记录</span>
             <span className="ml-auto flex items-center gap-sm text-success">
-              <span aria-hidden="true" className="inline-block size-[7px] rounded-full bg-success" />
+              <span aria-hidden="true" className="inline-block size-dot rounded-full bg-success" />
               仅本机
             </span>
           </div>
@@ -62,10 +62,10 @@ export function JournalPage() {
           <ul className="min-h-[260px] py-md" data-testid="journal-list">
             {entries.map((entry) => (
               <li key={entry.id} className="grid grid-cols-[48px_1fr] gap-md border-b border-border py-sm last:border-b-0">
-                <span className="pt-xs font-mono text-[10px] text-text-muted">{entry.time}</span>
+                <span className="pt-xs font-mono text-nano text-text-muted">{entry.time}</span>
                 <div>
                   <strong
-                    className={`text-[11px] ${entry.author === "user" ? "text-info" : "text-accent-alt"}`}
+                    className={`text-micro ${entry.author === "user" ? "text-info" : "text-accent-alt"}`}
                   >
                     {entry.author === "user" ? "用户" : "Morpho"}
                   </strong>
@@ -118,8 +118,8 @@ export function JournalPage() {
             )}
           </ul>
           <div className="mt-lg rounded-md border border-[rgb(114_167_255/0.2)] bg-accent-soft p-md">
-            <strong className="text-[10px] text-text-primary">当前版本限制</strong>
-            <p className="mt-xs text-[10px] leading-relaxed text-text-muted">
+            <strong className="text-nano text-text-primary">当前版本限制</strong>
+            <p className="mt-xs text-nano leading-relaxed text-text-muted">
               Web 预览无法直接写入工作区。正式桌面版会由 Rust Core 按日追加本地文件。
             </p>
           </div>

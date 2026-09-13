@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "@morpho/ui/tokens.css";
 
+/* Automatic source detection only covers apps/desktop; the primitives in
+ * packages/ui are scanned explicitly so utilities they use (bg-scrim,
+ * shadow-panel, …) are generated. */
+@source "../../../../packages/ui/src";
+
 /*
  * Morpho token binding: semantic design tokens from packages/ui are mapped
  * into Tailwind theme utilities. Pages and features never hard-code raw
@@ -21,6 +26,19 @@
   --color-error: var(--morpho-color-error);
   --color-info: var(--morpho-color-info);
   --color-accent-alt: var(--morpho-color-accent-alt);
+  --color-surface-sunken: var(--morpho-color-surface-sunken);
+  --color-text-on-brand: var(--morpho-color-text-on-brand);
+  --color-avatar-bg: var(--morpho-color-avatar-bg);
+  --color-avatar-ink: var(--morpho-color-avatar-ink);
+  --color-scrim: var(--morpho-color-scrim);
+  --color-overlay-hairline: var(--morpho-color-overlay-hairline);
+  --color-overlay-soft: var(--morpho-color-overlay-soft);
+  --color-overlay-hover: var(--morpho-color-overlay-hover);
+  --color-overlay-strong: var(--morpho-color-overlay-strong);
+  --color-graph-node: var(--morpho-color-graph-node);
+  --color-graph-edge: var(--morpho-color-graph-edge);
+  --color-graph-edge-hover: var(--morpho-color-graph-edge-hover);
+  --color-graph-edge-active: var(--morpho-color-graph-edge-active);
 
   --spacing-xs: 4px;
   --spacing-sm: 8px;
@@ -28,10 +46,18 @@
   --spacing-lg: 16px;
   --spacing-xl: 24px;
   --spacing-xxl: 32px;
+  --spacing-dot: var(--morpho-space-dot);
+  --spacing-sidebar: var(--morpho-layout-sidebar-width);
+  --spacing-topbar: var(--morpho-layout-topbar-height);
+  --spacing-dock: var(--morpho-layout-dock-width);
+  --spacing-dock-h: var(--morpho-layout-dock-height);
+  --spacing-dock-offset: var(--morpho-layout-dock-offset);
 
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-brand: var(--morpho-radius-brand);
+  --radius-dock: var(--morpho-radius-dock);
 
   --text-display: 28px;
   --text-display--line-height: 36px;
@@ -54,6 +80,13 @@
   --text-label: 13px;
   --text-label--line-height: 20px;
   --text-label--font-weight: 500;
+  --text-micro: var(--morpho-text-micro-size);
+  --text-micro--line-height: var(--morpho-text-micro-line-height);
+  --text-nano: var(--morpho-text-nano-size);
+  --text-nano--line-height: var(--morpho-text-nano-line-height);
+  --text-subhead: var(--morpho-text-subhead-size);
+  --text-subhead--line-height: var(--morpho-text-subhead-line-height);
+  --leading-caption: var(--morpho-text-caption-line-height);
 
   --shadow-panel: 0 18px 45px rgb(0 0 0 / 0.18);
   --shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.38);

@@ -4,7 +4,7 @@ Page: 项目（Projects）
 Purpose: 列出、创建、切换研究项目；展示每个项目的计划状态与任务进度概览。项目是隔离边界。
 Pattern: Dashboard（卡片网格）
 Layout: PageShell；卡片网格 1/2/3 列响应式
-Navigation: 侧边栏「项目」；卡片「进入工作台」切换项目，「研究配置」跳转配置视图
+Navigation: 侧边栏「我的研究」；卡片「进入工作台」切换项目，「研究配置」跳转配置视图
 Sections: 项目卡片（名称、描述、计划状态、待审核数、任务进度、更新时间）
 Components: Card, Button, Dialog, Input, Textarea, PageShell, PageStates；prototype.css pill / progress-track 类
 States: 默认/当前项目高亮；按钮 hover 与 focus-visible

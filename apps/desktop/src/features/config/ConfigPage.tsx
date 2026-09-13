@@ -25,7 +25,9 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
  * Prototype alignment (spec §6.2): one panel with four numbered sections —
  * 01 研究主题 / 02 研究范围 / 03 研究维度 / 04 来源偏好. Every input maps
  * to an existing ResearchConfig field; the useConfig/useUpdateConfig flow,
- * save validation, and error handling are unchanged.
+ * save validation, and error handling are unchanged. The 放弃修改 action
+ * (spec States/Interactions) rolls the local draft back to the last-saved
+ * server values while staying on the page.
  */
 
 /** Year ⇄ ISO-8601 mapping for the prototype's year-range inputs. */
@@ -130,7 +132,7 @@ function FormSection({
     <section className="grid grid-cols-[56px_1fr] gap-md border-b border-border py-lg last:border-b-0">
       <span
         aria-hidden="true"
-        className="pt-[3px] font-mono text-[11px] font-bold text-info"
+        className="pt-[3px] font-mono text-micro font-bold text-info"
       >
         {number}
       </span>
@@ -228,6 +230,16 @@ export function ConfigPage({ projectId }: { projectId: string }) {
             }
           >
             取消
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setDraft(null);
+              setSaveError(null);
+            }}
+            disabled={!dirty}
+          >
+            放弃修改
           </Button>
           <Button
             variant="primary"
@@ -343,7 +355,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                           index === DEPTH_LEVELS.length - 1 ? "rounded-r-md" : ""
                         } ${
                           selected
-                            ? "relative z-10 border-[rgb(114_167_255/0.45)] bg-accent-soft text-text-primary"
+                            ? "relative z-10 chip-selected"
                             : "border-border bg-surface text-text-secondary hover:text-text-primary"
                         }`}
                       >
@@ -441,7 +453,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                     }
                     className={`rounded-full border px-md py-1.5 text-caption transition-colors duration-[var(--morpho-motion-fast)] ${
                       selected
-                        ? "border-[rgb(114_167_255/0.45)] bg-accent-soft text-info"
+                        ? "chip-selected"
                         : "border-border text-text-secondary hover:text-text-primary"
                     }`}
                   >
@@ -472,9 +484,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                   <label
                     key={preference.value}
                     className={`grid cursor-pointer grid-cols-[auto_1fr] gap-sm rounded-md border p-md transition-colors duration-[var(--morpho-motion-fast)] ${
-                      checked
-                        ? "border-[rgb(114_167_255/0.4)] bg-accent-soft/60"
-                        : "border-border hover:border-[rgb(114_167_255/0.3)]"
+                      checked ? "option-selected" : "border-border"
                     }`}
                   >
                     <input
@@ -493,7 +503,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                     />
                     <span
                       aria-hidden="true"
-                      className="text-body leading-[18px] text-info"
+                      className="text-body leading-caption text-info"
                     >
                       {preference.icon}
                     </span>
@@ -515,7 +525,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
         <p className="py-md text-caption text-text-muted">
           更新频率当前固定为手动（update_frequency: manual）；自动增量研究将在后续版本提供。
         </p>
-        <button type="submit" className="sr-only" aria-hidden="true" tabIndex={-1} />
+        <button type="submit" className="sr-only" />
       </form>
     </PageShell>
   );

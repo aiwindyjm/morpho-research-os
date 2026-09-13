@@ -55,10 +55,10 @@ export function ProjectSwitcher() {
           >
             <span
               aria-hidden="true"
-              className="size-2 shrink-0 rounded-full bg-accent-alt shadow-[0_0_0_4px_rgb(181_154_255/0.11)]"
+              className="size-2 shrink-0 rounded-full bg-accent-alt dot-glow-accent"
             />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12px] font-semibold text-text-primary">
+              <span className="block truncate text-caption font-semibold text-text-primary">
                 {isLoading ? "加载中…" : (active?.name ?? "未选择项目")}
               </span>
               <span className="block text-caption text-text-muted">Research project</span>
@@ -74,7 +74,7 @@ export function ProjectSwitcher() {
           <button
             type="button"
             data-testid="project-menu-manage"
-            className="text-[10px] text-info"
+            className="text-nano text-info"
             onClick={() => setActiveView("projects")}
           >
             管理全部
@@ -164,10 +164,10 @@ function ProjectMenuRow({ projectId, name }: { projectId: string; name: string }
   const done = context?.tasks_completed ?? 0;
   const status =
     context?.plan_status === "none" || total === 0
-      ? { label: "草稿 · 尚未运行", dot: "bg-text-muted shadow-[0_0_0_4px_rgb(132_144_165/0.1)]" }
+      ? { label: "草稿 · 尚未运行", dot: "dot-muted dot-glow-secondary" }
       : done < total
-        ? { label: `进行中 · ${total > 0 ? Math.round((done / total) * 100) : 0}%`, dot: "bg-accent-alt shadow-[0_0_0_4px_rgb(181_154_255/0.11)]" }
-        : { label: "已暂停 · 100%", dot: "bg-warning shadow-[0_0_0_4px_rgb(239_170_101/0.1)]" };
+        ? { label: `进行中 · ${total > 0 ? Math.round((done / total) * 100) : 0}%`, dot: "bg-accent-alt dot-glow-accent" }
+        : { label: "已暂停 · 100%", dot: "bg-warning dot-glow-warning" };
 
   return (
     <button
@@ -182,11 +182,11 @@ function ProjectMenuRow({ projectId, name }: { projectId: string; name: string }
     >
       <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${status.dot}`} />
       <span className="min-w-0 flex-1">
-        <strong className="block truncate text-[11px] font-semibold text-text-primary">{name}</strong>
+        <strong className="block truncate text-micro font-semibold text-text-primary">{name}</strong>
         <small className="block text-caption text-text-muted">{status.label}</small>
       </span>
       {isActive ? (
-        <span aria-hidden="true" className="text-[12px] text-info">
+        <span aria-hidden="true" className="text-caption text-info">
           ✓
         </span>
       ) : null}

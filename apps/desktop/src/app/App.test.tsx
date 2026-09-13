@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App";
@@ -137,6 +137,32 @@ describe("multi-project isolation through the UI", () => {
     renderApp();
     const otherTopic = await screen.findByLabelText(/研究主题/);
     expect(otherTopic).toHaveValue("脑机接口在运动康复中的应用");
+  });
+
+  it("an unsaved config draft does not carry into the switched project", async () => {
+    const user = userEvent.setup();
+    useWorkspaceStore.setState({ activeProjectId: PROJECT_A_ID, activeView: "config" });
+    renderApp();
+
+    const topicInput = await screen.findByLabelText(/研究主题/);
+    expect(topicInput).toHaveValue("大语言模型推理优化");
+    await user.clear(topicInput);
+    await user.type(topicInput, "未保存的跨项目草稿");
+
+    // Switch projects without saving. The same view instance stays
+    // mounted (only the store changes), so its local draft state must be
+    // discarded: saving here would otherwise write project A's draft
+    // into project B.
+    act(() => {
+      useWorkspaceStore.setState({ activeProjectId: PROJECT_B_ID });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/研究主题/)).toHaveValue(
+        "脑机接口在运动康复中的应用",
+      );
+    });
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
   });
 });
 

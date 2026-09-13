@@ -46,7 +46,11 @@ export function SettingsPage() {
   ];
 
   return (
-    <PageShell title="本地工作区设置" description="保持最少配置，只设置研究真正需要的内容。">
+    <PageShell
+      kicker="设置"
+      title="本地工作区设置"
+      description="保持最少配置，只设置研究真正需要的内容。"
+    >
       <div className="grid max-w-[850px] gap-md" data-testid="settings-grid">
         {cards.map((card) => (
           <Card key={card.title} className="grid grid-cols-[36px_1fr_auto] items-start gap-md p-lg">

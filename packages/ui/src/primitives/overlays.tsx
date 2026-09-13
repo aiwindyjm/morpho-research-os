@@ -1,5 +1,7 @@
 import {
+  cloneElement,
   createContext,
+  isValidElement,
   useCallback,
   useContext,
   useEffect,
@@ -77,7 +79,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-lg"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-lg"
       data-testid="dialog-overlay"
     >
       <div
@@ -87,7 +89,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className="w-full max-w-lg rounded-lg border border-border bg-surface-raised p-xl shadow-[var(--morpho-shadow-overlay)] animate-[var(--morpho-motion-slow)_var(--morpho-motion-ease)_fade-in]"
+        className="w-full max-w-lg rounded-lg border border-border bg-surface-raised p-xl shadow-overlay animate-[var(--morpho-motion-slow)_var(--morpho-motion-ease)_fade-in]"
       >
         <h2 id={titleId} className="text-h2 text-text-primary">
           {title}
@@ -155,7 +157,7 @@ export function Popover({ trigger, children, align = "start" }: PopoverProps) {
           role="dialog"
           aria-modal="false"
           data-testid="popover-panel"
-          className={`absolute top-[calc(100%+4px)] z-40 min-w-48 rounded-md border border-border bg-surface-raised p-md shadow-[var(--morpho-shadow-panel)] ${
+          className={`absolute top-[calc(100%+4px)] z-40 min-w-48 rounded-md border border-border bg-surface-raised p-md shadow-panel ${
             align === "end" ? "right-0" : "left-0"
           }`}
         >
@@ -176,10 +178,23 @@ export interface TooltipProps {
 }
 
 /** Registered primitive: Tooltip — visible on hover and keyboard focus,
- * linked to the trigger via aria-describedby. */
+ * linked to the trigger via aria-describedby. The tooltip id is wired onto
+ * the single trigger element child; non-element children render unchanged. */
 export function Tooltip({ label, children }: TooltipProps) {
   const [visible, setVisible] = useState(false);
   const tooltipId = useId();
+
+  let trigger = children;
+  if (isValidElement<{ "aria-describedby"?: string }>(children)) {
+    const existing = children.props["aria-describedby"];
+    trigger = cloneElement(children, {
+      "aria-describedby":
+        [existing, visible ? tooltipId : undefined]
+          .filter(Boolean)
+          .join(" ") || undefined,
+    });
+  }
+
   return (
     <span
       className="relative inline-flex"
@@ -188,12 +203,12 @@ export function Tooltip({ label, children }: TooltipProps) {
       onFocusCapture={() => setVisible(true)}
       onBlurCapture={() => setVisible(false)}
     >
-      {children}
+      {trigger}
       {visible ? (
         <span
           role="tooltip"
           id={tooltipId}
-          className="absolute bottom-[calc(100%+6px)] left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-sm border border-border bg-surface-raised px-sm py-xs text-caption text-text-primary shadow-[var(--morpho-shadow-panel)]"
+          className="absolute bottom-[calc(100%+6px)] left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-sm border border-border bg-surface-raised px-sm py-xs text-caption text-text-primary shadow-panel"
         >
           {label}
         </span>
@@ -272,7 +287,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 function ToastItem({ toast }: { toast: ToastMessage }) {
   return (
     <div
-      className={`fixed bottom-lg right-lg z-50 max-w-sm rounded-md border bg-surface-raised px-md py-sm shadow-[var(--morpho-shadow-panel)] ${toastVariantClasses[toast.variant]}`}
+      className={`fixed bottom-lg right-lg z-50 max-w-sm rounded-md border bg-surface-raised px-md py-sm shadow-panel ${toastVariantClasses[toast.variant]}`}
     >
       <p className="text-label">{toast.title}</p>
       {toast.detail ? (

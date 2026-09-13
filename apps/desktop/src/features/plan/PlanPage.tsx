@@ -230,7 +230,7 @@ export function PlanPage({ projectId }: { projectId: string }) {
             {/* 汇总条：全部来自真实查询，不用原型里的示意数字。 */}
             <div
               data-testid="plan-summary"
-              className="grid grid-cols-4 border-b border-border bg-white/[0.018] px-lg py-md"
+              className="grid grid-cols-4 border-b border-border bg-overlay-hairline px-lg py-md"
             >
               <SummaryCell label="预计任务" value={plannedTasks} first />
               <SummaryCell label="来源" value={(sources ?? []).length} />
@@ -249,7 +249,7 @@ export function PlanPage({ projectId }: { projectId: string }) {
                       >
                         ⋮⋮
                       </span>
-                      <span className="font-mono text-[11px] font-bold text-info">
+                      <span className="font-mono text-micro font-bold text-info">
                         {groupNumber(sectionIndex)}
                       </span>
                       <div className="min-w-0">
@@ -276,7 +276,7 @@ export function PlanPage({ projectId }: { projectId: string }) {
                             key={task.id}
                             className="ml-[68px] grid grid-cols-[42px_1fr_auto] items-center gap-sm border-t border-border py-sm"
                           >
-                            <span className="font-mono text-[10px] text-text-muted">
+                            <span className="font-mono text-nano text-text-muted">
                               {groupNumber(sectionIndex)}.{taskIndex + 1}
                             </span>
                             <span className="min-w-0 text-body text-text-primary">

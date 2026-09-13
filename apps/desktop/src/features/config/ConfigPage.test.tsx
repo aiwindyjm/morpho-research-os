@@ -90,4 +90,24 @@ describe("ConfigPage (prototype numbered sections)", () => {
       expect(stored.time_range.from).toBe("2015-01-01T00:00:00.000Z");
     });
   });
+
+  it("放弃修改 discards the draft and restores the last-saved server values", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const topic = await screen.findByLabelText(/研究主题/);
+    const discard = screen.getByRole("button", { name: "放弃修改" });
+    // Without a local draft the discard action is unavailable.
+    expect(discard).toBeDisabled();
+
+    await user.type(topic, "（草稿）");
+    expect(topic).toHaveValue("脑机接口在运动康复中的应用（草稿）");
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
+
+    await user.click(discard);
+    // Fields fall back to the saved server values and the draft is cleared
+    // (save and discard return to their disabled, clean state).
+    expect(topic).toHaveValue("脑机接口在运动康复中的应用");
+    expect(discard).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+  });
 });

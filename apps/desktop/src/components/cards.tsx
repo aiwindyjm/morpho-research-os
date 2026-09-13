@@ -166,7 +166,7 @@ export function SourceCard({
         </div>
         <div className="flex flex-col gap-xs">
           <span className={`text-caption ${tier.className}`}>{tier.label}</span>
-          <span className="font-mono text-[11px] text-text-muted">
+          <span className="font-mono text-micro text-text-muted">
             {source.quality
               ? ((source.quality.authority + source.quality.fitness) / 2).toFixed(2)
               : "—"}

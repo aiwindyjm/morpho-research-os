@@ -60,7 +60,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
   return (
     <div
       ref={ref}
-      className={`rounded-lg border border-border bg-surface p-lg shadow-[var(--morpho-shadow-panel)] ${className}`}
+      className={`rounded-lg border border-border bg-surface p-lg shadow-panel ${className}`}
       {...rest}
     >
       {children}

@@ -48,6 +48,19 @@
   border-radius: 50%;
 }
 
+/* Active/conflict card accents relocated from page code (ADR-013);
+ * `to bottom right in oklab` mirrors the previous bg-gradient-to-br
+ * utilities (Tailwind v4 default interpolation). */
+.card-active-accent {
+  border-color: rgb(114 167 255 / 0.4);
+  background-image: linear-gradient(to bottom right in oklab, rgb(45 81 145 / 0.2), var(--morpho-color-surface));
+}
+
+.card-active-error {
+  border-color: rgb(237 119 136 / 0.28);
+  background-image: linear-gradient(to bottom right in oklab, rgb(97 34 49 / 0.13), var(--morpho-color-surface));
+}
+
 .pill {
   width: fit-content;
   border-radius: 999px;
@@ -60,6 +73,22 @@
 .pill-neutral { color: var(--morpho-color-text-secondary); background: rgb(255 255 255 / 0.05); }
 .pill-error   { color: var(--morpho-color-error);    background: rgb(237 119 136 / 0.1); }
 
+/* Selection states for chips/filters and selectable option cards (ADR-013
+ * effect-layer expansion; values from the prototype chips/filters and the
+ * approved preference-card port). */
+.chip-selected {
+  color: var(--morpho-color-info);
+  border-color: rgb(114 167 255 / 0.45);
+  background-color: var(--morpho-color-accent-soft);
+}
+.option-selected {
+  border-color: rgb(114 167 255 / 0.4);
+  background-color: rgb(114 167 255 / 0.066);
+}
+.option-selected:hover {
+  border-color: rgb(114 167 255 / 0.3);
+}
+
 .badge-mono {
   border-radius: 4px;
   padding: 5px 6px;
@@ -71,6 +100,14 @@
 .node-badge-alt     { color: var(--morpho-color-accent-alt); background: rgb(181 154 255 / 0.1); }
 .node-badge-warning { color: var(--morpho-color-warning);    background: rgb(239 170 101 / 0.1); }
 .node-badge-error   { color: var(--morpho-color-error);      background: rgb(237 119 136 / 0.1); }
+
+/* Status-dot glows and muted dot (ADR-013 effect-layer expansion; mirrors the
+ * prototype project/paused/draft status dots). dot-muted resolves to
+ * text-secondary — the prototype draft-dot value (#8490a5). */
+.dot-glow-accent { box-shadow: 0 0 0 4px rgb(181 154 255 / 0.11); }
+.dot-glow-secondary { box-shadow: 0 0 0 4px rgb(132 144 165 / 0.1); }
+.dot-glow-warning { box-shadow: 0 0 0 4px rgb(239 170 101 / 0.1); }
+.dot-muted { background-color: var(--morpho-color-text-secondary); }
 
 .progress-track {
   height: 4px;
@@ -103,4 +140,10 @@
   top: 34px;
   bottom: -27px;
   border-left: 1px dashed var(--morpho-color-border);
+}
+
+/* Current-row pulse ring on the overview timeline marker (ADR-013
+ * effect-layer expansion; exact port of prototype/styles.css .pulse). */
+.pulse {
+  box-shadow: 0 0 0 5px rgb(114 167 255 / 0.08);
 }

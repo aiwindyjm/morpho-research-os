@@ -166,7 +166,7 @@ export function TasksPage({ projectId }: { projectId: string }) {
       >
         <Card className="px-lg pb-sm">
           <div className="flex min-h-[63px] flex-wrap items-center justify-between gap-sm border-b border-border">
-            <div className="flex items-center gap-md">
+            <div role="group" aria-label="任务状态筛选" className="flex items-center gap-md">
               {tabs.map(({ id, label, count }) => (
                 <button
                   key={id}
