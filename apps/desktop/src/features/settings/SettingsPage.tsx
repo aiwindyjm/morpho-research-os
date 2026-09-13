@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { ScrollText, Server, Sparkles, type LucideIcon } from "lucide-react";
 import { Alert, Badge, Button, Card, Input, useToast } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -22,14 +23,15 @@ import type { ProviderKeyStatus } from "@/types/domain";
  */
 
 function SettingsCard({
-  icon,
+  icon: Icon,
   title,
   description,
   value,
   children,
   testId,
 }: {
-  icon: string;
+  /** lucide component (COMPONENT_REGISTRY.md "Iconography"), never a glyph. */
+  icon: LucideIcon;
   title: string;
   description: string;
   value?: ReactNode;
@@ -45,7 +47,7 @@ function SettingsCard({
         aria-hidden="true"
         className="flex size-9 items-center justify-center rounded-md bg-accent-soft text-info"
       >
-        {icon}
+        <Icon size={16} strokeWidth={1.75} />
       </span>
       <div className="min-w-0">
         <h2 className="text-h3 text-text-primary">{title}</h2>
@@ -70,7 +72,7 @@ function CoreStatusCard() {
     return (
       <SettingsCard
         testId="core-status-card"
-        icon="◉"
+        icon={Server}
         title="桌面核心连接"
         description="检测 Rust 研究核心的协议与版本兼容性。"
         value={<span role="status">检测中…</span>}
@@ -81,7 +83,7 @@ function CoreStatusCard() {
     return (
       <SettingsCard
         testId="core-status-card"
-        icon="◉"
+        icon={Server}
         title="桌面核心连接"
         description="检测 Rust 研究核心的协议与版本兼容性。"
         value={<Badge variant="warning">离线</Badge>}
@@ -104,7 +106,7 @@ function CoreStatusCard() {
     return (
       <SettingsCard
         testId="core-status-card"
-        icon="◉"
+        icon={Server}
         title="桌面核心连接"
         description="检测 Rust 研究核心的协议与版本兼容性。"
         value={<span role="status">检测中…</span>}
@@ -114,7 +116,7 @@ function CoreStatusCard() {
   return (
     <SettingsCard
       testId="core-status-card"
-      icon="◉"
+      icon={Server}
       title="桌面核心连接"
       description="Rust 研究核心在线；协议版本如下。"
       value={
@@ -264,7 +266,7 @@ function ProviderKeysCard() {
   return (
     <SettingsCard
       testId="provider-keys-card"
-      icon="✦"
+      icon={Sparkles}
       title="AI Provider 密钥"
       description="为 OpenAI-compatible 或本地模型服务保存 API Key；密钥只进入系统钥匙串。"
       value={
@@ -313,7 +315,7 @@ export function SettingsPage() {
         <CoreStatusCard />
         <ProviderKeysCard />
         <SettingsCard
-          icon="▤"
+          icon={ScrollText}
           title="私有对话日志"
           description="日志默认只在本机保存，不参与研究任务。"
           value="已启用"

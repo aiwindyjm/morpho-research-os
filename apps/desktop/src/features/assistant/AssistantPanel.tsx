@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { Alert, Button, Textarea, useToast } from "@morpho/ui";
 import { ASSISTANT_ACTION_LABELS } from "@/types/labels";
 import type { AssistantAction, AssistantResponse } from "@/types/domain";
@@ -142,7 +143,7 @@ export function AssistantPanel() {
           aria-label="关闭 AI 助手"
           onClick={() => setAssistantOpen(false)}
         >
-          ×
+          <X size={16} strokeWidth={1.75} aria-hidden="true" />
         </Button>
       </header>
 

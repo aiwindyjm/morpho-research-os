@@ -1,13 +1,58 @@
 import { Button } from "@morpho/ui";
+import {
+  BookOpen,
+  FileText,
+  Globe,
+  House,
+  LayoutGrid,
+  ListChecks,
+  ListTree,
+  Plus,
+  ScrollText,
+  SlidersHorizontal,
+  Waypoints,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
-import { WORKSPACE_VIEWS, useWorkspaceStore, type ViewId } from "@/stores/workspaceStore";
+import {
+  WORKSPACE_VIEWS,
+  useWorkspaceStore,
+  type ViewIconName,
+  type ViewId,
+} from "@/stores/workspaceStore";
 import { ProjectSwitcher } from "./ProjectSwitcher";
+
+/**
+ * Iconography (docs/frontend/COMPONENT_REGISTRY.md): single icon library
+ * (lucide-react), 24-grid, stroke 1.75, 16px inline/nav size, single color
+ * via currentColor. Maps the store's icon names to components so the store
+ * itself stays data-only.
+ */
+const VIEW_ICONS: Record<ViewIconName, LucideIcon> = {
+  "layout-grid": LayoutGrid,
+  house: House,
+  plus: Plus,
+  "list-tree": ListTree,
+  "list-checks": ListChecks,
+  globe: Globe,
+  "book-open": BookOpen,
+  waypoints: Waypoints,
+  "scroll-text": ScrollText,
+  "sliders-horizontal": SlidersHorizontal,
+  "file-text": FileText,
+};
+
+/** Nav-size view icon: 16px, 1.75 stroke, inherits text color. */
+function ViewIcon({ name }: { name: ViewIconName }) {
+  const Icon = VIEW_ICONS[name];
+  return <Icon size={16} strokeWidth={1.75} aria-hidden="true" />;
+}
 
 /**
  * 236px navigation sidebar. Below the lg breakpoint it becomes an accessible
  * drawer (docs/frontend/PAGE_PATTERNS.md): aria-modal dialog semantics,
  * focus moves into the drawer when it opens, Tab is trapped, Escape closes
- * it, and focus returns to the opener (the ☰ 菜单 button) on close — the
+ * it, and focus returns to the opener (the 菜单 button) on close — the
  * same contract as the Dialog primitive.
  */
 export function Sidebar({
@@ -15,7 +60,7 @@ export function Sidebar({
   returnFocusTo,
 }: {
   variant: "docked" | "drawer";
-  /** Drawer close returns focus here (the ☰ 菜单 button in WorkspaceLayout). */
+  /** Drawer close returns focus here (the 菜单 button in WorkspaceLayout). */
   returnFocusTo?: RefObject<HTMLButtonElement | null>;
 }) {
   const activeView = useWorkspaceStore((s) => s.activeView);
@@ -67,8 +112,8 @@ export function Sidebar({
                   : ""
               }`}
             >
-              <span aria-hidden="true" className="w-4 text-center text-base leading-none">
-                {view.icon}
+              <span aria-hidden="true" className="flex w-4 shrink-0 justify-center">
+                <ViewIcon name={view.icon} />
               </span>
               {view.label}
             </Button>
@@ -93,8 +138,8 @@ export function Sidebar({
               activeView === settingsView.id ? "bg-accent-soft! text-text-primary!" : ""
             }`}
           >
-            <span aria-hidden="true" className="w-4 text-center text-base leading-none">
-              {settingsView.icon}
+            <span aria-hidden="true" className="flex w-4 shrink-0 justify-center">
+              <ViewIcon name={settingsView.icon} />
             </span>
             {settingsView.label}
           </Button>

@@ -1,4 +1,5 @@
 import { Badge, Button, Card } from "@morpho/ui";
+import { ArrowUpRight, BookOpen } from "lucide-react";
 import {
   TASK_STATE_BADGE_VARIANT,
   TASK_STATE_LABELS,
@@ -179,7 +180,7 @@ export function SourceCard({
           aria-label="打开来源"
           className="text-caption text-info hover:underline"
         >
-          ↗
+          <ArrowUpRight size={16} strokeWidth={1.75} aria-hidden="true" />
         </a>
       </li>
     );
@@ -254,10 +255,14 @@ export function KnowledgeCard({ node }: { node: KnowledgeNode }) {
         {node.summary}
       </p>
       <div className="mt-auto flex items-center gap-md text-caption text-text-muted">
-        <span>
-          ↗ {node.source_ids.length} 来源
+        <span className="flex items-center gap-xs">
+          <ArrowUpRight size={16} strokeWidth={1.75} aria-hidden="true" />
+          {node.source_ids.length} 来源
         </span>
-        <span>◇ {node.claim_ids.length} 结论</span>
+        <span className="flex items-center gap-xs">
+          <BookOpen size={16} strokeWidth={1.75} aria-hidden="true" />
+          {node.claim_ids.length} 结论
+        </span>
       </div>
     </Card>
   );

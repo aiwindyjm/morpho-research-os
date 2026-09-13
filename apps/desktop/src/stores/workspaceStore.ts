@@ -12,22 +12,31 @@ import { create } from "zustand";
  * per-view local state never cross projects.
  */
 
+/**
+ * Views carry icon *names*, not glyph characters: the store stays a
+ * data-only module, and the Sidebar maps each name to its lucide-react
+ * component at render time (docs/frontend/COMPONENT_REGISTRY.md
+ * "Iconography"). View labels/ids/testids are unchanged.
+ */
 export const WORKSPACE_VIEWS = [
-  { id: "projects", label: "我的研究", icon: "▦" },
-  { id: "overview", label: "概览", icon: "⌂" },
-  { id: "config", label: "研究配置", icon: "＋" },
-  { id: "plan", label: "研究计划", icon: "☷" },
-  { id: "tasks", label: "任务", icon: "✓" },
-  { id: "sources", label: "来源", icon: "◌" },
-  { id: "knowledge", label: "知识", icon: "◇" },
-  { id: "graph", label: "图谱", icon: "⌘" },
-  { id: "journal", label: "对话日志", icon: "▤" },
-  { id: "settings", label: "设置", icon: "⚙" },
+  { id: "projects", label: "我的研究", icon: "layout-grid" },
+  { id: "overview", label: "概览", icon: "house" },
+  { id: "config", label: "研究配置", icon: "plus" },
+  { id: "plan", label: "研究计划", icon: "list-tree" },
+  { id: "tasks", label: "任务", icon: "list-checks" },
+  { id: "sources", label: "来源", icon: "globe" },
+  { id: "knowledge", label: "知识", icon: "book-open" },
+  { id: "graph", label: "图谱", icon: "waypoints" },
+  { id: "journal", label: "对话日志", icon: "scroll-text" },
+  { id: "settings", label: "设置", icon: "sliders-horizontal" },
   // PRD §13 保留注册,不进侧栏导航(ADR-013)。
-  { id: "reports", label: "报告", icon: "◫" },
+  { id: "reports", label: "报告", icon: "file-text" },
 ] as const;
 
 export type ViewId = (typeof WORKSPACE_VIEWS)[number]["id"];
+
+/** Icon names carried by WORKSPACE_VIEWS; rendered by the Sidebar via lucide. */
+export type ViewIconName = (typeof WORKSPACE_VIEWS)[number]["icon"];
 
 export function viewLabel(view: ViewId): string {
   return WORKSPACE_VIEWS.find((v) => v.id === view)?.label ?? view;

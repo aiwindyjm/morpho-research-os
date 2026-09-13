@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { Menu, Sparkles } from "lucide-react";
 import { WORKSPACE_VIEWS, useWorkspaceStore } from "@/stores/workspaceStore";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -11,7 +12,7 @@ import { Button } from "@morpho/ui";
  * flexible canvas, floating contextual assistant. The assistant is a
  * bottom-right launcher that opens a 360×530 popup; below the lg
  * breakpoint the docked sidebar is hidden and navigation moves into a
- * drawer opened from the ☰ 菜单 button.
+ * drawer opened from the 菜单 button.
  */
 export function WorkspaceLayout() {
   const activeView = useWorkspaceStore((s) => s.activeView);
@@ -50,7 +51,8 @@ export function WorkspaceLayout() {
             onClick={() => setDrawerOpen(!drawerOpen)}
             data-testid="mobile-menu-button"
           >
-            ☰ 菜单
+            <Menu size={16} strokeWidth={1.75} aria-hidden="true" />
+            菜单
           </Button>
           <span className="text-label text-text-secondary">{viewLabel}</span>
         </div>
@@ -112,7 +114,7 @@ function AssistantDock() {
         data-testid="assistant-launcher"
       >
         <span aria-hidden="true" className="flex size-5 items-center justify-center rounded-full bg-overlay-strong">
-          ✦
+          <Sparkles size={18} strokeWidth={1.75} />
         </span>
         AI 助手
       </Button>

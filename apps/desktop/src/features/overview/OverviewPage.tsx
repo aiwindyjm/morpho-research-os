@@ -1,4 +1,14 @@
 import { useState } from "react";
+import {
+  BookOpen,
+  Check,
+  Circle,
+  CircleDot,
+  Play,
+  Search,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import { Button, Card } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -57,23 +67,25 @@ function pathStateOf(task: ResearchTask): PathState {
   return "waiting";
 }
 
-const PATH_MARKERS: Record<PathState, { glyph: string; className: string }> = {
-  done: { glyph: "✓", className: "text-success" },
-  current: { glyph: "→", className: "text-info" },
-  review: { glyph: "!", className: "text-warning" },
-  waiting: { glyph: "○", className: "text-text-muted" },
+/** Path-state markers (COMPONENT_REGISTRY.md "Iconography"): lucide
+ * components + an inherited text color, never glyph characters. */
+const PATH_MARKERS: Record<PathState, { Icon: LucideIcon; className: string }> = {
+  done: { Icon: Check, className: "text-success" },
+  current: { Icon: CircleDot, className: "text-info" },
+  review: { Icon: TriangleAlert, className: "text-warning" },
+  waiting: { Icon: Circle, className: "text-text-muted" },
 };
 
-/** kind → icon colour: source 蓝 / knowledge 紫 / claim 橙 / run 绿 / task 灰. */
+/** kind → icon colour: source 蓝 / knowledge celadon / claim 橙 / run 绿 / task 灰. */
 const ACTIVITY_ICONS: Record<
   TimelineEntry["kind"],
-  { glyph: string; className: string }
+  { Icon: LucideIcon; className: string }
 > = {
-  source: { glyph: "⌕", className: "text-info" },
-  knowledge: { glyph: "◇", className: "text-accent-alt" },
-  claim: { glyph: "!", className: "text-warning" },
-  run: { glyph: "↗", className: "text-success" },
-  task: { glyph: "✓", className: "text-text-secondary" },
+  source: { Icon: Search, className: "text-info" },
+  knowledge: { Icon: BookOpen, className: "text-accent-alt" },
+  claim: { Icon: TriangleAlert, className: "text-warning" },
+  run: { Icon: Play, className: "text-success" },
+  task: { Icon: Check, className: "text-text-secondary" },
 };
 
 function MetricCard({
@@ -365,17 +377,17 @@ export function OverviewPage() {
                         {state === "review" ? (
                           <span className="flex w-7 shrink-0 justify-center">
                             <span aria-hidden="true" className="pill pill-warning">
-                              !
+                              <TriangleAlert size={16} strokeWidth={1.75} />
                             </span>
                           </span>
                         ) : (
                           <span
                             aria-hidden="true"
-                            className={`w-7 shrink-0 text-center text-body ${marker.className} ${
+                            className={`flex w-7 shrink-0 items-center justify-center ${marker.className} ${
                               state === "current" ? "pulse" : ""
                             }`}
                           >
-                            {marker.glyph}
+                            <marker.Icon size={16} strokeWidth={1.75} />
                           </span>
                         )}
                         <div className="min-w-0 flex-1">
@@ -462,9 +474,9 @@ export function OverviewPage() {
                       >
                         <span
                           aria-hidden="true"
-                          className={`text-body ${icon.className}`}
+                          className={`flex shrink-0 ${icon.className}`}
                         >
-                          {icon.glyph}
+                          <icon.Icon size={16} strokeWidth={1.75} />
                         </span>
                         <div className="min-w-0">
                           <p className="text-body text-text-primary">

@@ -9,6 +9,7 @@ import {
   forceY,
 } from "d3";
 import { Chip, Button, Card, Input, Select } from "@morpho/ui";
+import { X } from "lucide-react";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import { NODE_TYPE_BADGE_CLASS, ResearchStatusBadge } from "@/components/cards";
@@ -529,7 +530,7 @@ export function GraphNodeInspector({
       <div className="flex items-start justify-between gap-sm">
         <h3 className="text-h3 text-text-primary">{node.title}</h3>
         <Button size="sm" variant="ghost" aria-label="关闭详情" onClick={onClose}>
-          ×
+          <X size={16} strokeWidth={1.75} aria-hidden="true" />
         </Button>
       </div>
       <div className="mt-sm flex flex-wrap items-center gap-sm">

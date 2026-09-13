@@ -16,6 +16,49 @@ Overriding primitive base classes from a consumer: under Tailwind v4, same-prope
 | Chip | Compact selectable filter/dimension button reproducing the `.chip-selected` contract with tokens only: selected = brass ink + `border-accent/55` + `bg-accent-soft`, idle = quiet border + muted ink (hover lifts ink one step) | `selected?: boolean`; otherwise native button props (`onClick` per selection change; size sm fixed) | Toggle-button pattern: `aria-pressed={selected}`, native button semantics, global focus ring, `disabled` mutes ink and blocks interaction. Rationale: `.chip-selected` lives in the app effect layer; primitives must consume tokens only, so the selected face is re-expressed inline and the app class is retired per consumer during adoption | GraphPage type-filter chips, SourcesPage type chips, ConfigPage dimension chips (all `aria-pressed` + `chip-selected`; GraphPage/SourcesPage idle face is canonical — ConfigPage's slightly warmer idle `text-text-secondary hover:text-text-primary` normalizes to the primitive's idle face on adoption) |
 | SegmentedControl | Single-select joined segments reproducing the ConfigPage depth-selector geometry (`h-9` × `w-[52px]`, collapsed borders via `-ml-px`, rounded group ends) | `options: { value: string; label: string }[]`, `value: string` (controlled), `onChange(value)`, `label: string` (radiogroup name) | Radiogroup pattern (a11y-correct for single-select, unlike the prototype's `aria-pressed` group): `role="radiogroup"` + `role="radio"` + `aria-checked`, roving tabindex (only selected segment tabbable), Arrow/Home/End move selection with focus following, wrapping both ends; selected face = brass fill + `text-text-on-brand` (intentional upgrade over the prototype's `chip-selected` face for a firmer single-select affordance), unselected = quiet `bg-surface` face | ConfigPage 研究深度 selector (`ConfigPage.tsx`) |
 
+## Iconography (lucide-react, ADR-014 adoption prep)
+
+The prototype carried raw Unicode text characters as icons (`⌄` switcher chevron, sidebar nav glyphs, `⌕` search, `⋯` menus, `✦` assistant launcher, …). They violated the icon standard: no single library, no consistent stroke, and no grid. **ADR-014 prep (2026-09-13)**: every such glyph was replaced with [lucide-react](https://lucide.dev) (the shadcn-ecosystem standard), pinned at `lucide-react@1.45.0` in `apps/desktop`. This is a dependency adoption, not a framework change.
+
+Rules:
+
+- **One library only**: `lucide-react`; no other icon source, no new text glyphs.
+- **Sizing**: `size={16}` for inline/nav icons (sidebar nav, buttons, row markers, list checks); `size={18}` for launcher/hero spots (assistant launcher, the dashed new-project card's plus). Icon-only targets stay `Button size="icon"` (`h-7 w-7`).
+- **Stroke**: `strokeWidth={1.75}` globally (inside the 1.5–2 band).
+- **Color**: single color only, inherited from the parent text token class via `currentColor`; fill colors are never set. Decorative icons are `aria-hidden="true"`; icon-only interactive elements keep their `aria-label`.
+- **Data shape**: `WORKSPACE_VIEWS` (`stores/workspaceStore.ts`) carries icon *names* (`ViewIconName`: `"layout-grid" | "house" | …`), keeping the store data-only; `Sidebar.tsx` maps names to components (`VIEW_ICONS: Record<ViewIconName, LucideIcon>`) and renders `<Icon size={16} strokeWidth={1.75} aria-hidden />`.
+- **Open-state affordance**: disclosure chevrons (ProjectSwitcher trigger, PlanPage group collapse) render `ChevronDown` and `rotate-180` while expanded (`aria-expanded`-derived class, `duration-[var(--morpho-motion-fast)]`).
+
+Glyph → icon mapping as adopted:
+
+| Glyph (was) | Lucide | Site(s) |
+|---|---|---|
+| `▦` | `LayoutGrid` | Sidebar 我的研究 |
+| `⌂` | `House` | Sidebar 概览 |
+| `＋` | `Plus` | Sidebar 研究配置；ProjectsPage 新建研究 button + dashed new-project card (`size={18}`); ConfigPage 自定义维度 chip |
+| `☷` | `ListTree` | Sidebar 研究计划 |
+| `✓` | `ListChecks` | Sidebar 任务 |
+| `◌` | `Globe` | Sidebar 来源；ConfigPage web_page |
+| `◇` | `BookOpen` | Sidebar 知识；OverviewPage knowledge activity; KnowledgeCard 结论 count |
+| `⌘` | `Waypoints` | Sidebar 图谱 |
+| `▤` | `ScrollText` | Sidebar 对话日志；SettingsPage 对话日志 card |
+| `⚙` | `SlidersHorizontal` | Sidebar 设置 (gear banned as a lazy stereotype) |
+| `◫` | `FileText` | reports view registration (not in nav, ADR-013) |
+| `⌄` / `⌃` | `ChevronDown` (+rotate) | ProjectSwitcher trigger, PlanPage group collapse |
+| `⌕` | `Search` | ProjectsPage search; OverviewPage source activity |
+| `?` | `CircleHelp` | Topbar 帮助 |
+| `⋯` | `Ellipsis` | ProjectsPage card menu, TasksPage row actions |
+| `✕` / `×` | `X` | AssistantPanel close, GraphNodeInspector close |
+| `✦` | `Sparkles` | AssistantDock launcher (`size={18}`); SettingsPage provider card |
+| `☰` | `Menu` | Mobile 菜单 button |
+| `◉` | `Server` | SettingsPage 桌面核心连接 card |
+| `◈ ▭ ▷ ⌗` | `FileText` `Book` `Play` `GitBranch` | ConfigPage source-type preferences (paper / book / video / repository; dataset `▦`→`Database`) |
+| `→ ✓ ○ !` (path markers) | `CircleDot` `Check` `Circle` `TriangleAlert` | OverviewPage 研究路径 (`!` renders inside the review pill) |
+| `↗` | `ArrowUpRight` | SourceCard row external link; OverviewPage run activity; KnowledgeCard 来源 count |
+| `⋮⋮` | `GripVertical` | PlanPage section row decoration |
+
+Deliberately **not** icons: trailing text arrows in button/link labels (`查看任务 →`, `打开日志 →`) and the graph relation direction arrows (`→` / `←`) are typographic punctuation in running text, not icon slots; the Topbar avatar "A" and the Sidebar brand "M" are initials/brand marks, not icons.
+
 Registered business components (`apps/desktop/src/`):
 
 | Component | Location | Purpose | States |

@@ -63,7 +63,11 @@ describe("ProjectSwitcher menu", () => {
     const activeRow = rows.find((row) => row.getAttribute("aria-selected") === "true");
     expect(activeRow).toBeDefined();
     expect(activeRow!.textContent).toContain("大语言模型推理优化");
-    expect(within(activeRow!).getByText("✓")).toBeInTheDocument();
+    // Active marker: the lucide Check renders only on the active row
+    // (inactive rows mount no marker icon at all).
+    const markedRows = rows.filter((row) => row.querySelector("svg"));
+    expect(markedRows).toHaveLength(1);
+    expect(markedRows[0]).toBe(activeRow);
     expect(screen.getByTestId("project-menu-manage")).toHaveTextContent("管理全部");
   });
 });

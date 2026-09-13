@@ -125,7 +125,8 @@ describe("OverviewPage", () => {
     // Prototype `view-overview`: the current marker carries .pulse.
     const marker = currentRow.querySelector("span[aria-hidden='true']");
     expect(marker).toHaveClass("pulse");
-    expect(marker?.textContent).toBe("→");
+    // The marker is a lucide icon (aria-hidden wrapper around the svg).
+    expect(marker?.querySelector("svg")).not.toBeNull();
     // The mini progress bar is exposed to assistive tech; 12/14 → 86%.
     const miniBar = within(currentRow).getByRole("progressbar", {
       name: "任务完成进度",

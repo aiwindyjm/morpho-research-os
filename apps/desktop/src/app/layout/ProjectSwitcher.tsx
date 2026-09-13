@@ -1,6 +1,7 @@
 import { useProjects, useCreateProject, useAssistantContext } from "@/services/queries";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { Button, Dialog, Input, Popover, Textarea } from "@morpho/ui";
+import { Check, ChevronDown } from "lucide-react";
 import { useCallback, useState } from "react";
 
 /**
@@ -67,8 +68,14 @@ export function ProjectSwitcher() {
               </span>
               <span className="block text-caption text-text-muted">Research project</span>
             </span>
-            <span aria-hidden="true" className="text-text-muted">
-              ⌄
+            <span aria-hidden="true" className="flex text-text-muted">
+              <ChevronDown
+                size={16}
+                strokeWidth={1.75}
+                className={`transition-transform duration-[var(--morpho-motion-fast)] ${
+                  expanded ? "rotate-180" : ""
+                }`}
+              />
             </span>
           </Button>
         )}
@@ -191,8 +198,8 @@ function ProjectMenuRow({ projectId, name }: { projectId: string; name: string }
         <small className="block text-caption text-text-muted">{status.label}</small>
       </span>
       {isActive ? (
-        <span aria-hidden="true" className="text-caption text-info">
-          ✓
+        <span aria-hidden="true" className="flex text-info">
+          <Check size={16} strokeWidth={1.75} />
         </span>
       ) : null}
     </Button>

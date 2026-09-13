@@ -1,4 +1,5 @@
 import { Badge, Button } from "@morpho/ui";
+import { CircleHelp } from "lucide-react";
 import { useProjects } from "@/services/queries";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 
@@ -36,7 +37,7 @@ export function Topbar() {
           aria-label="帮助"
           className="rounded-full! border-border! text-caption"
         >
-          ?
+          <CircleHelp size={16} strokeWidth={1.75} aria-hidden="true" />
         </Button>
         <Button
           size="icon"

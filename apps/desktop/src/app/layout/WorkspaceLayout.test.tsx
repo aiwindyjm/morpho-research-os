@@ -10,7 +10,7 @@ import { PROJECT_A_ID } from "@/services/mocks/fixtures-a";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 
 /**
- * Mobile navigation drawer (below the lg breakpoint): the ☰ 菜单 button
+ * Mobile navigation drawer (below the lg breakpoint): the 菜单 button
  * toggles the drawer, the drawer is an aria-modal dialog with a Tab focus
  * trap, Escape closes it and returns focus to the button, and navigating
  * from the drawer switches the view and closes it.
@@ -44,7 +44,7 @@ async function openDrawer(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("mobile navigation drawer", () => {
-  it("opens from the ☰ 菜单 button as an aria-modal dialog and moves focus in", async () => {
+  it("opens from the 菜单 button as an aria-modal dialog and moves focus in", async () => {
     const user = userEvent.setup();
     renderLayout();
 

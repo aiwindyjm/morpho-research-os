@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Ellipsis } from "lucide-react";
 import { Badge, Button, Card, Chip, Popover } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -222,7 +223,7 @@ export function TasksPage({ projectId }: { projectId: string }) {
                           onClick={onClick}
                           className="px-xs"
                         >
-                          ⋯
+                          <Ellipsis size={16} strokeWidth={1.75} aria-hidden="true" />
                         </Button>
                       )}
                     >

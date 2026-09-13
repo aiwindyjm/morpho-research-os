@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { Button, Card, Textarea } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import {
@@ -109,8 +110,8 @@ export function JournalPage() {
             {["按本地日期分组", "不上传、不进入 Git", "需要时显式下载 Markdown", "可以手动放入 private/conversations/"].map(
               (rule) => (
                 <li key={rule} className="flex gap-sm">
-                  <span aria-hidden="true" className="text-success">
-                    ✓
+                  <span aria-hidden="true" className="mt-[2px] shrink-0 text-success">
+                    <Check size={16} strokeWidth={1.75} />
                   </span>
                   {rule}
                 </li>

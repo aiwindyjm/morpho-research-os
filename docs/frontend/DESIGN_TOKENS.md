@@ -142,7 +142,6 @@ The raw values below are approved one-offs; everything else must consume tokens,
 - `gap-[3px]` / `gap-[11px]` → Sidebar nav list / nav items → prototype nav rhythm; promote to tokens if reused outside the sidebar.
 - `text-[9px]` → AssistantPanel timestamps → below the `nano` tier, single consumer.
 - `text-[21px]` → SourcesPage metric numerals → between `subhead` (17px) and `h2` (18px numeral display role), single consumer.
-- `text-[25px]` → ProjectsPage new-project icon glyph → decorative glyph size, single consumer.
 
 If a second consumer appears for any value above, promote it to a numbered token instead of duplicating the literal.
 
@@ -155,3 +154,7 @@ If a second consumer appears for any value above, promote it to a numbered token
 
 - `border-[rgb(217_160_91/0.2)]` → JournalPage privacy note → single-site accent-alpha tint harmonizing with the note's `bg-accent-soft` face (former `rgb(114_167_255/0.2)`).
 - `border-[rgb(217_160_91/0.3)]` → AssistantDock popup border (`WorkspaceLayout.tsx`) → single-site accent-alpha tint on the assistant brand surface (former `rgb(114_167_255/0.3)`).
+
+### 2026-09-13 removal (lucide-react iconography, ADR-014 prep)
+
+- `text-[25px]` (ProjectsPage new-project glyph) was removed from this list: the glyph character itself was replaced by a lucide `Plus` icon rendered at the component's standard hero size (`size={18}` prop), so the className literal no longer exists anywhere. Icon sizing is a lucide prop, not a text-size token — see COMPONENT_REGISTRY.md "Iconography".

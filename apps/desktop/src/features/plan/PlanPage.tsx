@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { ChevronDown, GripVertical } from "lucide-react";
 import { Alert, Button, Card, Dialog, Input, Textarea, useToast } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -249,9 +250,9 @@ export function PlanPage({ projectId }: { projectId: string }) {
                     <div className="grid grid-cols-[22px_35px_1fr_auto_24px] items-center gap-sm py-md">
                       <span
                         aria-hidden="true"
-                        className="text-caption text-text-muted select-none"
+                        className="flex justify-center text-caption text-text-muted select-none"
                       >
-                        ⋮⋮
+                        <GripVertical size={16} strokeWidth={1.75} />
                       </span>
                       <span className="font-mono text-micro font-bold text-info">
                         {groupNumber(sectionIndex)}
@@ -271,7 +272,14 @@ export function PlanPage({ projectId }: { projectId: string }) {
                         className="h-auto px-xs py-0 text-caption"
                         onClick={() => toggleGroup(section.id)}
                       >
-                        {isCollapsed ? "⌄" : "⌃"}
+                        <ChevronDown
+                          size={16}
+                          strokeWidth={1.75}
+                          aria-hidden="true"
+                          className={`transition-transform duration-[var(--morpho-motion-fast)] ${
+                            isCollapsed ? "" : "rotate-180"
+                          }`}
+                        />
                       </Button>
                     </div>
                     {isCollapsed

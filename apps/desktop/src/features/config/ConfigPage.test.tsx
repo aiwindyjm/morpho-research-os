@@ -77,7 +77,9 @@ describe("ConfigPage (prototype numbered sections)", () => {
   it("renders the custom-dimension chip as a desktop-only stub", async () => {
     renderPage();
     await screen.findByLabelText(/研究主题/);
-    const addChip = screen.getByRole("button", { name: "＋ 自定义维度" });
+    // The leading Plus is a decorative lucide icon; the accessible name is
+    // the label text alone.
+    const addChip = screen.getByRole("button", { name: "自定义维度" });
     expect(addChip).toBeDisabled();
     expect(addChip).toHaveAttribute("title", "桌面版提供");
   });

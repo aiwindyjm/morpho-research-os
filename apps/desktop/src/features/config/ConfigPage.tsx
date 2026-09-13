@@ -1,4 +1,15 @@
 import { useState, type ReactNode } from "react";
+import {
+  Book,
+  BookMarked,
+  Database,
+  FileText,
+  GitBranch,
+  Globe,
+  Play,
+  Plus,
+  type LucideIcon,
+} from "lucide-react";
 import { Alert, Button, Card, Checkbox, Chip, Input, SegmentedControl } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -102,19 +113,20 @@ function toggleValue(list: string[], value: string): string[] {
 }
 
 /** Source-type preference cards (04 来源偏好); values are the canonical
- * SourceType vocabulary, presentation only. */
+ * SourceType vocabulary, presentation only. Icons are lucide components
+ * (COMPONENT_REGISTRY.md "Iconography"), never glyph characters. */
 const SOURCE_TYPE_PREFERENCES: Array<{
   value: SourceType;
-  icon: string;
+  icon: LucideIcon;
   description: string;
 }> = [
-  { value: "paper", icon: "◈", description: "期刊、预印本与会议资料" },
-  { value: "documentation", icon: "⌘", description: "官方文档与机构指南" },
-  { value: "web_page", icon: "◌", description: "行业报道与专业媒体" },
-  { value: "repository", icon: "⌗", description: "代码与开源实现" },
-  { value: "dataset", icon: "▦", description: "公开数据与实验材料" },
-  { value: "book", icon: "▭", description: "教材、专著与手册" },
-  { value: "video", icon: "▷", description: "讲座与会议录像" },
+  { value: "paper", icon: FileText, description: "期刊、预印本与会议资料" },
+  { value: "documentation", icon: BookMarked, description: "官方文档与机构指南" },
+  { value: "web_page", icon: Globe, description: "行业报道与专业媒体" },
+  { value: "repository", icon: GitBranch, description: "代码与开源实现" },
+  { value: "dataset", icon: Database, description: "公开数据与实验材料" },
+  { value: "book", icon: Book, description: "教材、专著与手册" },
+  { value: "video", icon: Play, description: "讲座与会议录像" },
 ];
 
 /** Numbered form section from the prototype's form-panel (spec §6.2). */
@@ -442,8 +454,9 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                   </Chip>
                 );
               })}
-              <Chip disabled title="桌面版提供" className="border-dashed text-accent-alt">
-                ＋ 自定义维度
+              <Chip disabled title="桌面版提供" className="gap-xs border-dashed text-accent-alt">
+                <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
+                自定义维度
               </Chip>
             </div>
           </FormSection>
@@ -481,9 +494,9 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                     />
                     <span
                       aria-hidden="true"
-                      className="text-body leading-caption text-info"
+                      className="flex items-center leading-caption text-info"
                     >
-                      {preference.icon}
+                      <preference.icon size={16} strokeWidth={1.75} />
                     </span>
                     <span>
                       <strong className="block text-caption text-text-primary">

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { Ellipsis, Plus, Search } from "lucide-react";
 import { Button, Card, Dialog, Input, Textarea } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -61,7 +62,8 @@ export function ProjectsPage() {
 
   const openCreateDialog = (
     <Button variant="primary" onClick={() => setDialogOpen(true)}>
-      ＋ 新建研究
+      <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
+      新建研究
     </Button>
   );
 
@@ -87,8 +89,8 @@ export function ProjectsPage() {
           {/* 工具条：搜索 + 计数 */}
           <div className="flex items-center justify-between border-y border-border py-md">
             <div className="flex items-center gap-sm">
-              <span aria-hidden="true" className="text-text-muted">
-                ⌕
+              <span aria-hidden="true" className="flex text-text-muted">
+                <Search size={16} strokeWidth={1.75} />
               </span>
               <Input
                 value={query}
@@ -130,8 +132,8 @@ export function ProjectsPage() {
               onClick={() => setDialogOpen(true)}
               className="h-auto min-h-[190px] w-full flex-col border-dashed border-border! p-lg text-center hover:border-accent!"
             >
-              <span aria-hidden="true" className="text-[25px] text-info">
-                ＋
+              <span aria-hidden="true" className="flex text-info">
+                <Plus size={18} strokeWidth={1.75} />
               </span>
               <strong className="text-label text-text-primary">
                 新建一个研究
@@ -244,7 +246,7 @@ function ProjectCard({
       <div className="flex items-center justify-between gap-sm">
         <span className={status.pill}>{status.label}</span>
         <Button size="icon" variant="ghost" aria-label="打开项目" onClick={onOpen}>
-          ⋯
+          <Ellipsis size={16} strokeWidth={1.75} aria-hidden="true" />
         </Button>
       </div>
       <h2 className="mt-md text-subhead font-semibold leading-tight text-text-primary">
