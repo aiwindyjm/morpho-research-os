@@ -24,6 +24,12 @@ docker compose up --build -d
 MORPHO_PORT=1420
 ```
 
+如果所在网络无法访问 Docker Hub，可临时指定兼容的镜像代理（前缀必须以 `/` 结尾）：
+
+```dotenv
+MORPHO_DOCKER_REGISTRY=docker.m.daocloud.io/library/
+```
+
 查看状态和日志：
 
 ```bash

@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        IMAGE_REGISTRY: "${MORPHO_DOCKER_REGISTRY:-docker.io/library/}"
     image: morpho-research:preview
     ports:
       - "${MORPHO_PORT:-1420}:1420"
