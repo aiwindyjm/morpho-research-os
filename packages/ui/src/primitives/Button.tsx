@@ -2,7 +2,7 @@ import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
-export type ButtonSize = "sm" | "md";
+export type ButtonSize = "sm" | "md" | "icon";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -32,6 +32,10 @@ const variantClasses: Record<ButtonVariant, string> = {
 const sizeClasses: Record<ButtonSize, string> = {
   sm: "h-7 px-sm text-caption gap-xs",
   md: "h-9 px-lg text-body gap-sm",
+  /* Square compact target for icon-only buttons; the base radius stays
+   * rounded-md — circular targets (avatars, round toggles) are a caller
+   * className concern, not a variant. */
+  icon: "h-7 w-7 p-0",
 };
 
 /**
@@ -39,6 +43,8 @@ const sizeClasses: Record<ButtonSize, string> = {
  * States: default, hover (lift + shadow deepen on filled variants, warm
  * tint on ghost), active (scale 0.98), focus-visible (global bronze ring),
  * disabled (shared muted face), loading (aria-busy + inline indicator).
+ * Sizes: sm, md, and icon (square h-7 w-7, icon-only content — pass an
+ * aria-label; variant/disabled/loading semantics are shared).
  * Accessibility: native button semantics; loading sets aria-busy and
  * disables interaction; label content is rendered as text.
  */

@@ -76,4 +76,43 @@ describe("Button primitive", () => {
     expect(button).toHaveClass("enabled:hover:bg-overlay-hover");
     expect(button).toHaveClass("enabled:hover:text-text-primary");
   });
+
+  it("size=icon renders a square compact icon button with the default radius", () => {
+    render(
+      <Button size="icon" variant="ghost" aria-label="刷新">
+        ↻
+      </Button>,
+    );
+    const button = screen.getByRole("button", { name: "刷新" });
+    expect(button).toHaveClass("h-7");
+    expect(button).toHaveClass("w-7");
+    expect(button).toHaveClass("p-0");
+    // Round icon targets (avatars, circular toggles) stay a className
+    // concern for the caller; the primitive keeps rounded-md.
+    expect(button).toHaveClass("rounded-md");
+  });
+
+  it("size=icon keeps the shared disabled and loading semantics", () => {
+    render(
+      <Button size="icon" loading aria-label="刷新">
+        ↻
+      </Button>,
+    );
+    const button = screen.getByRole("button", { name: /刷新/ });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button).toHaveClass("disabled:bg-surface-raised");
+    expect(button).toHaveClass("disabled:text-text-muted");
+  });
+
+  it("keeps sm and md size behavior unchanged", () => {
+    render(
+      <>
+        <Button size="sm">小按钮</Button>
+        <Button size="md">中按钮</Button>
+      </>,
+    );
+    expect(screen.getByRole("button", { name: "小按钮" })).toHaveClass("h-7", "px-sm");
+    expect(screen.getByRole("button", { name: "中按钮" })).toHaveClass("h-9", "px-lg");
+  });
 });

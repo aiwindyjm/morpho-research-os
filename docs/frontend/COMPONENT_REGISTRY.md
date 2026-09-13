@@ -3,7 +3,16 @@ Every component records purpose, props, states, accessibility contract, owner, a
 
 ## Implementation index (V0.1 first build)
 
-Primitives live in `packages/ui/src/primitives/` and consume design tokens only (`Button.tsx`, `inputs.tsx` — Input/Textarea/Select/Checkbox/Field/Label, `overlays.tsx` — Dialog/Popover/Tooltip/Toast, `display.tsx` — Badge/Card/Table/Progress/Skeleton/Alert/Tabs). Each primitive ships keyboard, focus, disabled, and loading states with component tests.
+Primitives live in `packages/ui/src/primitives/` and consume design tokens only (`Button.tsx` — Button, `inputs.tsx` — Input/Textarea/Select/Checkbox/Field/Label, `overlays.tsx` — Dialog/Popover/Tooltip/Toast, `display.tsx` — Badge/Card/Chip/SegmentedControl/Table/Progress/Skeleton/Alert/Tabs). Each primitive ships keyboard, focus, disabled, and loading states with component tests.
+
+### Primitive additions promoted from app code (ADR-014 adoption prep)
+
+| Primitive | Purpose | Props (beyond native) | States / a11y | Promoted from |
+|---|---|---|---|---|
+| Button `size="icon"` | Square compact icon-only button (`h-7 w-7 p-0`); pass `aria-label`; `rounded-md` default retained — circular targets stay a caller `className` concern | `size?: "sm" \| "md" \| "icon"` | Shares all variant/disabled/loading semantics (aria-busy, shared muted disabled face, enabled-gated hover/press) of sm/md, which are unchanged | The 22 raw `<button>` icon sites flagged in the maintainer review (Sidebar icon nav, row actions, dialog closers) |
+| Badge `dot` | Decorative status dot (`size-dot rounded-full`) prefixed inside the badge, tinted by the badge variant (neutral = `dot-muted` text-secondary ink) | `dot?: boolean` | Dot is `aria-hidden` — label text carries the meaning; variant faces unchanged | Topbar 已保存 dot (`Topbar.tsx`: `size-dot rounded-full bg-success`), ProjectSwitcher status dots (`ProjectSwitcher.tsx`; glow rings `dot-glow-*` remain app-side `className`) |
+| Chip | Compact selectable filter/dimension button reproducing the `.chip-selected` contract with tokens only: selected = brass ink + `border-accent/55` + `bg-accent-soft`, idle = quiet border + muted ink (hover lifts ink one step) | `selected?: boolean`; otherwise native button props (`onClick` per selection change; size sm fixed) | Toggle-button pattern: `aria-pressed={selected}`, native button semantics, global focus ring, `disabled` mutes ink and blocks interaction. Rationale: `.chip-selected` lives in the app effect layer; primitives must consume tokens only, so the selected face is re-expressed inline and the app class is retired per consumer during adoption | GraphPage type-filter chips, SourcesPage type chips, ConfigPage dimension chips (all `aria-pressed` + `chip-selected`; GraphPage/SourcesPage idle face is canonical — ConfigPage's slightly warmer idle `text-text-secondary hover:text-text-primary` normalizes to the primitive's idle face on adoption) |
+| SegmentedControl | Single-select joined segments reproducing the ConfigPage depth-selector geometry (`h-9` × `w-[52px]`, collapsed borders via `-ml-px`, rounded group ends) | `options: { value: string; label: string }[]`, `value: string` (controlled), `onChange(value)`, `label: string` (radiogroup name) | Radiogroup pattern (a11y-correct for single-select, unlike the prototype's `aria-pressed` group): `role="radiogroup"` + `role="radio"` + `aria-checked`, roving tabindex (only selected segment tabbable), Arrow/Home/End move selection with focus following, wrapping both ends; selected face = brass fill + `text-text-on-brand` (intentional upgrade over the prototype's `chip-selected` face for a firmer single-select affordance), unselected = quiet `bg-surface` face | ConfigPage 研究深度 selector (`ConfigPage.tsx`) |
 
 Registered business components (`apps/desktop/src/`):
 
@@ -40,5 +49,7 @@ Removed (ADR-013): `TimelinePage` / `GapsPage` (incl. CoveragePanel/GapCard rows
 ## Prototype effect-layer class inventory (`apps/desktop/src/styles/prototype.css`, ADR-013)
 
 `kicker`, `view-fade`, `brand-mark`, `main-glow`, `metric-accent`, `card-active-accent`, `card-active-error`, `pill` (`pill-success` / `pill-warning` / `pill-accent` / `pill-neutral` / `pill-error`), `badge-mono` (`node-badge-accent` / `node-badge-alt` / `node-badge-warning` / `node-badge-error`), `progress-track`, `progress-fill`, `brand-gradient-button`, `graph-canvas-bg`, `timeline-connector`, `chip-selected`, `option-selected`, `dot-glow-accent`, `dot-glow-secondary`, `dot-glow-warning`, `dot-muted`, `pulse`. Pages must consume tokens or these classes — no hard-coded colors (see DESIGN_TOKENS.md).
+
+Adoption note (ADR-014 prep): `chip-selected` now has a token-only primitive equivalent — `Chip` (selected face) and `SegmentedControl` (geometry; selected face upgraded to the brass fill). The class and its consumers stay in place until the app migration retires them one by one; `option-selected`, `dot-glow-*`, and `dot-muted` are untouched (the Badge `dot` reuses the dot-muted ink value as a token, not the class).
 
 Page specifications for every implemented view live under `docs/frontend/pages/`.

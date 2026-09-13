@@ -2,6 +2,7 @@ import {
   forwardRef,
   useRef,
   useState,
+  type ButtonHTMLAttributes,
   type HTMLAttributes,
   type ReactNode,
   type TdHTMLAttributes,
@@ -16,6 +17,10 @@ export type BadgeVariant = "neutral" | "accent" | "success" | "warning" | "error
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: BadgeVariant;
+  /** Prefixes a status dot tinted by the variant (neutral maps to the
+   * dot-muted text-secondary ink). The dot is decorative; the label text
+   * carries the meaning for assistive tech. */
+  dot?: boolean;
   children: ReactNode;
 }
 
@@ -28,9 +33,22 @@ const badgeVariantClasses: Record<BadgeVariant, string> = {
   info: "border-info/40 bg-info/10 text-text-primary",
 };
 
+/* Status-dot fills per variant (promoted from the Topbar "已保存" dot and
+ * the ProjectSwitcher status dots: size-dot rounded-full + a bg-* driven
+ * by the state; neutral reuses the effect layer's dot-muted ink). Glow
+ * rings (dot-glow-*) stay app-side className concerns. */
+const badgeDotClasses: Record<BadgeVariant, string> = {
+  neutral: "bg-text-secondary",
+  accent: "bg-accent",
+  success: "bg-success",
+  warning: "bg-warning",
+  error: "bg-error",
+  info: "bg-info",
+};
+
 /** Registered primitive: Badge — short status or count label. */
 export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(function Badge(
-  { variant = "neutral", className = "", children, ...rest },
+  { variant = "neutral", dot = false, className = "", children, ...rest },
   ref,
 ) {
   return (
@@ -39,6 +57,12 @@ export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(function Badge(
       className={`inline-flex items-center gap-xs rounded-full border px-sm py-0.5 text-caption ${badgeVariantClasses[variant]} ${className}`}
       {...rest}
     >
+      {dot ? (
+        <span
+          aria-hidden="true"
+          className={`inline-block size-dot shrink-0 rounded-full ${badgeDotClasses[variant]}`}
+        />
+      ) : null}
       {children}
     </span>
   );
@@ -299,6 +323,147 @@ export function Tabs({ items, label }: { items: TabItem[]; label: string }) {
           {item.id === active?.id ? item.content : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Chip                                                                */
+/* ------------------------------------------------------------------ */
+
+export interface ChipProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  /** Selection state; announced via aria-pressed (toggle-button pattern,
+   * matching the prototype filter/dimension chips it promotes). */
+  selected?: boolean;
+  children: ReactNode;
+}
+
+const chipIdleClasses = "border-border text-text-muted hover:text-text-secondary";
+const chipSelectedClasses = "border-accent/55 bg-accent-soft text-accent";
+
+/**
+ * Registered primitive: Chip — compact selectable filter/dimension button
+ * (promoted from the graph, sources, and config chip rows). States:
+ * default (quiet border + muted ink, hover lifts ink one step), selected
+ * (brass ink + 0.55 brass border + accent-soft face — the `.chip-selected`
+ * contract re-expressed inline with tokens so the primitive stays
+ * token-only; the app effect class is retired by the adoption migration),
+ * focus-visible (global ring), disabled (muted ink, no pointer feedback).
+ * Accessibility: native button with aria-pressed; selection changes are
+ * owned by the caller via onClick.
+ */
+export const Chip = forwardRef<HTMLButtonElement, ChipProps>(function Chip(
+  { selected = false, disabled, className = "", children, type, ...rest },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type ?? "button"}
+      aria-pressed={selected}
+      disabled={disabled}
+      className={`inline-flex items-center rounded-full border px-md py-1 text-caption transition-colors duration-[var(--morpho-motion-fast)] disabled:cursor-not-allowed disabled:bg-transparent disabled:text-text-muted ${
+        selected ? chipSelectedClasses : chipIdleClasses
+      } ${className}`}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* SegmentedControl                                                    */
+/* ------------------------------------------------------------------ */
+
+export interface SegmentedOption {
+  value: string;
+  label: string;
+}
+
+export interface SegmentedControlProps {
+  options: SegmentedOption[];
+  /** Controlled selection (the value of the chosen option). */
+  value: string;
+  onChange: (value: string) => void;
+  /** Accessible name for the radiogroup. */
+  label: string;
+}
+
+/**
+ * Registered primitive: SegmentedControl — single-select joined segments
+ * (promoted from the config page depth selector geometry: h-9 segments,
+ * collapsed borders, rounded group ends). States: selected (brass fill +
+ * on-brand ink — an intentional upgrade over the prototype's chip-selected
+ * face for a firmer single-select affordance), unselected (quiet surface
+ * face, hover lifts ink), focus-visible (global ring). Accessibility:
+ * role=radiogroup with role=radio children and aria-checked; roving
+ * tabindex (only the selected segment is tabbable); Arrow/Home/End move
+ * selection with focus following and wrap at both ends.
+ */
+export function SegmentedControl({ options, value, onChange, label }: SegmentedControlProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const activeValue = options.some((option) => option.value === value)
+    ? value
+    : options[0]?.value;
+
+  function moveTo(nextIndex: number) {
+    const count = options.length;
+    if (count === 0) return;
+    const bounded = ((nextIndex % count) + count) % count;
+    onChange(options[bounded].value);
+    const radios = rootRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+    radios?.[bounded]?.focus();
+  }
+
+  function handleKeydown(event: React.KeyboardEvent) {
+    const radios = Array.from(
+      rootRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [],
+    );
+    if (radios.length === 0) return;
+    const currentIndex = Math.max(0, radios.indexOf(document.activeElement as HTMLButtonElement));
+    let next: number | null = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = currentIndex + 1;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = currentIndex - 1;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = options.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    moveTo(next);
+  }
+
+  return (
+    <div
+      ref={rootRef}
+      role="radiogroup"
+      aria-label={label}
+      onKeyDown={handleKeydown}
+      className="flex"
+    >
+      {options.map((option, index) => {
+        const selected = option.value === activeValue;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(option.value)}
+            className={`h-9 w-[52px] border text-caption transition-colors duration-[var(--morpho-motion-fast)] ${
+              index > 0 ? "-ml-px" : ""
+            } ${index === 0 ? "rounded-l-md" : ""} ${
+              index === options.length - 1 ? "rounded-r-md" : ""
+            } ${
+              selected
+                ? "relative z-10 border-accent bg-accent text-text-on-brand"
+                : "border-border bg-surface text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
