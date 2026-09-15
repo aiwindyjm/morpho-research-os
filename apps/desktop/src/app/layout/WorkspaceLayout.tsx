@@ -149,7 +149,7 @@ function AssistantDock() {
             role="dialog"
             aria-label="Morpho AI 助手"
             data-testid="assistant-panel"
-            className="assistant-popup fixed bottom-dock-offset right-xl z-30 flex h-dock w-[min(var(--morpho-layout-dock-width),calc(100vw-32px))] flex-col overflow-hidden rounded-dock border border-[rgb(217_160_91/0.3)] bg-surface shadow-[var(--morpho-shadow-overlay)] outline-none max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:w-auto max-lg:max-h-[70dvh] max-lg:rounded-b-none"
+            className="assistant-popup fixed bottom-dock-offset right-xl z-30 flex h-dock-h w-[min(var(--morpho-layout-dock-width),calc(100vw-32px))] flex-col overflow-hidden rounded-dock border border-[rgb(217_160_91/0.3)] bg-surface shadow-[var(--morpho-shadow-overlay)] outline-none max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:w-auto max-lg:max-h-[70dvh] max-lg:rounded-b-none"
           >
             <AssistantPanel />
           </div>
