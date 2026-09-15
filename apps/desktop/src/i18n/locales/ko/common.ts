@@ -1,8 +1,129 @@
-// PLACEHOLDER: en copy pending translation (batch 1) — replace this whole
-// file with real ko translations. The key structure must mirror
-// ../en/common.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enCommon from "../en/common";
+/**
+ * ko common resources (ADR-023). Korean UI translation of the shared
+ * vocabularies (buttons in 해요체/명령형, sentences in 합니다체). Glossary:
+ * 프로젝트 / 플랜 / 태스크 / 소스 / 지식 노드 / 클레임 / 증거 / 런 /
+ * 커버리지 / 차원 / 갭; Vault·Morpho·Orchestrator·Planner·Provider는
+ * 원문 그대로 유지합니다.
+ */
+const common = {
+  loading: "불러오는 중…",
+  error: {
+    title: "문제가 발생했습니다",
+    unknown: "알 수 없는 오류가 발생했습니다. 다시 시도해 주세요.",
+    retryableSuffix: " (재시도 가능)",
+    technicalDetail: "기술 상세: {{detail}}",
+    retry: "재시도",
+  },
+  vocab: {
+    taskState: {
+      PENDING: "대기 중",
+      PLANNING: "계획 중",
+      RUNNING: "실행 중",
+      VALIDATING: "검증 중",
+      COMPLETED: "완료",
+      NEEDS_REVIEW: "검토 필요",
+      PAUSED: "일시 정지됨",
+      FAILED: "실패",
+      CANCELLED: "취소됨",
+    },
+    planStatus: {
+      draft: "검토 대기",
+      approved: "승인됨",
+      rejected: "거부됨",
+    },
+    confidence: {
+      confirmed: "확인됨",
+      high: "높은 신뢰",
+      medium: "중간 신뢰",
+      low: "낮은 신뢰",
+      unverified: "미검증",
+      conflicting: "충돌 있음",
+    },
+    nodeType: {
+      Concept: "개념",
+      Person: "인물",
+      Organization: "조직",
+      Company: "기업",
+      Paper: "논문",
+      Book: "도서",
+      Experiment: "실험",
+      Event: "이벤트",
+      Technology: "기술",
+      Product: "제품",
+      Application: "애플리케이션",
+      Policy: "정책",
+      Dataset: "데이터셋",
+      Controversy: "논쟁",
+    },
+    purpose: {
+      learning: "학습",
+      teaching: "교육",
+      writing: "집필",
+      research: "연구",
+      industry: "업계 분석",
+      product: "제품 조사",
+      strategy: "전략",
+      custom: "사용자 정의",
+    },
+    dimension: {
+      concepts: "핵심 개념",
+      history: "발전 역사",
+      theory: "이론적 기반",
+      technology: "기술과 방법론",
+      experiments: "실험 연구",
+      papers: "핵심 논문",
+      people: "핵심 인물",
+      organizations: "조직",
+      companies: "기업",
+      products: "제품",
+      applications: "응용 분야",
+      industry: "산업 구조",
+      policy: "정책과 규제",
+      market: "시장 규모",
+      investment: "투자 동향",
+      controversy: "논쟁점",
+      risk: "리스크와 윤리",
+      recent_developments: "최근 동향",
+      future_trends: "미래 트렌드",
+    },
+    sourceType: {
+      web_page: "웹페이지",
+      paper: "논문",
+      documentation: "문서",
+      book: "도서",
+      dataset: "데이터셋",
+      video: "동영상",
+      repository: "저장소",
+    },
+    sourceStatus: {
+      discovered: "발견됨",
+      evaluated: "평가됨",
+      fetched: "가져옴",
+      indexed: "색인됨",
+      rejected: "제외됨",
+    },
+    taskKind: {
+      search: "소스 검색",
+      source_evaluation: "소스 평가",
+      extraction: "내용 추출",
+      normalization: "지식 정규화",
+      validation: "검증 검토",
+      synthesis: "종합 정리",
+    },
+    depth: {
+      1: "1 · 입문 이해",
+      2: "2 · 체계적 이해",
+      3: "3 · 구조화 리서치",
+      4: "4 · 전문 리서치",
+      5: "5 · 최전선 동향 추적",
+    },
+    assistantAction: {
+      explain_progress: "진행 상황 설명",
+      suggest_next_task: "다음 태스크 제안",
+      list_pending_reviews: "검토 필요 항목 보기",
+      record_decision: "결정 기록",
+    },
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enCommon;
+export default common;

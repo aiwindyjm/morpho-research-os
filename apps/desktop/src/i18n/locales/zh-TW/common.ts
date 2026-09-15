@@ -1,8 +1,128 @@
-// PLACEHOLDER: en copy pending translation (batch 1) — replace this whole
-// file with real zh-TW translations. The key structure must mirror
-// ../en/common.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enCommon from "../en/common";
+/**
+ * zh-TW common resources (ADR-023). Traditional Chinese (Taiwan conventions)
+ * translation of the shared vocabularies. Glossary: 專案 / 計畫 / 任務 /
+ * 來源 / 知識節點 / 論斷 / 證據 / 執行（run）/ 覆蓋度 / 維度 / 缺口；
+ * Vault、Morpho、Orchestrator、Planner、Provider 維持原文。
+ */
+const common = {
+  loading: "正在載入…",
+  error: {
+    title: "發生錯誤",
+    unknown: "發生未知錯誤，請重試。",
+    retryableSuffix: "（可重試）",
+    technicalDetail: "技術細節：{{detail}}",
+    retry: "重試",
+  },
+  vocab: {
+    taskState: {
+      PENDING: "等待中",
+      PLANNING: "規劃中",
+      RUNNING: "執行中",
+      VALIDATING: "驗證中",
+      COMPLETED: "已完成",
+      NEEDS_REVIEW: "需要審核",
+      PAUSED: "已暫停",
+      FAILED: "失敗",
+      CANCELLED: "已取消",
+    },
+    planStatus: {
+      draft: "待審查",
+      approved: "已核准",
+      rejected: "已拒絕",
+    },
+    confidence: {
+      confirmed: "已確認",
+      high: "高置信",
+      medium: "中等置信",
+      low: "低置信",
+      unverified: "未驗證",
+      conflicting: "存在衝突",
+    },
+    nodeType: {
+      Concept: "概念",
+      Person: "人物",
+      Organization: "組織",
+      Company: "公司",
+      Paper: "論文",
+      Book: "書籍",
+      Experiment: "實驗",
+      Event: "事件",
+      Technology: "技術",
+      Product: "產品",
+      Application: "應用",
+      Policy: "政策",
+      Dataset: "資料集",
+      Controversy: "爭議",
+    },
+    purpose: {
+      learning: "學習",
+      teaching: "教學",
+      writing: "寫作",
+      research: "學術研究",
+      industry: "產業分析",
+      product: "產品調研",
+      strategy: "策略",
+      custom: "自訂",
+    },
+    dimension: {
+      concepts: "核心概念",
+      history: "發展歷史",
+      theory: "理論基礎",
+      technology: "技術方法",
+      experiments: "實驗研究",
+      papers: "重要論文",
+      people: "關鍵人物",
+      organizations: "組織機構",
+      companies: "公司",
+      products: "產品",
+      applications: "應用場景",
+      industry: "產業格局",
+      policy: "政策法規",
+      market: "市場規模",
+      investment: "投資動態",
+      controversy: "爭議觀點",
+      risk: "風險與倫理",
+      recent_developments: "近期進展",
+      future_trends: "未來趨勢",
+    },
+    sourceType: {
+      web_page: "網頁",
+      paper: "論文",
+      documentation: "技術文件",
+      book: "書籍",
+      dataset: "資料集",
+      video: "影片",
+      repository: "程式碼儲存庫",
+    },
+    sourceStatus: {
+      discovered: "已發現",
+      evaluated: "已評估",
+      fetched: "已取得",
+      indexed: "已建立索引",
+      rejected: "已排除",
+    },
+    taskKind: {
+      search: "來源檢索",
+      source_evaluation: "來源評估",
+      extraction: "內容擷取",
+      normalization: "知識標準化",
+      validation: "驗證審查",
+      synthesis: "綜合整理",
+    },
+    depth: {
+      1: "1 · 入門了解",
+      2: "2 · 體系理解",
+      3: "3 · 結構化研究",
+      4: "4 · 專業研究",
+      5: "5 · 前沿追蹤",
+    },
+    assistantAction: {
+      explain_progress: "解釋進度",
+      suggest_next_task: "建議下一個任務",
+      list_pending_reviews: "檢視待審核項目",
+      record_decision: "記錄決定",
+    },
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enCommon;
+export default common;

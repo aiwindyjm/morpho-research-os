@@ -1,8 +1,129 @@
-// PLACEHOLDER: en copy pending translation (batch 2) — replace this whole
-// file with real pt-BR translations. The key structure must mirror
-// ../en/common.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enCommon from "../en/common";
+/**
+ * Brazilian Portuguese common resources (ADR-023). Translation of the en
+ * authored strings (zh-CN is the reference for structure). você-form prose,
+ * infinitive buttons, shared product glossary — tarefa / plano / fonte /
+ * nó de conhecimento / afirmação / evidência / execução / cobertura /
+ * dimensão / lacuna.
+ */
+const common = {
+  loading: "Carregando…",
+  error: {
+    title: "Algo deu errado",
+    unknown: "Ocorreu um erro desconhecido. Tente novamente.",
+    retryableSuffix: " (recuperável)",
+    technicalDetail: "Detalhes técnicos: {{detail}}",
+    retry: "Tentar novamente",
+  },
+  vocab: {
+    taskState: {
+      PENDING: "Pendente",
+      PLANNING: "Em planejamento",
+      RUNNING: "Em execução",
+      VALIDATING: "Em validação",
+      COMPLETED: "Concluída",
+      NEEDS_REVIEW: "Precisa de revisão",
+      PAUSED: "Em pausa",
+      FAILED: "Falha",
+      CANCELLED: "Cancelada",
+    },
+    planStatus: {
+      draft: "Aguardando revisão",
+      approved: "Aprovado",
+      rejected: "Rejeitado",
+    },
+    confidence: {
+      confirmed: "Confirmado",
+      high: "Confiança alta",
+      medium: "Confiança média",
+      low: "Confiança baixa",
+      unverified: "Não verificado",
+      conflicting: "Em conflito",
+    },
+    nodeType: {
+      Concept: "Conceito",
+      Person: "Pessoa",
+      Organization: "Organização",
+      Company: "Empresa",
+      Paper: "Artigo",
+      Book: "Livro",
+      Experiment: "Experimento",
+      Event: "Evento",
+      Technology: "Tecnologia",
+      Product: "Produto",
+      Application: "Aplicação",
+      Policy: "Política",
+      Dataset: "Conjunto de dados",
+      Controversy: "Controvérsia",
+    },
+    purpose: {
+      learning: "Aprendizado",
+      teaching: "Ensino",
+      writing: "Escrita",
+      research: "Pesquisa",
+      industry: "Análise setorial",
+      product: "Pesquisa de produto",
+      strategy: "Estratégia",
+      custom: "Personalizado",
+    },
+    dimension: {
+      concepts: "Conceitos-chave",
+      history: "História",
+      theory: "Fundamentos teóricos",
+      technology: "Métodos e tecnologia",
+      experiments: "Experimentos",
+      papers: "Artigos-chave",
+      people: "Pessoas-chave",
+      organizations: "Organizações",
+      companies: "Empresas",
+      products: "Produtos",
+      applications: "Aplicações",
+      industry: "Panorama setorial",
+      policy: "Política e regulação",
+      market: "Tamanho do mercado",
+      investment: "Atividade de investimento",
+      controversy: "Controvérsias",
+      risk: "Riscos e ética",
+      recent_developments: "Avanços recentes",
+      future_trends: "Tendências futuras",
+    },
+    sourceType: {
+      web_page: "Página da web",
+      paper: "Artigo",
+      documentation: "Documentação",
+      book: "Livro",
+      dataset: "Conjunto de dados",
+      video: "Vídeo",
+      repository: "Repositório",
+    },
+    sourceStatus: {
+      discovered: "Descoberta",
+      evaluated: "Avaliada",
+      fetched: "Obtida",
+      indexed: "Indexada",
+      rejected: "Rejeitada",
+    },
+    taskKind: {
+      search: "Busca de fontes",
+      source_evaluation: "Avaliação de fontes",
+      extraction: "Extração",
+      normalization: "Normalização",
+      validation: "Validação",
+      synthesis: "Síntese",
+    },
+    depth: {
+      1: "1 · Primeiros passos",
+      2: "2 · Compreensão do campo",
+      3: "3 · Pesquisa estruturada",
+      4: "4 · Pesquisa especializada",
+      5: "5 · Acompanhamento de fronteira",
+    },
+    assistantAction: {
+      explain_progress: "Explicar o progresso",
+      suggest_next_task: "Sugerir a próxima tarefa",
+      list_pending_reviews: "Listar pendências de revisão",
+      record_decision: "Registrar decisão",
+    },
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enCommon;
+export default common;

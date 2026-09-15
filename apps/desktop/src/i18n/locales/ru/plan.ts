@@ -1,8 +1,69 @@
-// PLACEHOLDER: en copy pending translation (batch 2) — replace this whole
-// file with real ru translations. The key structure must mirror
-// ../en/plan.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enPlan from "../en/plan";
+/**
+ * Russian plan resources (ADR-023). Translation of the en authored strings
+ * (zh-CN is the reference for structure; glossary: план, задача, прогон,
+ * проверка, утвердить/отклонить).
+ */
+const plan = {
+  kicker: "План исследования / {{status}}",
+  statusDraft: "Ожидает утверждения",
+  fallbackTitle: "План исследования",
+  noPlanDescription:
+    "Planner создаёт только черновики плана для проверки; исполняемые задачи создаются после утверждения.",
+  regenerate: "Пересоздать",
+  reject: "Отклонить план",
+  approveAria: "Утвердить план",
+  approve: "Подтвердить и запустить",
+  startRun: "Запустить прогон",
+  runStartedToast: {
+    title: "Прогон исследования запущен",
+    detail: "Следите за прогрессом на странице задач.",
+  },
+  runStartFailed: "Не удалось запустить прогон.",
+  regenerateApproved: "Пересоздать план",
+  generate: "Создать план исследования",
+  actionError: {
+    title: "Действие не выполнено",
+    fallback: "Не удалось выполнить действие. Повторите попытку.",
+  },
+  runAlert: {
+    title: "Состояние прогона: {{state}}",
+    detail:
+      "План перешёл к исполнению (всего задач: {{total}}); чтобы скорректировать его, приостановите задачи на странице задач или дождитесь конца прогона.",
+  },
+  empty: {
+    title: "Плана исследования пока нет",
+    description:
+      "Сначала заполните конфигурацию исследования, затем нажмите «Создать план исследования». В плане по каждому измерению будут перечислены задачи поиска и извлечения — на вашу проверку.",
+  },
+  summary: {
+    tasks: "Запланированные задачи",
+    sources: "Источники",
+    dimensions: "Измерения исследования",
+    reviews: "Требуют проверки",
+  },
+  group: {
+    expandAria: "Развернуть группу",
+    collapseAria: "Свернуть группу",
+    taskCount: "Задач: {{total}}",
+  },
+  task: {
+    edit: "Изменить задачу",
+  },
+  locked: {
+    title: "План заблокирован",
+    detail:
+      "Прогон уже создан, поэтому план больше нельзя изменить; приостановите задачи или пересоздайте план после окончания прогона.",
+  },
+  editDialog: {
+    title: "Изменить задачу плана",
+    description:
+      "Можно изменить только заголовок и описание; тип задачи и порядок исполнения определяет Orchestrator.",
+    titleLabel: "Заголовок задачи",
+    descriptionLabel: "Описание задачи",
+    cancel: "Отмена",
+    save: "Сохранить изменения",
+    saveFailed: "Не удалось сохранить изменения.",
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enPlan;
+export default plan;

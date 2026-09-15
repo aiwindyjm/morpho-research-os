@@ -1,8 +1,50 @@
-// PLACEHOLDER: en copy pending translation (batch 2) — replace this whole
-// file with real ru translations. The key structure must mirror
-// ../en/tasks.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enTasks from "../en/tasks";
+/**
+ * Russian tasks resources (ADR-023). Translation of the en authored strings
+ * (zh-CN is the reference for structure; glossary: задача, прогон,
+ * приостановить/возобновить/повторить/отменить).
+ */
+const tasks = {
+  kicker: "Задачи исследования",
+  title: "Текущая работа",
+  description: "Каждую задачу можно приостановить, повторить и проследить до её источников и результатов.",
+  continueRun: "Продолжить прогон",
+  runStartedToast: {
+    title: "Прогон исследования запущен",
+    detail: "Задачи выполнятся в порядке зависимостей.",
+  },
+  runBadge: "Состояние прогона: {{state}}",
+  empty: {
+    title: "Задач пока нет",
+    approved: "План утверждён — нажмите «Продолжить прогон» в правом верхнем углу, чтобы создать задачи.",
+    draft: "Сначала проверьте и утвердите план на странице „План исследования“; задачи будут созданы после утверждения.",
+    generic: "Сначала создайте и утвердите план на странице „План исследования“.",
+  },
+  filterAria: "Фильтр по состоянию задач",
+  tabs: {
+    all: "Все",
+    active: "Активные",
+    review: "Требуют проверки",
+    done: "Завершённые",
+  },
+  lastUpdated: "Обновлено {{date}}",
+  col: {
+    task: "Задача",
+    stage: "Этап",
+    status: "Статус",
+  },
+  pill: {
+    running: "Выполняется",
+    needsReview: "Требует проверки",
+    completed: "Завершена",
+  },
+  action: {
+    menuAria: "Действия с задачей",
+    pause: "Приостановить",
+    resume: "Возобновить",
+    retry: "Повторить",
+    confirmContinue: "Подтвердить и продолжить",
+    cancel: "Отмена",
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enTasks;
+export default tasks;

@@ -252,14 +252,13 @@ describe("resource contract", () => {
     expect(i18n.t("shell:nav.plan")).toBe("研究计划");
   });
 
-  it("placeholder locales render the en copy until their translation batch lands", async () => {
+  it("ja renders the authored ja copy after its translation batch landed", async () => {
     const { i18n } = await importI18n();
-    // ja is an explicit en re-export copy (batch 1): switching to it renders
-    // the authored English strings, never raw keys — documented placeholder
-    // semantics, superseded namespace by namespace as translations land.
+    // ja was batch 1 of the translation expansion: the former en-copy
+    // placeholder is now the authored Japanese resource.
     await i18n.changeLanguage("ja");
-    expect(i18n.t("shell:nav.plan")).toBe("Research Plan");
-    expect(i18n.t("shell:saved")).toBe("Saved");
+    expect(i18n.t("shell:nav.plan")).toBe("研究プラン");
+    expect(i18n.t("shell:saved")).toBe("保存済み");
     await i18n.changeLanguage("zh-CN");
     expect(i18n.t("shell:nav.plan")).toBe("研究计划");
   });

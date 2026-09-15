@@ -1,8 +1,46 @@
-// PLACEHOLDER: en copy pending translation (batch 2) — replace this whole
-// file with real ru translations. The key structure must mirror
-// ../en/reports.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enReports from "../en/reports";
+/**
+ * Russian reports resources (ADR-023). Translation of the en authored
+ * strings (zh-CN is the reference for structure; glossary: источник, узел
+ * знаний, утверждение, покрытие, прогон).
+ */
+const reports = {
+  kicker: "Отчёты",
+  title: "Исследовательская сводка проекта",
+  description:
+    "Одностраничная сводка из источников, знаний и покрытия текущего проекта; полный экспорт отчёта появится позже.",
+  empty: {
+    title: "Пока нечего сообщать",
+    description:
+      "Когда прогоны дадут источники, узлы знаний и утверждения, здесь появится сводка по проекту.",
+  },
+  metrics: {
+    sources: "Источники",
+    knowledge: "Узлы знаний",
+    claims: "Утверждения",
+    coverage: "Покрытие исследования",
+  },
+  dimensions: {
+    kicker: "Покрытие",
+    title: "Таблица покрытия измерений",
+    caption: "Покрытие и ключевые входные данные по каждому измерению исследования",
+    colDimension: "Измерение",
+    colCoverage: "Покрытие",
+    colTasks: "Выполненные задачи",
+    colNodes: "Узлы знаний",
+    colQualitySources: "Качественные источники",
+  },
+  runs: {
+    kicker: "История прогонов",
+    title: "Недавние прогоны исследования",
+    empty: "Прогонов пока не было; события появятся здесь после запуска прогона.",
+  },
+  export: {
+    kicker: "Экспорт",
+    soon: "Скоро",
+    title: "Экспорт отчёта",
+    description:
+      "Полная сводка и экспорт Vault появятся после интеграции конвейера; пока эта страница лишь суммирует данные.",
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enReports;
+export default reports;

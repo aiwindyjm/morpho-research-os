@@ -1,8 +1,50 @@
-// PLACEHOLDER: en copy pending translation (batch 2) — replace this whole
-// file with real fr translations. The key structure must mirror
-// ../en/tasks.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enTasks from "../en/tasks";
+/**
+ * Ressources tasks françaises (ADR-023). Traduction de la référence zh-CN /
+ * de la version en faisant autorité — interface produit concise (glossaire :
+ * tâche, exécution, pause/reprise/nouvel essai/annulation).
+ */
+const tasks = {
+  kicker: "Tâches de recherche",
+  title: "Travail en cours",
+  description: "Chaque tâche peut être mise en pause, relancée et retracée jusqu'à ses sources et résultats.",
+  continueRun: "Reprendre l'exécution",
+  runStartedToast: {
+    title: "Exécution de recherche lancée",
+    detail: "Les tâches s'exécuteront dans l'ordre des dépendances.",
+  },
+  runBadge: "État de l'exécution : {{state}}",
+  empty: {
+    title: "Aucune tâche pour l'instant",
+    approved: "Le plan est approuvé — cliquez sur « Reprendre l'exécution » en haut à droite pour créer les tâches.",
+    draft: "Examinez et approuvez d'abord le plan sur la page Plan de recherche ; les tâches sont créées après approbation.",
+    generic: "Générez et approuvez d'abord un plan sur la page Plan de recherche.",
+  },
+  filterAria: "Filtrer par état de tâche",
+  tabs: {
+    all: "Toutes",
+    active: "Actives",
+    review: "À vérifier",
+    done: "Terminées",
+  },
+  lastUpdated: "Dernière mise à jour {{date}}",
+  col: {
+    task: "Tâche",
+    stage: "Phase",
+    status: "État",
+  },
+  pill: {
+    running: "En cours",
+    needsReview: "À vérifier",
+    completed: "Terminé",
+  },
+  action: {
+    menuAria: "Actions de la tâche",
+    pause: "Mettre en pause",
+    resume: "Reprendre",
+    retry: "Réessayer",
+    confirmContinue: "Confirmer et poursuivre",
+    cancel: "Annuler",
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enTasks;
+export default tasks;

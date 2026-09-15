@@ -276,16 +276,15 @@ describe("SettingsPage 界面语言 card (ADR-023 language switcher, I3 10-langu
     expect(screen.getByText("Language")).toBeInTheDocument();
   });
 
-  it("applies 日本語 from the grid (placeholder renders the en copy) and switches back", async () => {
+  it("applies 日本語 from the grid (authored ja copy) and switches back", async () => {
     const user = userEvent.setup();
     renderPage();
 
     await user.click(screen.getByRole("radio", { name: /日本語/ }));
     expect(document.documentElement.lang).toBe("ja");
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("ja");
-    // Placeholder semantics: ja strings are the authored en copy until the
-    // translation batch lands — never raw keys.
-    expect(screen.getByText("Language")).toBeInTheDocument();
+    // The ja translation batch landed: the grid self-translates.
+    expect(screen.getByText("言語")).toBeInTheDocument();
 
     await user.click(screen.getByRole("radio", { name: /简体中文/ }));
     expect(document.documentElement.lang).toBe("zh-CN");

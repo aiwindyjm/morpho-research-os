@@ -1,8 +1,129 @@
-// PLACEHOLDER: en copy pending translation (batch 2) — replace this whole
-// file with real es translations. The key structure must mirror
-// ../en/common.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enCommon from "../en/common";
+/**
+ * Spanish common resources (ADR-023). Translation of the en authored strings
+ * (zh-CN is the reference for structure). Neutral international Spanish:
+ * infinitive buttons, shared product glossary — tarea / plan / fuente /
+ * nodo de conocimiento / afirmación / evidencia / ejecución / cobertura /
+ * dimensión / brecha.
+ */
+const common = {
+  loading: "Cargando…",
+  error: {
+    title: "Algo salió mal",
+    unknown: "Ocurrió un error desconocido. Inténtalo de nuevo.",
+    retryableSuffix: " (reintentable)",
+    technicalDetail: "Detalles técnicos: {{detail}}",
+    retry: "Reintentar",
+  },
+  vocab: {
+    taskState: {
+      PENDING: "Pendiente",
+      PLANNING: "En planificación",
+      RUNNING: "En ejecución",
+      VALIDATING: "En validación",
+      COMPLETED: "Completada",
+      NEEDS_REVIEW: "Necesita revisión",
+      PAUSED: "En pausa",
+      FAILED: "Fallida",
+      CANCELLED: "Cancelada",
+    },
+    planStatus: {
+      draft: "Pendiente de revisión",
+      approved: "Aprobado",
+      rejected: "Rechazado",
+    },
+    confidence: {
+      confirmed: "Confirmado",
+      high: "Confianza alta",
+      medium: "Confianza media",
+      low: "Confianza baja",
+      unverified: "Sin verificar",
+      conflicting: "En conflicto",
+    },
+    nodeType: {
+      Concept: "Concepto",
+      Person: "Persona",
+      Organization: "Organización",
+      Company: "Empresa",
+      Paper: "Artículo",
+      Book: "Libro",
+      Experiment: "Experimento",
+      Event: "Evento",
+      Technology: "Tecnología",
+      Product: "Producto",
+      Application: "Aplicación",
+      Policy: "Política",
+      Dataset: "Conjunto de datos",
+      Controversy: "Controversia",
+    },
+    purpose: {
+      learning: "Aprendizaje",
+      teaching: "Enseñanza",
+      writing: "Escritura",
+      research: "Investigación",
+      industry: "Análisis sectorial",
+      product: "Investigación de producto",
+      strategy: "Estrategia",
+      custom: "Personalizado",
+    },
+    dimension: {
+      concepts: "Conceptos clave",
+      history: "Historia",
+      theory: "Fundamentos teóricos",
+      technology: "Métodos y tecnología",
+      experiments: "Experimentos",
+      papers: "Artículos clave",
+      people: "Personas clave",
+      organizations: "Organizaciones",
+      companies: "Empresas",
+      products: "Productos",
+      applications: "Aplicaciones",
+      industry: "Panorama sectorial",
+      policy: "Política y regulación",
+      market: "Tamaño del mercado",
+      investment: "Actividad de inversión",
+      controversy: "Controversias",
+      risk: "Riesgos y ética",
+      recent_developments: "Avances recientes",
+      future_trends: "Tendencias futuras",
+    },
+    sourceType: {
+      web_page: "Página web",
+      paper: "Artículo",
+      documentation: "Documentación",
+      book: "Libro",
+      dataset: "Conjunto de datos",
+      video: "Video",
+      repository: "Repositorio",
+    },
+    sourceStatus: {
+      discovered: "Descubierta",
+      evaluated: "Evaluada",
+      fetched: "Obtenida",
+      indexed: "Indexada",
+      rejected: "Descartada",
+    },
+    taskKind: {
+      search: "Búsqueda de fuentes",
+      source_evaluation: "Evaluación de fuentes",
+      extraction: "Extracción",
+      normalization: "Normalización",
+      validation: "Validación",
+      synthesis: "Síntesis",
+    },
+    depth: {
+      1: "1 · Primeros pasos",
+      2: "2 · Comprensión global",
+      3: "3 · Investigación estructurada",
+      4: "4 · Investigación experta",
+      5: "5 · Seguimiento de frontera",
+    },
+    assistantAction: {
+      explain_progress: "Explicar el avance",
+      suggest_next_task: "Sugerir la siguiente tarea",
+      list_pending_reviews: "Listar pendientes de revisión",
+      record_decision: "Registrar decisión",
+    },
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enCommon;
+export default common;

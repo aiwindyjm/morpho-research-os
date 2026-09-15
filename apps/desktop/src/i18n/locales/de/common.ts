@@ -1,8 +1,131 @@
-// PLACEHOLDER: en copy pending translation (batch 1) — replace this whole
-// file with real de translations. The key structure must mirror
-// ../en/common.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enCommon from "../en/common";
+/**
+ * Deutsche Common-Ressourcen (ADR-023). Übersetzung der zh-CN-Referenz bzw.
+ * der autorisierten en-Fassung — kompakte Produkt-UI auf Deutsch. Das
+ * `vocab`-Verzeichnis spiegelt die Produkt-Datenbestände (Aufgabenstatus,
+ * Planstatus, Konfidenzbänder, Knotentypen, Dimensionen, …) mit dem
+ * gemeinsamen Glossar: Projekt / Plan / Aufgabe / Quelle / Wissensknoten /
+ * Aussage / Beleg / Lauf / Abdeckung / Dimension / Lücke. „Vault“ bleibt
+ * unverändert.
+ */
+const common = {
+  loading: "Wird geladen…",
+  error: {
+    title: "Etwas ist schiefgelaufen",
+    unknown: "Ein unbekannter Fehler ist aufgetreten. Bitte erneut versuchen.",
+    retryableSuffix: " (wiederholbar)",
+    technicalDetail: "Technische Details: {{detail}}",
+    retry: "Erneut versuchen",
+  },
+  vocab: {
+    taskState: {
+      PENDING: "Ausstehend",
+      PLANNING: "In Planung",
+      RUNNING: "Läuft",
+      VALIDATING: "Wird validiert",
+      COMPLETED: "Abgeschlossen",
+      NEEDS_REVIEW: "Prüfung erforderlich",
+      PAUSED: "Pausiert",
+      FAILED: "Fehlgeschlagen",
+      CANCELLED: "Abgebrochen",
+    },
+    planStatus: {
+      draft: "Prüfung ausstehend",
+      approved: "Genehmigt",
+      rejected: "Abgelehnt",
+    },
+    confidence: {
+      confirmed: "Bestätigt",
+      high: "Hohe Konfidenz",
+      medium: "Mittlere Konfidenz",
+      low: "Geringe Konfidenz",
+      unverified: "Unbestätigt",
+      conflicting: "Widersprüchlich",
+    },
+    nodeType: {
+      Concept: "Konzept",
+      Person: "Person",
+      Organization: "Organisation",
+      Company: "Unternehmen",
+      Paper: "Paper",
+      Book: "Buch",
+      Experiment: "Experiment",
+      Event: "Ereignis",
+      Technology: "Technologie",
+      Product: "Produkt",
+      Application: "Anwendung",
+      Policy: "Richtlinie",
+      Dataset: "Datensatz",
+      Controversy: "Kontroverse",
+    },
+    purpose: {
+      learning: "Lernen",
+      teaching: "Lehren",
+      writing: "Schreiben",
+      research: "Forschung",
+      industry: "Branchenanalyse",
+      product: "Produktrecherche",
+      strategy: "Strategie",
+      custom: "Benutzerdefiniert",
+    },
+    dimension: {
+      concepts: "Kernkonzepte",
+      history: "Geschichte",
+      theory: "Theoretische Grundlagen",
+      technology: "Methoden & Technologie",
+      experiments: "Experimente",
+      papers: "Zentrale Paper",
+      people: "Zentrale Personen",
+      organizations: "Organisationen",
+      companies: "Unternehmen",
+      products: "Produkte",
+      applications: "Anwendungen",
+      industry: "Industrielandschaft",
+      policy: "Richtlinien & Regulierung",
+      market: "Marktgröße",
+      investment: "Investitionsaktivität",
+      controversy: "Kontroversen",
+      risk: "Risiken & Ethik",
+      recent_developments: "Aktuelle Entwicklungen",
+      future_trends: "Zukunftstrends",
+    },
+    sourceType: {
+      web_page: "Webseite",
+      paper: "Paper",
+      documentation: "Dokumentation",
+      book: "Buch",
+      dataset: "Datensatz",
+      video: "Video",
+      repository: "Repository",
+    },
+    sourceStatus: {
+      discovered: "Entdeckt",
+      evaluated: "Bewertet",
+      fetched: "Abgerufen",
+      indexed: "Indiziert",
+      rejected: "Ausgeschlossen",
+    },
+    taskKind: {
+      search: "Quellensuche",
+      source_evaluation: "Quellenbewertung",
+      extraction: "Extraktion",
+      normalization: "Normalisierung",
+      validation: "Validierung",
+      synthesis: "Synthese",
+    },
+    depth: {
+      1: "1 · Erste Orientierung",
+      2: "2 · Verständnis aufbauen",
+      3: "3 · Strukturierte Recherche",
+      4: "4 · Expertenrecherche",
+      5: "5 · Forschungsfronten verfolgen",
+    },
+    assistantAction: {
+      explain_progress: "Fortschritt erläutern",
+      suggest_next_task: "Nächste Aufgabe vorschlagen",
+      list_pending_reviews: "Offene Prüfungen anzeigen",
+      record_decision: "Entscheidung festhalten",
+    },
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enCommon;
+export default common;

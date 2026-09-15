@@ -1,8 +1,129 @@
-// PLACEHOLDER: en copy pending translation (batch 2) — replace this whole
-// file with real ru translations. The key structure must mirror
-// ../en/common.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enCommon from "../en/common";
+/**
+ * Russian common resources (ADR-023). Translation of the en authored strings
+ * (zh-CN is the reference for structure). Neutral formal UI style —
+ * infinitive buttons, ё used consistently. Shared product glossary:
+ * задача / план / источник / узел знаний / утверждение / свидетельство /
+ * прогон / покрытие / измерение / пробел / достоверность.
+ */
+const common = {
+  loading: "Загрузка…",
+  error: {
+    title: "Что-то пошло не так",
+    unknown: "Произошла неизвестная ошибка. Повторите попытку.",
+    retryableSuffix: " (можно повторить)",
+    technicalDetail: "Технические подробности: {{detail}}",
+    retry: "Повторить",
+  },
+  vocab: {
+    taskState: {
+      PENDING: "Ожидает",
+      PLANNING: "Планируется",
+      RUNNING: "Выполняется",
+      VALIDATING: "Проверяется",
+      COMPLETED: "Завершена",
+      NEEDS_REVIEW: "Требует проверки",
+      PAUSED: "Приостановлена",
+      FAILED: "Сбой",
+      CANCELLED: "Отменена",
+    },
+    planStatus: {
+      draft: "Ожидает утверждения",
+      approved: "Утверждён",
+      rejected: "Отклонён",
+    },
+    confidence: {
+      confirmed: "Подтверждено",
+      high: "Высокая достоверность",
+      medium: "Средняя достоверность",
+      low: "Низкая достоверность",
+      unverified: "Не проверено",
+      conflicting: "Конфликт",
+    },
+    nodeType: {
+      Concept: "Концепция",
+      Person: "Персона",
+      Organization: "Организация",
+      Company: "Компания",
+      Paper: "Статья",
+      Book: "Книга",
+      Experiment: "Эксперимент",
+      Event: "Событие",
+      Technology: "Технология",
+      Product: "Продукт",
+      Application: "Приложение",
+      Policy: "Политика",
+      Dataset: "Набор данных",
+      Controversy: "Спор",
+    },
+    purpose: {
+      learning: "Обучение",
+      teaching: "Преподавание",
+      writing: "Написание текстов",
+      research: "Научная работа",
+      industry: "Анализ отрасли",
+      product: "Продуктовое исследование",
+      strategy: "Стратегия",
+      custom: "Другое",
+    },
+    dimension: {
+      concepts: "Ключевые концепции",
+      history: "История",
+      theory: "Теоретические основы",
+      technology: "Методы и технологии",
+      experiments: "Эксперименты",
+      papers: "Ключевые статьи",
+      people: "Ключевые персоны",
+      organizations: "Организации",
+      companies: "Компании",
+      products: "Продукты",
+      applications: "Применение",
+      industry: "Отраслевой ландшафт",
+      policy: "Политика и регулирование",
+      market: "Размер рынка",
+      investment: "Инвестиционная активность",
+      controversy: "Спорные вопросы",
+      risk: "Риски и этика",
+      recent_developments: "Недавние события",
+      future_trends: "Будущие тенденции",
+    },
+    sourceType: {
+      web_page: "Веб-страница",
+      paper: "Статья",
+      documentation: "Документация",
+      book: "Книга",
+      dataset: "Набор данных",
+      video: "Видео",
+      repository: "Репозиторий",
+    },
+    sourceStatus: {
+      discovered: "Обнаружен",
+      evaluated: "Оценён",
+      fetched: "Получен",
+      indexed: "Проиндексирован",
+      rejected: "Отклонён",
+    },
+    taskKind: {
+      search: "Поиск источников",
+      source_evaluation: "Оценка источников",
+      extraction: "Извлечение",
+      normalization: "Нормализация",
+      validation: "Проверка",
+      synthesis: "Синтез",
+    },
+    depth: {
+      1: "1 · Первое знакомство",
+      2: "2 · Системное понимание",
+      3: "3 · Структурированное исследование",
+      4: "4 · Экспертное исследование",
+      5: "5 · Отслеживание фронтира",
+    },
+    assistantAction: {
+      explain_progress: "Объяснить прогресс",
+      suggest_next_task: "Предложить следующую задачу",
+      list_pending_reviews: "Показать задачи на проверке",
+      record_decision: "Записать решение",
+    },
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enCommon;
+export default common;

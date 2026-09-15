@@ -1,8 +1,38 @@
-// PLACEHOLDER: en copy pending translation (batch 2) — replace this whole
-// file with real fr translations. The key structure must mirror
-// ../en/cards.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enCards from "../en/cards";
+/**
+ * Ressources cards françaises (ADR-023). Traduction de la référence zh-CN /
+ * de la version en faisant autorité — interface produit concise (glossaire :
+ * source, affirmation, preuve, nœud de connaissance).
+ */
+const cards = {
+  tier: {
+    pending: "À évaluer",
+    high: "Haute qualité",
+    medium: "Moyenne",
+  },
+  sourceRow: {
+    openAria: "Ouvrir la source",
+  },
+  quality: {
+    rationale:
+      "Qualité de la source : autorité {{authority}} · pertinence {{fitness}} — {{rationale}} (la qualité décrit la pertinence pour l'usage, pas la véracité factuelle)",
+    pending: "Qualité de la source pas encore évaluée.",
+  },
+  knowledge: {
+    sourceCount: "{{total}} sources",
+    claimCount: "{{total}} affirmations",
+  },
+  evidence: {
+    none: "Aucune preuve enregistrée pour cette affirmation.",
+    locator: "Localisation : {{kind}} · {{value}} · récupérée le {{date}}",
+    quote: "« {{quote}} »",
+    directionSupport: "Corrobore",
+    directionContradict: "Contredit",
+  },
+  claim: {
+    meta: "Sujet : {{subject}} · confiance {{confidence}} · portée : {{scope}}",
+    collapse: "Masquer les preuves",
+    expand: "Voir les preuves ({{total}})",
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enCards;
+export default cards;

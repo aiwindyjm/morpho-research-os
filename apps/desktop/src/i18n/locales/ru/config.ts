@@ -1,8 +1,76 @@
-// PLACEHOLDER: en copy pending translation (batch 2) — replace this whole
-// file with real ru translations. The key structure must mirror
-// ../en/config.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enConfig from "../en/config";
+/**
+ * Russian config resources (ADR-023). Translation of the en authored strings
+ * (zh-CN is the reference for structure; glossary: конфигурация
+ * исследования, план, измерение, источник, утверждение).
+ */
+const config = {
+  kicker: "Конфигурация исследования",
+  title: "Определите свой исследовательский вопрос",
+  description:
+    "Эти данные определяют охват, глубину и выбор источников плана исследования.",
+  cancel: "Отмена",
+  discard: "Отменить изменения",
+  save: "Сохранить конфигурацию",
+  saveError: {
+    title: "Невозможно сохранить",
+    validation: "Конфигурация не прошла проверку: {{issue}}",
+    failed: "Не удалось сохранить. Повторите попытку позже.",
+  },
+  noProject: {
+    title: "Сначала выберите или создайте проект",
+    description:
+      "Конфигурация исследования принадлежит конкретному проекту; переключитесь или создайте проект, прежде чем настраивать.",
+  },
+  section01: {
+    title: "Тема исследования",
+    help: "Сначала определите, что вы хотите понять и для чего нужен результат.",
+  },
+  section02: {
+    title: "Охват исследования",
+    help: "Чем яснее охват, тем проще исполнять и проверять план.",
+  },
+  section03: {
+    title: "Измерения исследования",
+    help: "Выберите ракурсы, которые план обязан охватить; их можно изменить и после создания плана.",
+  },
+  section04: {
+    title: "Предпочтения по источникам",
+    help: "Morpho сначала ищет в этих источниках и сохраняет происхождение каждого утверждения.",
+  },
+  field: {
+    domain: "Область исследования",
+    domainPlaceholder: "например: нейроинженерия",
+    topic: "Тема исследования",
+    topicPlaceholder: "например: интерфейсы мозг–компьютер в двигательной реабилитации",
+    purpose: "Цель исследования",
+    audience: "Целевая аудитория",
+    audiencePlaceholder: "например: исследователи реабилитационной медицины",
+    depth: "Глубина исследования",
+    timeRange: "Временной диапазон",
+    yearStart: "Начальный год",
+    yearStartPlaceholder: "например: 2015",
+    yearEnd: "Конечный год",
+    yearEndPlaceholder: "например: 2026",
+    yearTo: "по",
+    languages: "Языки",
+    geographicScope: "Географический охват",
+    geographicScopePlaceholder: "например: весь мир",
+  },
+  dimensions: {
+    custom: "Пользовательское измерение",
+    customTitle: "Только в настольной версии",
+  },
+  sourcePref: {
+    paper: "Журналы, препринты и материалы конференций",
+    documentation: "Официальная документация и ведомственные руководства",
+    web_page: "Отраслевые публикации и профильные медиа",
+    repository: "Код и реализации с открытым исходным кодом",
+    dataset: "Открытые данные и экспериментальные материалы",
+    book: "Учебники, монографии и справочники",
+    video: "Лекции и записи конференций",
+  },
+  footer:
+    "Частота обновления сейчас фиксирована: вручную (update_frequency: manual); автоматическое инкрементальное исследование появится в последующих версиях.",
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enConfig;
+export default config;

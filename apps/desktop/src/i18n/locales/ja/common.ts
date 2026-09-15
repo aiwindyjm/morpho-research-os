@@ -1,8 +1,129 @@
-// PLACEHOLDER: en copy pending translation (batch 1) — replace this whole
-// file with real ja translations. The key structure must mirror
-// ../en/common.ts exactly (zh-CN is the reference locale;
-// src/i18n/parity.test.ts fails on any missing or extra key).
-import enCommon from "../en/common";
+/**
+ * ja common resources (ADR-023). Japanese UI translation of the shared
+ * vocabularies (です/ます for sentences, 体言止め for labels). Glossary:
+ * プロジェクト / プラン / タスク / ソース / ナレッジノード / クレーム /
+ * エビデンス / ラン / カバレッジ / ディメンション / ギャップ；
+ * Vault・Morpho・Orchestrator・Planner・Provider は原文のまま。
+ */
+const common = {
+  loading: "読み込み中…",
+  error: {
+    title: "エラーが発生しました",
+    unknown: "不明なエラーが発生しました。もう一度お試しください。",
+    retryableSuffix: "（再試行可能）",
+    technicalDetail: "技術的な詳細: {{detail}}",
+    retry: "再試行",
+  },
+  vocab: {
+    taskState: {
+      PENDING: "待機中",
+      PLANNING: "計画中",
+      RUNNING: "実行中",
+      VALIDATING: "検証中",
+      COMPLETED: "完了",
+      NEEDS_REVIEW: "レビュー必要",
+      PAUSED: "一時停止中",
+      FAILED: "失敗",
+      CANCELLED: "キャンセル済み",
+    },
+    planStatus: {
+      draft: "レビュー待ち",
+      approved: "承認済み",
+      rejected: "却下",
+    },
+    confidence: {
+      confirmed: "確認済み",
+      high: "高信頼",
+      medium: "中信頼",
+      low: "低信頼",
+      unverified: "未検証",
+      conflicting: "競合あり",
+    },
+    nodeType: {
+      Concept: "概念",
+      Person: "人物",
+      Organization: "組織",
+      Company: "企業",
+      Paper: "論文",
+      Book: "書籍",
+      Experiment: "実験",
+      Event: "イベント",
+      Technology: "テクノロジー",
+      Product: "製品",
+      Application: "アプリケーション",
+      Policy: "政策",
+      Dataset: "データセット",
+      Controversy: "論争",
+    },
+    purpose: {
+      learning: "学習",
+      teaching: "教育",
+      writing: "執筆",
+      research: "研究",
+      industry: "業界分析",
+      product: "製品調査",
+      strategy: "戦略",
+      custom: "カスタム",
+    },
+    dimension: {
+      concepts: "主要概念",
+      history: "発展史",
+      theory: "理論的基盤",
+      technology: "技術と手法",
+      experiments: "実験研究",
+      papers: "重要論文",
+      people: "重要人物",
+      organizations: "組織",
+      companies: "企業",
+      products: "製品",
+      applications: "応用分野",
+      industry: "産業構造",
+      policy: "政策と規制",
+      market: "市場規模",
+      investment: "投資動向",
+      controversy: "論争点",
+      risk: "リスクと倫理",
+      recent_developments: "最近の動向",
+      future_trends: "将来のトレンド",
+    },
+    sourceType: {
+      web_page: "Web ページ",
+      paper: "論文",
+      documentation: "ドキュメント",
+      book: "書籍",
+      dataset: "データセット",
+      video: "動画",
+      repository: "リポジトリ",
+    },
+    sourceStatus: {
+      discovered: "発見済み",
+      evaluated: "評価済み",
+      fetched: "取得済み",
+      indexed: "インデックス済み",
+      rejected: "除外",
+    },
+    taskKind: {
+      search: "ソース検索",
+      source_evaluation: "ソース評価",
+      extraction: "内容抽出",
+      normalization: "ナレッジ正規化",
+      validation: "検証レビュー",
+      synthesis: "統合整理",
+    },
+    depth: {
+      1: "1 · 入門レベル",
+      2: "2 · 体系理解",
+      3: "3 · 構造化リサーチ",
+      4: "4 · 専門リサーチ",
+      5: "5 · 最前線フォロー",
+    },
+    assistantAction: {
+      explain_progress: "進捗を説明",
+      suggest_next_task: "次のタスクを提案",
+      list_pending_reviews: "レビュー待ちを一覧表示",
+      record_decision: "決定を記録",
+    },
+  },
+};
 
-/** Pending translation: explicit en copy keeps structural parity trivial. */
-export default enCommon;
+export default common;
