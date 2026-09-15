@@ -33,11 +33,15 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     trace: "retain-on-failure",
+    // ADR-023: pin the browser locale to zh-CN so the i18n resolution ladder
+    // (localStorage miss → navigator.language) deterministically renders the
+    // default language; existing specs assert the Chinese shell text.
+    locale: "zh-CN",
   },
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: { ...devices["Desktop Chrome"], locale: "zh-CN" },
     },
   ],
   webServer: {

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Menu, Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { WORKSPACE_VIEWS, useWorkspaceStore } from "@/stores/workspaceStore";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -17,14 +18,17 @@ import { Button } from "@morpho/ui";
  * from the 菜单 button.
  */
 export function WorkspaceLayout() {
+  const { t } = useTranslation("shell");
   const activeView = useWorkspaceStore((s) => s.activeView);
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
   const setDrawerOpen = useWorkspaceStore((s) => s.setSidebarDrawerOpen);
   const drawerOpen = useWorkspaceStore((s) => s.sidebarDrawerOpen);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
-  const viewLabel =
-    WORKSPACE_VIEWS.find((v) => v.id === activeView)?.label ?? "";
+  // view.label is the i18n key ("shell:nav.<view>"); resolve it for display.
+  const viewLabelText = t(
+    WORKSPACE_VIEWS.find((v) => v.id === activeView)?.label ?? "",
+  );
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-text-primary">
@@ -32,7 +36,7 @@ export function WorkspaceLayout() {
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-md focus:top-md focus:z-50 focus:rounded-md focus:bg-surface-raised focus:px-md focus:py-sm"
       >
-        跳到主内容
+        {t("skipToContent")}
       </a>
 
       <Sidebar variant="docked" />
@@ -40,23 +44,23 @@ export function WorkspaceLayout() {
       <main
         id="main-content"
         className="main-glow flex min-w-0 flex-1 flex-col"
-        aria-label={`${viewLabel}视图`}
+        aria-label={t("mainViewAria", { view: viewLabelText })}
       >
         <div className="flex items-center gap-sm border-b border-border px-md py-sm lg:hidden">
           <Button
             ref={menuButtonRef}
             variant="ghost"
             size="sm"
-            aria-label="打开导航菜单"
+            aria-label={t("openNavigationMenu")}
             aria-expanded={drawerOpen}
             aria-controls="sidebar-drawer"
             onClick={() => setDrawerOpen(!drawerOpen)}
             data-testid="mobile-menu-button"
           >
             <Menu size={16} strokeWidth={1.75} aria-hidden="true" />
-            菜单
+            {t("menu")}
           </Button>
-          <span className="text-label text-text-secondary">{viewLabel}</span>
+          <span className="text-label text-text-secondary">{viewLabelText}</span>
         </div>
 
         <Topbar />
@@ -76,6 +80,7 @@ export function WorkspaceLayout() {
 
 /** 浮动助手(spec §8):右下 launcher + 360×530 弹出面板;Escape 关闭并归还焦点。 */
 function AssistantDock() {
+  const { t } = useTranslation("shell");
   const assistantOpen = useWorkspaceStore((s) => s.assistantOpen);
   const setAssistantOpen = useWorkspaceStore((s) => s.setAssistantOpen);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -112,7 +117,7 @@ function AssistantDock() {
       <Button
         ref={launcherRef}
         variant="primary"
-        aria-label="打开 AI 助手"
+        aria-label={t("openAssistant")}
         onClick={() => setAssistantOpen(true)}
         className="brand-gradient-button fixed bottom-xl right-xl z-30 h-auto gap-sm rounded-full! px-md! py-sm text-micro font-bold!"
         data-testid="assistant-launcher"
@@ -120,7 +125,7 @@ function AssistantDock() {
         <span aria-hidden="true" className="flex size-5 items-center justify-center rounded-full bg-overlay-strong">
           <Sparkles size={18} strokeWidth={1.75} />
         </span>
-        AI 助手
+        {t("assistant")}
       </Button>
 
       {assistantOpen ? (
@@ -131,7 +136,7 @@ function AssistantDock() {
           <Button
             variant="ghost"
             size="icon"
-            aria-label="关闭助手面板"
+            aria-label={t("closeAssistantPanel")}
             data-testid="assistant-backdrop"
             onClick={() => setAssistantOpen(false)}
             className="fixed inset-0 z-20 h-auto w-auto rounded-none bg-scrim! hover:bg-scrim! lg:hidden"
@@ -147,7 +152,7 @@ function AssistantDock() {
             ref={panelRef}
             tabIndex={-1}
             role="dialog"
-            aria-label="Morpho AI 助手"
+            aria-label={t("assistantPanelAria")}
             data-testid="assistant-panel"
             className="assistant-popup fixed bottom-dock-offset right-xl z-30 flex h-dock-h w-[min(var(--morpho-layout-dock-width),calc(100vw-32px))] flex-col overflow-hidden rounded-dock border border-[rgb(217_160_91/0.3)] bg-surface shadow-[var(--morpho-shadow-overlay)] outline-none max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:w-auto max-lg:max-h-[70dvh] max-lg:rounded-b-none"
           >

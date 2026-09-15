@@ -1,6 +1,15 @@
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Palette, ScrollText, Server, Sparkles, type LucideIcon } from "lucide-react";
-import { Alert, Badge, Button, Card, Input, useToast } from "@morpho/ui";
+import { useTranslation } from "react-i18next";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Input,
+  SegmentedControl,
+  useToast,
+} from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
@@ -9,6 +18,7 @@ import {
   useThemeStore,
   type ThemeId,
 } from "@/stores/themeStore";
+import { useLanguageStore, type LanguageId } from "@/stores/languageStore";
 import { getTransportKind } from "@/services/transportProvider";
 import {
   useCoreInfo,
@@ -90,10 +100,43 @@ const THEME_PREVIEW_COLORS: Record<ThemeId, [string, string, string]> = {
 };
 
 /**
+ * Interface language row (ADR-023): the registered SegmentedControl primitive
+ * drives the language store — instant apply, persisted to
+ * localStorage["morpho.lang"], <html lang> kept in lockstep. Option labels
+ * are locale-invariant self-names (each language in its own language), so
+ * they are constants rather than resource strings. Radiogroup a11y comes
+ * from the primitive (role=radiogroup/radio, aria-checked, roving tabindex,
+ * Arrow/Home/End with wrap) — the same contract as the theme options above.
+ */
+function LanguageRow() {
+  const { t } = useTranslation("settings");
+  const language = useLanguageStore((s) => s.language);
+  const setLanguage = useLanguageStore((s) => s.setLanguage);
+
+  return (
+    <div className="mt-sm flex items-center justify-between gap-sm border-t border-border pt-sm">
+      <span className="text-caption text-text-secondary">
+        {t("language.label")}
+      </span>
+      <SegmentedControl
+        options={[
+          { value: "zh-CN", label: "简体中文" },
+          { value: "en", label: "English" },
+        ]}
+        value={language}
+        onChange={(value) => setLanguage(value as LanguageId)}
+        label={t("language.aria")}
+      />
+    </div>
+  );
+}
+
+/**
  * 外观主题卡：双皮肤即时切换（无保存按钮）。A11y 沿用 SegmentedControl 的
  * radiogroup 模式（role=radiogroup/radio + aria-checked + roving tabindex，
  * Arrow/Home/End 移动选择、焦点跟随并首尾回绕）；选中态复用效果层
  * `option-selected` 类，与 ConfigPage 来源偏好卡的视觉一致。
+ * 卡片底部附带界面语言行（ADR-023）。
  */
 function ThemePickerCard() {
   const theme = useThemeStore((s) => s.theme);
@@ -188,6 +231,7 @@ function ThemePickerCard() {
           );
         })}
       </div>
+      <LanguageRow />
     </SettingsCard>
   );
 }

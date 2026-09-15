@@ -6,7 +6,9 @@ import { ToastProvider } from "@morpho/ui";
 import { createQueryClient } from "@/app/queryClient";
 import { SettingsPage } from "./SettingsPage";
 import { mockBackend } from "@/services/mocks/backend";
+import { LANGUAGE_STORAGE_KEY } from "@/i18n";
 import { THEME_STORAGE_KEY, useThemeStore } from "@/stores/themeStore";
+import { useLanguageStore } from "@/stores/languageStore";
 
 /**
  * Real desktop wiring (batch 1): the connection card reads core.info and
@@ -204,5 +206,63 @@ describe("SettingsPage 外观主题 card (ADR-022 skin picker)", () => {
     expect(bio).toHaveFocus();
     expect(lamplit).toHaveAttribute("tabindex", "-1");
     expect(bio).toHaveAttribute("tabindex", "0");
+  });
+});
+
+describe("SettingsPage 界面语言 control (ADR-023 language switcher)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useThemeStore.setState({ theme: "lamplit-study" });
+    useLanguageStore.setState({ language: "zh-CN" });
+  });
+
+  it("renders the language row as a named radiogroup with 简体中文 selected", async () => {
+    renderPage();
+
+    const group = screen.getByRole("radiogroup", { name: "界面语言" });
+    const zh = within(group).getByRole("radio", { name: "简体中文" });
+    const en = within(group).getByRole("radio", { name: "English" });
+
+    expect(zh).toHaveAttribute("aria-checked", "true");
+    expect(en).toHaveAttribute("aria-checked", "false");
+    // Roving tabindex: only the selected segment is tabbable.
+    expect(zh).toHaveAttribute("tabindex", "0");
+    expect(en).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("applies English instantly — store, <html lang>, localStorage and re-render", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const group = screen.getByRole("radiogroup", { name: "界面语言" });
+    await user.click(within(group).getByRole("radio", { name: "English" }));
+
+    const en = within(group).getByRole("radio", { name: "English" });
+    expect(en).toHaveAttribute("aria-checked", "true");
+    expect(within(group).getByRole("radio", { name: "简体中文" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    // Instant apply: instance language, <html lang> and the persisted key.
+    expect(document.documentElement.lang).toBe("en");
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("en");
+    // The row label itself re-renders through the "settings" namespace.
+    expect(screen.getByText("Language")).toBeInTheDocument();
+  });
+
+  it("switches back to 简体中文 and the row label follows", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Option labels are locale-invariant self-names; the group's accessible
+    // name itself is translated (界面语言 ↔ Interface language), so the
+    // radios are queried directly.
+    await user.click(screen.getByRole("radio", { name: "English" }));
+    expect(screen.getByText("Language")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "简体中文" }));
+    expect(document.documentElement.lang).toBe("zh-CN");
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("zh-CN");
+    expect(screen.getByText("语言")).toBeInTheDocument();
   });
 });

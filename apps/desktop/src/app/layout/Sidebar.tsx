@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import {
   WORKSPACE_VIEWS,
   useWorkspaceStore,
@@ -63,6 +64,7 @@ export function Sidebar({
   /** Drawer close returns focus here (the 菜单 button in WorkspaceLayout). */
   returnFocusTo?: RefObject<HTMLButtonElement | null>;
 }) {
+  const { t } = useTranslation("shell");
   const activeView = useWorkspaceStore((s) => s.activeView);
   const setActiveView = useWorkspaceStore((s) => s.setActiveView);
   const drawerOpen = useWorkspaceStore((s) => s.sidebarDrawerOpen);
@@ -79,7 +81,7 @@ export function Sidebar({
 
   const nav = (
     <nav
-      aria-label="主导航"
+      aria-label={t("primaryNav")}
       className="flex h-full w-sidebar flex-col overflow-y-auto border-r border-border bg-surface-sunken p-md"
     >
       <div className="flex items-center gap-sm px-sm pb-lg pt-sm">
@@ -114,7 +116,9 @@ export function Sidebar({
               <span aria-hidden="true" className="flex w-4 shrink-0 justify-center">
                 <ViewIcon name={view.icon} />
               </span>
-              {view.label}
+              {/* view.label is the i18n key (e.g. "shell:nav.projects"); the
+                  store stays data-only, the Sidebar translates at render. */}
+              {t(view.label)}
             </Button>
           </li>
         ))}
@@ -124,8 +128,8 @@ export function Sidebar({
         <div className="flex items-center gap-sm px-sm">
           <span aria-hidden="true" className="inline-block size-dot rounded-full bg-success" />
           <span>
-            <strong className="block text-micro text-text-primary">本地工作区</strong>
-            <small className="text-caption text-text-muted">数据保存在本机</small>
+            <strong className="block text-micro text-text-primary">{t("localWorkspace")}</strong>
+            <small className="text-caption text-text-muted">{t("dataStaysLocal")}</small>
           </span>
         </div>
         {settingsView ? (
@@ -140,7 +144,7 @@ export function Sidebar({
             <span aria-hidden="true" className="flex w-4 shrink-0 justify-center">
               <ViewIcon name={settingsView.icon} />
             </span>
-            {settingsView.label}
+            {t(settingsView.label)}
           </Button>
         ) : null}
       </div>
@@ -175,6 +179,7 @@ function SidebarDrawer({
   children: ReactNode;
   returnFocusTo?: RefObject<HTMLButtonElement | null>;
 }) {
+  const { t } = useTranslation("shell");
   const setDrawerOpen = useWorkspaceStore((s) => s.setSidebarDrawerOpen);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -219,7 +224,7 @@ function SidebarDrawer({
       <Button
         variant="ghost"
         size="icon"
-        aria-label="关闭导航"
+        aria-label={t("closeNavigation")}
         className="absolute inset-0 h-auto w-auto rounded-none bg-scrim! hover:bg-scrim!"
         onClick={() => setDrawerOpen(false)}
       />
@@ -227,7 +232,7 @@ function SidebarDrawer({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="导航菜单"
+        aria-label={t("navigationMenu")}
         tabIndex={-1}
         className="absolute inset-y-0 left-0 outline-none shadow-overlay"
       >

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { i18n } from "@/i18n";
 
 /**
  * Workspace UI state (docs/architecture/MODULE_BOUNDARIES.md: Zustand for
@@ -16,21 +17,23 @@ import { create } from "zustand";
  * Views carry icon *names*, not glyph characters: the store stays a
  * data-only module, and the Sidebar maps each name to its lucide-react
  * component at render time (docs/frontend/COMPONENT_REGISTRY.md
- * "Iconography"). View labels/ids/testids are unchanged.
+ * "Iconography"). View labels are i18n KEYS (ADR-023, "shell" namespace —
+ * e.g. "shell:nav.plan"); Sidebar/WorkspaceLayout translate them at render
+ * with t(), so ids/testids and the registry shape are unchanged.
  */
 export const WORKSPACE_VIEWS = [
-  { id: "projects", label: "我的研究", icon: "layout-grid" },
-  { id: "overview", label: "概览", icon: "house" },
-  { id: "config", label: "研究配置", icon: "plus" },
-  { id: "plan", label: "研究计划", icon: "list-tree" },
-  { id: "tasks", label: "任务", icon: "list-checks" },
-  { id: "sources", label: "来源", icon: "globe" },
-  { id: "knowledge", label: "知识", icon: "book-open" },
-  { id: "graph", label: "图谱", icon: "waypoints" },
-  { id: "journal", label: "对话日志", icon: "scroll-text" },
-  { id: "settings", label: "设置", icon: "sliders-horizontal" },
+  { id: "projects", label: "shell:nav.projects", icon: "layout-grid" },
+  { id: "overview", label: "shell:nav.overview", icon: "house" },
+  { id: "config", label: "shell:nav.config", icon: "plus" },
+  { id: "plan", label: "shell:nav.plan", icon: "list-tree" },
+  { id: "tasks", label: "shell:nav.tasks", icon: "list-checks" },
+  { id: "sources", label: "shell:nav.sources", icon: "globe" },
+  { id: "knowledge", label: "shell:nav.knowledge", icon: "book-open" },
+  { id: "graph", label: "shell:nav.graph", icon: "waypoints" },
+  { id: "journal", label: "shell:nav.journal", icon: "scroll-text" },
+  { id: "settings", label: "shell:nav.settings", icon: "sliders-horizontal" },
   // PRD §13 保留注册,不进侧栏导航(ADR-013)。
-  { id: "reports", label: "报告", icon: "file-text" },
+  { id: "reports", label: "shell:nav.reports", icon: "file-text" },
 ] as const;
 
 export type ViewId = (typeof WORKSPACE_VIEWS)[number]["id"];
@@ -38,8 +41,10 @@ export type ViewId = (typeof WORKSPACE_VIEWS)[number]["id"];
 /** Icon names carried by WORKSPACE_VIEWS; rendered by the Sidebar via lucide. */
 export type ViewIconName = (typeof WORKSPACE_VIEWS)[number]["icon"];
 
+/** Display label for a view id, resolved through the i18n instance. */
 export function viewLabel(view: ViewId): string {
-  return WORKSPACE_VIEWS.find((v) => v.id === view)?.label ?? view;
+  const entry = WORKSPACE_VIEWS.find((v) => v.id === view);
+  return entry ? i18n.t(entry.label) : view;
 }
 
 interface WorkspaceState {

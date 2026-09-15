@@ -16,6 +16,18 @@
       } catch (e) {
         document.documentElement.dataset.theme = "lamplit-study";
       }
+      // ADR-023 FOUC guard: resolve the interface language before first paint
+      // (same ladder as src/i18n — stored key → navigator zh → en) so
+      // <html lang> matches what the bundle will render.
+      try {
+        var l = localStorage.getItem("morpho.lang");
+        if (l !== "zh-CN" && l !== "en") {
+          l = (navigator.language || "").toLowerCase().indexOf("zh") === 0 ? "zh-CN" : "en";
+        }
+        document.documentElement.lang = l;
+      } catch (e) {
+        document.documentElement.lang = "zh-CN";
+      }
     </script>
   </head>
   <body>

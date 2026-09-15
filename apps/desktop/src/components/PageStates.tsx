@@ -1,17 +1,23 @@
 import type { ReactNode } from "react";
 import { Alert, Button, Skeleton } from "@morpho/ui";
+import { useTranslation } from "react-i18next";
 import { isMorphoError } from "@/services/errors";
 
 /**
  * Mandatory page states (docs/frontend/AI_FRONTEND_RULES.md): every page
  * renders Loading, Empty, and Error through this overlay set so behaviour
- * stays consistent across the workbench.
+ * stays consistent across the workbench. Shared sentences (loading/error/
+ * retry) go through t() (ADR-023, "common" namespace); page-specific empty
+ * titles/descriptions and custom loading labels are props supplied by the
+ * caller — feature views translate them with their own namespace (I2).
  */
 
-export function PageLoading({ label = "正在加载…" }: { label?: string }) {
+export function PageLoading({ label }: { label?: string }) {
+  const { t } = useTranslation("common");
+  const resolved = label ?? t("loading");
   return (
-    <div role="status" aria-label={label} data-testid="page-loading">
-      <span className="sr-only">{label}</span>
+    <div role="status" aria-label={resolved} data-testid="page-loading">
+      <span className="sr-only">{resolved}</span>
       <div className="flex flex-col gap-md">
         <Skeleton className="h-6 w-64" />
         <Skeleton className="h-20 w-full" />
@@ -50,22 +56,24 @@ export function PageError({
   error: unknown;
   onRetry?: () => void;
 }) {
-  const message =
-    isMorphoError(error)
-      ? `${error.userMessage}${error.retryable ? "（可重试）" : ""}`
-      : "发生未知错误，请重试。";
+  const { t } = useTranslation("common");
+  const message = isMorphoError(error)
+    ? `${error.userMessage}${error.retryable ? t("error.retryableSuffix") : ""}`
+    : t("error.unknown");
   const detail = isMorphoError(error) ? error.developerDetail : undefined;
   return (
     <div className="flex flex-col gap-md" data-testid="page-error">
-      <Alert variant="error" title="出错了">
+      <Alert variant="error" title={t("error.title")}>
         <p>{message}</p>
         {detail ? (
-          <p className="text-caption text-text-muted">技术细节：{detail}</p>
+          <p className="text-caption text-text-muted">
+            {t("error.technicalDetail", { detail })}
+          </p>
         ) : null}
       </Alert>
       {onRetry ? (
         <div>
-          <Button onClick={onRetry}>重试</Button>
+          <Button onClick={onRetry}>{t("error.retry")}</Button>
         </div>
       ) : null}
     </div>
