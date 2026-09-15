@@ -207,3 +207,7 @@ If a second consumer appears for any value above, promote it to a numbered token
 ### 2026-09-13 removal (lucide-react iconography, ADR-014 prep)
 
 - `text-[25px]` (ProjectsPage new-project glyph) was removed from this list: the glyph character itself was replaced by a lucide `Plus` icon rendered at the component's standard hero size (`size={18}` prop), so the className literal no longer exists anywhere. Icon sizing is a lucide prop, not a text-size token — see COMPONENT_REGISTRY.md "Iconography".
+
+### 2026-09-15 addition (I3 quick-switch menus)
+
+- The ADR-022 preview-swatch literals (each skin's FIXED background/accent/accent-alt hex values) are now defined once in `apps/desktop/src/components/themePreviewColors.ts` and consumed by two surfaces — the SettingsPage 外观主题 card and the new Topbar skin quick menu. This remains the app's single sanctioned color-literal exception: the dots must depict each skin's fixed palette (reading live tokens would render both options identically), and centralizing the module means the second consumer added zero new literals. All surrounding chrome (including both new menu panels) consumes tokens only.

@@ -31,4 +31,25 @@ describe("Topbar", () => {
     expect(screen.getByRole("button", { name: "帮助" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "本地用户" })).toBeInTheDocument();
   });
+
+  it("hosts the language and skin quick menus before the saved badge (I3)", () => {
+    renderTopbar();
+    const languageTrigger = screen.getByTestId("topbar-language-menu");
+    const skinTrigger = screen.getByTestId("topbar-skin-menu");
+    const badge = screen.getByText("已保存");
+
+    expect(languageTrigger).toBeInTheDocument();
+    expect(skinTrigger).toBeInTheDocument();
+    // Cluster order: menus first (discoverability mandate), then the badge.
+    expect(
+      languageTrigger.compareDocumentPosition(badge) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      skinTrigger.compareDocumentPosition(badge) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Compact trigger face mirrors the current language (zh-CN pinned).
+    expect(languageTrigger).toHaveTextContent("中文");
+  });
 });

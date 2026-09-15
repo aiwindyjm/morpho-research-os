@@ -9,6 +9,8 @@ const settings = {
   language: {
     label: "Language",
     aria: "Interface language",
+    description:
+      "The interface language applies instantly; the preference is stored only in this browser.",
   },
   page: {
     kicker: "Settings",

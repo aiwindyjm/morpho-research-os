@@ -9,6 +9,7 @@ const settings = {
   language: {
     label: "语言",
     aria: "界面语言",
+    description: "界面语言即时切换；偏好只保存在本机浏览器。",
   },
   page: {
     kicker: "设置",

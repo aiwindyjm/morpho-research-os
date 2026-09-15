@@ -27,6 +27,14 @@ const shell = {
   help: "Help",
   localUser: "Local user",
 
+  // Topbar quick menus (I3): language + skin popovers. The language options
+  // themselves are locale-invariant self-names from `LANGUAGES` (src/i18n),
+  // and skin names resolve through t("settings:theme.<id>.name").
+  languageMenu: "Switch interface language",
+  languageList: "Interface language",
+  skinMenu: "Switch appearance theme",
+  skinList: "Appearance theme",
+
   // Sidebar
   primaryNav: "Primary navigation",
   localWorkspace: "Local workspace",

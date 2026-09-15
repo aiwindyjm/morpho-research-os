@@ -1,5 +1,5 @@
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Palette, ScrollText, Server, Sparkles, type LucideIcon } from "lucide-react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { Globe, Palette, ScrollText, Server, Sparkles, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -7,17 +7,14 @@ import {
   Button,
   Card,
   Input,
-  SegmentedControl,
   useToast,
 } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
+import { THEME_PREVIEW_COLORS } from "@/components/themePreviewColors";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
-import {
-  THEME_IDS,
-  useThemeStore,
-  type ThemeId,
-} from "@/stores/themeStore";
+import { THEME_IDS, useThemeStore } from "@/stores/themeStore";
+import { LANGUAGES } from "@/i18n";
 import { useLanguageStore, type LanguageId } from "@/stores/languageStore";
 import { getTransportKind } from "@/services/transportProvider";
 import {
@@ -87,93 +84,122 @@ function SettingsCard({
 const THEME_IDS_LITERAL = THEME_IDS;
 
 /**
- * Preview-only palette literals (ADR-022 preview swatches): each option must
- * depict its own skin's FIXED palette — background / accent / accent-alt from
- * packages/ui/src/tokens.css — so these dots deliberately do NOT ride the
- * live theme tokens; reading tokens would render both options identically
- * and the preview would carry no information. This is the page's one
- * sanctioned literal use; all surrounding chrome still consumes tokens only
- * (DESIGN_TOKENS.md / ADR-013).
+ * Preview swatches moved to `@/components/themePreviewColors` (I3): the
+ * Topbar skin quick menu renders the same per-skin fixed palette, so the
+ * sanctioned literals live in one shared module.
  */
-const THEME_PREVIEW_COLORS: Record<ThemeId, [string, string, string]> = {
-  "lamplit-study": ["#131312", "#d9a05b", "#7fa5a3"],
-  "bio-luminal": ["#0c1220", "#53d7f5", "#b8a5ff"],
-};
 
 /**
- * Interface language row (ADR-023): the registered SegmentedControl primitive
- * drives the language store — instant apply, persisted to
- * localStorage["morpho.lang"], <html lang> kept in lockstep. Option labels
- * are locale-invariant self-names (each language in its own language), so
- * they are constants rather than resource strings. Radiogroup a11y comes
- * from the primitive (role=radiogroup/radio, aria-checked, roving tabindex,
- * Arrow/Home/End with wrap) — the same contract as the theme options above.
+ * Shared roving-tabindex keyboard handler for the card radiogroups (theme +
+ * language, I3): Arrow keys move the selection one option (linear order,
+ * both ends wrapping), Home/End jump; selection follows focus (WAI-ARIA
+ * radiogroup). `select` receives the bounded index and the option buttons so
+ * the card can apply its store write and move focus.
  */
-function LanguageRow() {
+function handleRovingKeydown(
+  event: KeyboardEvent<HTMLDivElement>,
+  count: number,
+  select: (index: number, radios: HTMLButtonElement[]) => void,
+) {
+  const radios = Array.from(
+    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
+  );
+  if (radios.length === 0) return;
+  const currentIndex = Math.max(
+    0,
+    radios.indexOf(document.activeElement as HTMLButtonElement),
+  );
+  let next: number | null = null;
+  if (event.key === "ArrowRight" || event.key === "ArrowDown") next = currentIndex + 1;
+  else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = currentIndex - 1;
+  else if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = count - 1;
+  if (next === null) return;
+  event.preventDefault();
+  select(((next % count) + count) % count, radios);
+}
+
+/**
+ * 界面语言卡 (I3): the full ten-language selection replaces the former
+ * 2-option SegmentedControl row (maintainer feedback — two options were too
+ * exclusive, and the row had no room for ten). Radiogroup grid of
+ * locale-invariant self-names (native name primary, English name as the
+ * quiet secondary line for users who cannot yet read the script) — the same
+ * radiogroup contract as the theme options above (role=radiogroup/radio +
+ * aria-checked + roving tabindex via handleRovingKeydown, instant apply,
+ * persisted to localStorage["morpho.lang"], <html lang> kept in lockstep).
+ * The topbar quick menu covers the fast path; this card stays the
+ * full-control surface.
+ */
+function LanguagePickerCard() {
   const { t } = useTranslation("settings");
   const language = useLanguageStore((s) => s.language);
   const setLanguage = useLanguageStore((s) => s.setLanguage);
 
   return (
-    <div className="mt-sm flex items-center justify-between gap-sm border-t border-border pt-sm">
-      <span className="text-caption text-text-secondary">
-        {t("language.label")}
-      </span>
-      <SegmentedControl
-        options={[
-          { value: "zh-CN", label: "简体中文" },
-          { value: "en", label: "English" },
-        ]}
-        value={language}
-        onChange={(value) => setLanguage(value as LanguageId)}
-        label={t("language.aria")}
-      />
-    </div>
+    <SettingsCard
+      testId="language-card"
+      icon={Globe}
+      title={t("language.label")}
+      description={t("language.description")}
+      value={LANGUAGES.find((l) => l.id === language)?.nativeName}
+    >
+      <div
+        role="radiogroup"
+        aria-label={t("language.aria")}
+        onKeyDown={(event) =>
+          handleRovingKeydown(event, LANGUAGES.length, (index, radios) => {
+            const next = LANGUAGES[index];
+            if (!next) return;
+            setLanguage(next.id);
+            radios[index]?.focus();
+          })
+        }
+        data-testid="language-options"
+        className="grid grid-cols-2 gap-sm sm:grid-cols-3"
+      >
+        {LANGUAGES.map((l) => {
+          const selected = l.id === language;
+          return (
+            <button
+              key={l.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              tabIndex={selected ? 0 : -1}
+              data-testid={`language-option-${l.id}`}
+              onClick={() => setLanguage(l.id as LanguageId)}
+              className={`cursor-pointer rounded-md border p-md text-left transition-colors duration-[var(--morpho-motion-fast)] ${
+                selected
+                  ? "option-selected"
+                  : "border-border hover:bg-overlay-hover"
+              }`}
+            >
+              <strong className="block text-caption text-text-primary">
+                {l.nativeName}
+              </strong>
+              <small className="mt-1 block text-caption text-text-muted">
+                {l.englishName}
+              </small>
+            </button>
+          );
+        })}
+      </div>
+    </SettingsCard>
   );
 }
 
 /**
- * 外观主题卡：双皮肤即时切换（无保存按钮）。A11y 沿用 SegmentedControl 的
- * radiogroup 模式（role=radiogroup/radio + aria-checked + roving tabindex，
- * Arrow/Home/End 移动选择、焦点跟随并首尾回绕）；选中态复用效果层
- * `option-selected` 类，与 ConfigPage 来源偏好卡的视觉一致。
- * 卡片底部附带界面语言行（ADR-023）。
+ * 外观主题卡：双皮肤即时切换（无保存按钮）。A11y 沿用 radiogroup 模式
+ * （role=radiogroup/radio + aria-checked + roving tabindex，Arrow/Home/End
+ * 经共享的 handleRovingKeydown 移动选择、焦点跟随并首尾回绕）；选中态复用
+ * 效果层 `option-selected` 类，与 ConfigPage 来源偏好卡的视觉一致。I3 起
+ * 顶栏皮肤快捷菜单共享同一 store 与预览色板。
  */
 function ThemePickerCard() {
   const { t } = useTranslation("settings");
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
-  const groupRef = useRef<HTMLDivElement>(null);
-
-  function moveTo(index: number) {
-    const count = THEME_IDS_LITERAL.length;
-    const bounded = ((index % count) + count) % count;
-    setTheme(THEME_IDS_LITERAL[bounded]);
-    const radios = groupRef.current?.querySelectorAll<HTMLButtonElement>(
-      '[role="radio"]',
-    );
-    radios?.[bounded]?.focus();
-  }
-
-  function handleKeydown(event: KeyboardEvent<HTMLDivElement>) {
-    const radios = Array.from(
-      groupRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ??
-        [],
-    );
-    if (radios.length === 0) return;
-    const currentIndex = Math.max(
-      0,
-      radios.indexOf(document.activeElement as HTMLButtonElement),
-    );
-    let next: number | null = null;
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = currentIndex + 1;
-    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = currentIndex - 1;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = THEME_IDS_LITERAL.length - 1;
-    if (next === null) return;
-    event.preventDefault();
-    moveTo(next);
-  }
 
   return (
     <SettingsCard
@@ -184,10 +210,16 @@ function ThemePickerCard() {
       value={t(`theme.${theme}.name`)}
     >
       <div
-        ref={groupRef}
         role="radiogroup"
         aria-label={t("theme.aria")}
-        onKeyDown={handleKeydown}
+        onKeyDown={(event) =>
+          handleRovingKeydown(event, THEME_IDS_LITERAL.length, (index, radios) => {
+            const next = THEME_IDS_LITERAL[index];
+            if (!next) return;
+            setTheme(next);
+            radios[index]?.focus();
+          })
+        }
         data-testid="theme-options"
         className="grid grid-cols-1 gap-sm sm:grid-cols-2"
       >
@@ -233,7 +265,6 @@ function ThemePickerCard() {
           );
         })}
       </div>
-      <LanguageRow />
     </SettingsCard>
   );
 }
@@ -496,6 +527,9 @@ export function SettingsPage() {
             先给用户一个稳定可操作的锚点；其余三张卡都是集成面（连接诊断、
             钥匙串写入、日志导航），可能进入 loading/error。 */}
         <ThemePickerCard />
+        {/* 界面语言（I3）：从主题卡内的一行 SegmentedControl 升级为独立的
+            十语言卡片（顶栏快捷菜单之外的全量控制面）。 */}
+        <LanguagePickerCard />
         <CoreStatusCard />
         <ProviderKeysCard />
         <SettingsCard

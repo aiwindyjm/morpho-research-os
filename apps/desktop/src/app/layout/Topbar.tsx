@@ -1,13 +1,22 @@
 import { Badge, Button } from "@morpho/ui";
 import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { LanguageMenu, SkinMenu } from "./TopbarQuickMenus";
 import { useProjects } from "@/services/queries";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 
 /**
- * 原型顶栏(spec §4.4):面包屑 Morpho / 项目名;右侧已保存状态、帮助与本地头像。
- * All user-visible strings go through t() (ADR-023, "shell" namespace) — the
- * reference extraction pattern for feature views (I2).
+ * 原型顶栏(spec §4.4):面包屑 Morpho / 项目名;右侧快捷菜单(语言/皮肤,I3)、
+ * 已保存状态、帮助与本地头像。All user-visible strings go through t()
+ * (ADR-023, "shell" namespace) — the reference extraction pattern for
+ * feature views (I2).
+ *
+ * I3 discoverability mandate: the language and skin quick menus sit FIRST in
+ * the top-right cluster (before the 已保存 badge), so switching never
+ * requires a detour into Settings (those cards remain the full-control
+ * surface). Narrow windows: the cluster must not overflow — the help button
+ * hides below `sm` while both menus, the badge and the avatar stay, and the
+ * breadcrumb truncates instead of pushing the cluster out.
  */
 export function Topbar() {
   const { t } = useTranslation("shell");
@@ -17,40 +26,45 @@ export function Topbar() {
 
   return (
     <header
-      className="flex h-topbar shrink-0 items-center justify-between border-b border-border px-xl"
+      className="flex h-topbar shrink-0 items-center justify-between gap-md border-b border-border px-xl"
       data-testid="topbar"
     >
       <nav
         aria-label={t("breadcrumb")}
-        className="flex items-center gap-sm text-caption text-text-muted"
+        className="flex min-w-0 items-center gap-sm text-caption text-text-muted"
       >
         <img
           src="/brand-mark.png"
           alt=""
-          className="size-[18px] rounded-sm border border-border object-cover"
+          className="size-[18px] shrink-0 rounded-sm border border-border object-cover"
         />
         <span>Morpho</span>
         <span aria-hidden="true">/</span>
-        <strong className="font-semibold text-text-primary">
+        <strong className="truncate font-semibold text-text-primary">
           {active?.name ?? t("noProjectSelected")}
         </strong>
       </nav>
-      <div className="flex items-center gap-lg">
+      <div className="flex shrink-0 items-center gap-sm sm:gap-lg">
+        {/* Quick-switch menus (I3): explicit language + skin entry points. */}
+        <LanguageMenu />
+        <SkinMenu />
         {/* Prototype status dot promoted to the registered Badge primitive;
             the label gains the shared pill face (bg-success/10 + border). */}
         <Badge variant="success" dot>
           {t("saved")}
         </Badge>
-        <Button
-          size="icon"
-          variant="ghost"
-          disabled
-          title={t("helpUnavailable")}
-          aria-label={t("help")}
-          className="rounded-full! border-border! text-caption"
-        >
-          <CircleHelp size={16} strokeWidth={1.75} aria-hidden="true" />
-        </Button>
+        <div className="hidden sm:contents">
+          <Button
+            size="icon"
+            variant="ghost"
+            disabled
+            title={t("helpUnavailable")}
+            aria-label={t("help")}
+            className="rounded-full! border-border! text-caption"
+          >
+            <CircleHelp size={16} strokeWidth={1.75} aria-hidden="true" />
+          </Button>
+        </div>
         <Button
           size="icon"
           variant="ghost"

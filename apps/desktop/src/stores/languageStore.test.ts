@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LanguageId } from "./languageStore";
 
 /**
- * ADR-023 language contract: the id whitelist is "zh-CN" | "en", persistence
- * is `localStorage["morpho.lang"]`, the resolution ladder is stored key →
- * navigator zh-prefix → "en", and application is the i18next instance plus
- * `document.documentElement.lang`. The store resolves its initial state at
- * module-import time, so each case re-imports the module (vi.resetModules)
- * after arranging localStorage/navigator — the themeStore.test.ts pattern.
+ * ADR-023 language contract (I3 expansion): the id whitelist is the ten
+ * registered languages ("zh-CN" | "zh-TW" | "en" | "ja" | "ko" | "de" |
+ * "fr" | "es" | "pt-BR" | "ru"), persistence is `localStorage["morpho.lang"]`,
+ * and the resolution ladder is stored key (exact whitelist match) →
+ * navigator tag (exact match → primary-subtag prefix match, e.g. "de-AT" →
+ * "de", "pt-PT" → "pt-BR" → zh* terminal "zh-CN" → "en"). Application is the
+ * i18next instance plus `document.documentElement.lang`. The store resolves
+ * its initial state at module-import time, so each case re-imports the
+ * module (vi.resetModules) after arranging localStorage/navigator — the
+ * themeStore.test.ts pattern.
  */
 
 const LANG_KEY = "morpho.lang";
@@ -31,24 +35,37 @@ async function importI18n() {
 }
 
 describe("getInitialLanguage fallback ladder", () => {
-  it("returns the stored id when it is on the whitelist", async () => {
-    localStorage.setItem(LANG_KEY, "en");
-    const { getInitialLanguage } = await import("@/i18n");
-    expect(getInitialLanguage()).toBe("en");
+  it("returns a stored id when it is on the whitelist (incl. the eight new ids)", async () => {
+    for (const stored of ["ja", "zh-TW", "pt-BR", "en"] as const) {
+      localStorage.setItem(LANG_KEY, stored);
+      const { getInitialLanguage } = await import("@/i18n");
+      expect(getInitialLanguage()).toBe(stored);
+      localStorage.removeItem(LANG_KEY);
+    }
   });
 
   it("ignores unknown/stale stored values and falls to the navigator", async () => {
+    // "fr-FR" is not on the whitelist ("fr" is); a zh-CN navigator answers.
     localStorage.setItem(LANG_KEY, "fr-FR");
     const { getInitialLanguage } = await import("@/i18n");
     expect(getInitialLanguage()).toBe("zh-CN");
   });
 
-  it("resolves zh-CN from a zh-prefixed navigator language", async () => {
+  it("resolves zh-CN from an exact zh-CN navigator language", async () => {
     const { getInitialLanguage } = await import("@/i18n");
     expect(getInitialLanguage()).toBe("zh-CN");
   });
 
-  it("resolves en from a non-zh navigator language", async () => {
+  it("resolves zh-TW from an exact zh-TW navigator language", async () => {
+    Object.defineProperty(window.navigator, "language", {
+      value: "zh-TW",
+      configurable: true,
+    });
+    const { getInitialLanguage } = await import("@/i18n");
+    expect(getInitialLanguage()).toBe("zh-TW");
+  });
+
+  it("resolves en from a prefixed en navigator language", async () => {
     Object.defineProperty(window.navigator, "language", {
       value: "en-US",
       configurable: true,
@@ -57,9 +74,61 @@ describe("getInitialLanguage fallback ladder", () => {
     expect(getInitialLanguage()).toBe("en");
   });
 
-  it("resolves en when the key is missing and navigator is non-zh", async () => {
+  it("prefix-matches the primary subtag: de-DE and de-AT resolve de", async () => {
+    for (const tag of ["de-DE", "de-AT"]) {
+      Object.defineProperty(window.navigator, "language", {
+        value: tag,
+        configurable: true,
+      });
+      const { getInitialLanguage } = await import("@/i18n");
+      expect(getInitialLanguage(), tag).toBe("de");
+    }
+  });
+
+  it("prefix-matches pt-PT onto pt-BR and keeps an exact pt-BR hit", async () => {
     Object.defineProperty(window.navigator, "language", {
-      value: "de-DE",
+      value: "pt-PT",
+      configurable: true,
+    });
+    const { getInitialLanguage } = await import("@/i18n");
+    expect(getInitialLanguage()).toBe("pt-BR");
+
+    Object.defineProperty(window.navigator, "language", {
+      value: "pt-BR",
+      configurable: true,
+    });
+    const { getInitialLanguage: again } = await import("@/i18n");
+    expect(again()).toBe("pt-BR");
+  });
+
+  it("resolves ko and ru from their regional navigator tags", async () => {
+    for (const [tag, expected] of [
+      ["ko-KR", "ko"],
+      ["ru-RU", "ru"],
+    ] as const) {
+      Object.defineProperty(window.navigator, "language", {
+        value: tag,
+        configurable: true,
+      });
+      const { getInitialLanguage } = await import("@/i18n");
+      expect(getInitialLanguage(), tag).toBe(expected);
+    }
+  });
+
+  it("keeps zh-CN as the terminal for zh variants without a whitelist hit", async () => {
+    Object.defineProperty(window.navigator, "language", {
+      value: "zh-SG",
+      configurable: true,
+    });
+    const { getInitialLanguage } = await import("@/i18n");
+    // "zh-SG" has no exact/prefix whitelist match; the zh* ladder terminal
+    // stays zh-CN (documented — zh-TW users pick it once in the menu).
+    expect(getInitialLanguage()).toBe("zh-CN");
+  });
+
+  it("falls to en for a non-zh navigator with no whitelist match", async () => {
+    Object.defineProperty(window.navigator, "language", {
+      value: "xx-YY",
       configurable: true,
     });
     const { getInitialLanguage } = await import("@/i18n");
@@ -78,10 +147,10 @@ describe("getInitialLanguage fallback ladder", () => {
 
 describe("store creation", () => {
   it("seeds state from the ladder and mirrors it onto <html lang>", async () => {
-    localStorage.setItem(LANG_KEY, "en");
+    localStorage.setItem(LANG_KEY, "ja");
     const { useLanguageStore } = await importStore();
-    expect(useLanguageStore.getState().language).toBe("en");
-    expect(document.documentElement.lang).toBe("en");
+    expect(useLanguageStore.getState().language).toBe("ja");
+    expect(document.documentElement.lang).toBe("ja");
   });
 
   it("resolves zh-CN on a fresh zh profile without writing the key", async () => {
@@ -111,8 +180,18 @@ describe("setLanguage", () => {
     expect(localStorage.getItem(LANG_KEY)).toBe("en");
   });
 
+  it("applies one of the eight new ids end to end (ja)", async () => {
+    const { useLanguageStore } = await importStore();
+    const { i18n } = await importI18n();
+    useLanguageStore.getState().setLanguage("ja");
+    expect(useLanguageStore.getState().language).toBe("ja");
+    expect(i18n.language).toBe("ja");
+    expect(document.documentElement.lang).toBe("ja");
+    expect(localStorage.getItem(LANG_KEY)).toBe("ja");
+  });
+
   it("switches back to zh-CN", async () => {
-    localStorage.setItem(LANG_KEY, "en");
+    localStorage.setItem(LANG_KEY, "de");
     const { useLanguageStore } = await importStore();
     const { i18n } = await importI18n();
     useLanguageStore.getState().setLanguage("zh-CN");
@@ -126,8 +205,9 @@ describe("setLanguage", () => {
     const { useLanguageStore } = await importStore();
     const { i18n } = await importI18n();
     // Cast: LanguageId makes unknown ids a compile-time error for typed
-    // callers; the runtime whitelist guard is defense in depth.
-    useLanguageStore.getState().setLanguage("fr-FR" as LanguageId);
+    // callers; the runtime whitelist guard is defense in depth. "pt-PT" is
+    // resolvable as a navigator tag but not a settable id.
+    useLanguageStore.getState().setLanguage("pt-PT" as LanguageId);
     expect(useLanguageStore.getState().language).toBe("zh-CN");
     expect(i18n.language).toBe("zh-CN");
     expect(document.documentElement.lang).toBe("zh-CN");
@@ -168,6 +248,18 @@ describe("resource contract", () => {
     expect(
       i18n.t("shell:projectSwitcher.status.inProgress", { percent: 42 }),
     ).toBe("In progress · 42%");
+    await i18n.changeLanguage("zh-CN");
+    expect(i18n.t("shell:nav.plan")).toBe("研究计划");
+  });
+
+  it("placeholder locales render the en copy until their translation batch lands", async () => {
+    const { i18n } = await importI18n();
+    // ja is an explicit en re-export copy (batch 1): switching to it renders
+    // the authored English strings, never raw keys — documented placeholder
+    // semantics, superseded namespace by namespace as translations land.
+    await i18n.changeLanguage("ja");
+    expect(i18n.t("shell:nav.plan")).toBe("Research Plan");
+    expect(i18n.t("shell:saved")).toBe("Saved");
     await i18n.changeLanguage("zh-CN");
     expect(i18n.t("shell:nav.plan")).toBe("研究计划");
   });
