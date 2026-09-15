@@ -9,6 +9,7 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button, Card } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -23,11 +24,6 @@ import type {
   ResearchTask,
   TimelineEntry,
 } from "@/types/domain";
-import {
-  PLAN_STATUS_LABELS,
-  TASK_STATE_LABELS,
-  dimensionLabel,
-} from "@/types/labels";
 import {
   useClaims,
   useCoverage,
@@ -48,7 +44,9 @@ import {
  * projection of the active project — metrics, research path, live activity,
  * per-dimension coverage, and the top pending gap proposal. Every number is
  * derived from the existing queries; nothing is hard-coded from the
- * prototype's illustrative values.
+ * prototype's illustrative values. All chrome strings go through t()
+ * (ADR-023, "overview" namespace); state/dimension labels resolve through
+ * common:vocab.*.
  */
 
 type PathState = "done" | "current" | "review" | "waiting";
@@ -105,6 +103,7 @@ function MetricCard({
   accent?: boolean;
   progress?: number;
 }) {
+  const { t } = useTranslation("overview");
   return (
     <Card
       data-testid={testId}
@@ -124,7 +123,7 @@ function MetricCard({
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(progress)}
-          aria-label="覆盖度进度"
+          aria-label={t("metrics.coverageProgressAria")}
         >
           <span className="progress-fill" style={{ width: `${progress}%` }} />
         </div>
@@ -140,29 +139,39 @@ function MetricCard({
  * indicator, never a bare score.
  */
 function CoverageDisclosure({ dimension }: { dimension: CoverageDimensionResult }) {
+  const { t } = useTranslation("overview");
   return (
     <details className="text-caption text-text-muted">
-      <summary className="cursor-pointer">为什么是这个分数？</summary>
+      <summary className="cursor-pointer">{t("coverage.why")}</summary>
       <ul className="mt-xs list-disc pl-lg">
         <li>
-          任务完成度 {dimension.components.task_completion.toFixed(2)}（权重{" "}
-          {COVERAGE_WEIGHTS.task_completion}）：
-          {dimension.inputs.tasks_completed}/{dimension.inputs.tasks_total} 个任务完成
+          {t("coverage.taskCompletion", {
+            score: dimension.components.task_completion.toFixed(2),
+            weight: COVERAGE_WEIGHTS.task_completion,
+            done: dimension.inputs.tasks_completed,
+            total: dimension.inputs.tasks_total,
+          })}
         </li>
         <li>
-          知识广度 {dimension.components.knowledge_breadth.toFixed(2)}（权重{" "}
-          {COVERAGE_WEIGHTS.knowledge_breadth}）：
-          {dimension.inputs.knowledge_nodes} 个节点
+          {t("coverage.knowledgeBreadth", {
+            score: dimension.components.knowledge_breadth.toFixed(2),
+            weight: COVERAGE_WEIGHTS.knowledge_breadth,
+            total: dimension.inputs.knowledge_nodes,
+          })}
         </li>
         <li>
-          证据密度 {dimension.components.evidence_density.toFixed(2)}（权重{" "}
-          {COVERAGE_WEIGHTS.evidence_density}）：
-          {dimension.inputs.evidence_items} 条证据
+          {t("coverage.evidenceDensity", {
+            score: dimension.components.evidence_density.toFixed(2),
+            weight: COVERAGE_WEIGHTS.evidence_density,
+            total: dimension.inputs.evidence_items,
+          })}
         </li>
         <li>
-          来源多样性 {dimension.components.source_diversity.toFixed(2)}（权重{" "}
-          {COVERAGE_WEIGHTS.source_diversity}）：
-          {dimension.inputs.quality_sources} 个独立高质量来源
+          {t("coverage.sourceDiversity", {
+            score: dimension.components.source_diversity.toFixed(2),
+            weight: COVERAGE_WEIGHTS.source_diversity,
+            total: dimension.inputs.quality_sources,
+          })}
         </li>
       </ul>
       <ul className="mt-xs list-disc pl-lg">
@@ -175,6 +184,7 @@ function CoverageDisclosure({ dimension }: { dimension: CoverageDimensionResult 
 }
 
 export function OverviewPage() {
+  const { t } = useTranslation("overview");
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
   const setActiveView = useWorkspaceStore((s) => s.setActiveView);
 
@@ -251,37 +261,37 @@ export function OverviewPage() {
   const runActive =
     run.data !== null && run.data !== undefined && !TERMINAL_TASK_STATES.includes(run.data.state);
   const runStateLabel = run.data
-    ? TASK_STATE_LABELS[run.data.state]
+    ? t(`common:vocab.taskState.${run.data.state}`, { defaultValue: run.data.state })
     : plan.data
-      ? PLAN_STATUS_LABELS[plan.data.status]
-      : "未开始";
+      ? t(`common:vocab.planStatus.${plan.data.status}`, { defaultValue: plan.data.status })
+      : t("notStarted");
 
   return (
     <PageShell
-      kicker={hasProject ? `研究项目 / ${runStateLabel}` : undefined}
-      title={project?.name ?? "概览"}
+      kicker={hasProject ? t("kicker", { status: runStateLabel }) : undefined}
+      title={project?.name ?? t("fallbackTitle")}
       description={project?.description}
       actions={
         hasProject ? (
           <>
             <Button variant="secondary" onClick={() => setActiveView("config")}>
-              编辑配置
+              {t("editConfig")}
             </Button>
             {runActive ? (
               <Button variant="primary" onClick={() => setActiveView("tasks")}>
-                查看任务 →
+                {t("viewTasks")}
               </Button>
             ) : (
               <Button
                 variant="primary"
                 disabled={planIsDraft}
-                title={planIsDraft ? "先到研究计划页批准计划" : undefined}
+                title={planIsDraft ? t("planDraftTitle") : undefined}
                 loading={runActions.start.isPending}
                 onClick={() =>
                   void runActions.start.mutateAsync().catch(() => undefined)
                 }
               >
-                继续研究 →
+                {t("continueResearch")}
               </Button>
             )}
           </>
@@ -297,12 +307,11 @@ export function OverviewPage() {
         }}
         isEmpty={!hasProject}
         empty={{
-          title: "还没有选择项目",
-          description:
-            "先在「我的研究」页选择或创建一个研究项目，这里会展示它的研究概览。",
+          title: t("empty.title"),
+          description: t("empty.description"),
           action: (
             <Button variant="primary" onClick={() => setActiveView("projects")}>
-              去我的研究
+              {t("empty.action")}
             </Button>
           ),
         }}
@@ -312,29 +321,32 @@ export function OverviewPage() {
           <div className="grid grid-cols-1 gap-md md:grid-cols-2 xl:grid-cols-4">
             <MetricCard
               testId="metric-coverage"
-              label="研究覆盖度"
+              label={t("metrics.coverage")}
               value={`${overallPct}%`}
-              meta={`核心维度已完成 ${strongDimensions} / ${coverageData?.dimensions.length ?? 0}`}
+              meta={t("metrics.coverageMeta", {
+                done: strongDimensions,
+                total: coverageData?.dimensions.length ?? 0,
+              })}
               accent
               progress={overallPct}
             />
             <MetricCard
               testId="metric-sources"
-              label="来源"
+              label={t("metrics.sources")}
               value={String(sourceList.length)}
-              meta={`高质量 ${qualitySources} 个`}
+              meta={t("metrics.sourcesMeta", { total: qualitySources })}
             />
             <MetricCard
               testId="metric-knowledge"
-              label="知识节点"
+              label={t("metrics.knowledge")}
               value={String(knowledgeList.length)}
-              meta={`${knowledgeTypes} 种类型`}
+              meta={t("metrics.knowledgeMeta", { total: knowledgeTypes })}
             />
             <MetricCard
               testId="metric-reviews"
-              label="待审核结论"
+              label={t("metrics.reviews")}
               value={String(reviewClaims.length)}
-              meta={`${conflictingClaims.length} 个存在冲突`}
+              meta={t("metrics.reviewsMeta", { total: conflictingClaims.length })}
               metaWarning
             />
           </div>
@@ -344,21 +356,21 @@ export function OverviewPage() {
             <Card data-testid="overview-path" className="flex flex-col gap-md">
               <div className="flex items-start justify-between gap-sm">
                 <div>
-                  <p className="kicker">研究进度</p>
-                  <h2 className="text-h2 text-text-primary">当前研究路径</h2>
+                  <p className="kicker">{t("path.kicker")}</p>
+                  <h2 className="text-h2 text-text-primary">{t("path.title")}</h2>
                 </div>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveView("tasks")}
                 >
-                  查看全部 →
+                  {t("path.viewAll")}
                 </Button>
               </div>
               <div className="timeline-list flex flex-col">
                 {totalTasks === 0 ? (
                   <p className="text-caption text-text-muted">
-                    还没有可执行任务；批准计划并开始运行后，任务会按依赖顺序出现在这里。
+                    {t("path.empty")}
                   </p>
                 ) : (
                   taskList.map((task, index) => {
@@ -396,10 +408,10 @@ export function OverviewPage() {
                           </p>
                           <p className="text-caption text-text-muted">
                             {state === "done" || state === "review"
-                              ? TASK_STATE_LABELS[task.state]
+                              ? t(`common:vocab.taskState.${task.state}`, { defaultValue: task.state })
                               : state === "current"
-                                ? "正在执行"
-                                : "等待前置任务"}
+                                ? t("path.executing")
+                                : t("path.waitingPredecessor")}
                           </p>
                           {state === "current" ? (
                             <div
@@ -408,7 +420,7 @@ export function OverviewPage() {
                               aria-valuemin={0}
                               aria-valuemax={100}
                               aria-valuenow={runProgressPct}
-                              aria-label="任务完成进度"
+                              aria-label={t("path.progressAria")}
                             >
                               <span
                                 className="progress-fill"
@@ -429,12 +441,12 @@ export function OverviewPage() {
                           }`}
                         >
                           {state === "done"
-                            ? "完成"
+                            ? t("path.stateDone")
                             : state === "current"
                               ? `${runProgressPct}%`
                               : state === "review"
-                                ? "待审核"
-                                : "等待"}
+                                ? t("path.stateReview")
+                                : t("path.stateWaiting")}
                         </span>
                       </div>
                     );
@@ -447,21 +459,21 @@ export function OverviewPage() {
             <Card data-testid="overview-activity" className="flex flex-col gap-md">
               <div className="flex items-start justify-between gap-sm">
                 <div>
-                  <p className="kicker">研究活动</p>
-                  <h2 className="text-h2 text-text-primary">刚刚发生</h2>
+                  <p className="kicker">{t("activity.kicker")}</p>
+                  <h2 className="text-h2 text-text-primary">{t("activity.title")}</h2>
                 </div>
                 <span className="pill pill-success inline-flex items-center gap-xs">
                   <span
                     aria-hidden="true"
                     className="size-1.5 rounded-full bg-current"
                   />
-                  实时
+                  {t("activity.live")}
                 </span>
               </div>
               <div className="flex flex-col gap-md">
                 {recentActivity.length === 0 ? (
                   <p className="text-caption text-text-muted">
-                    还没有活动事件；开始研究运行后，来源、论断与知识节点会按时间出现在这里。
+                    {t("activity.empty")}
                   </p>
                 ) : (
                   recentActivity.map((entry) => {
@@ -499,15 +511,15 @@ export function OverviewPage() {
             <Card data-testid="overview-dimensions" className="flex flex-col gap-md">
               <div className="flex items-start justify-between gap-sm">
                 <div>
-                  <p className="kicker">覆盖度</p>
-                  <h2 className="text-h2 text-text-primary">研究维度</h2>
+                  <p className="kicker">{t("dimensions.kicker")}</p>
+                  <h2 className="text-h2 text-text-primary">{t("dimensions.title")}</h2>
                 </div>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveView("knowledge")}
                 >
-                  查看知识 →
+                  {t("dimensions.viewKnowledge")}
                 </Button>
               </div>
               <div className="flex flex-col gap-md">
@@ -519,7 +531,7 @@ export function OverviewPage() {
                   >
                     <div className="flex items-center justify-between gap-sm">
                       <span className="text-body text-text-secondary">
-                        {dimensionLabel(dim.dimension)}
+                        {t(`common:vocab.dimension.${dim.dimension}`, { defaultValue: dim.dimension })}
                       </span>
                       <span className="text-label text-text-primary">
                         {Math.round(dim.coverage * 100)}%
@@ -531,7 +543,11 @@ export function OverviewPage() {
                       aria-valuemin={0}
                       aria-valuemax={100}
                       aria-valuenow={Math.round(dim.coverage * 100)}
-                      aria-label={`${dimensionLabel(dim.dimension)}覆盖度进度`}
+                      aria-label={t("dimensions.progressAria", {
+                        dimension: t(`common:vocab.dimension.${dim.dimension}`, {
+                          defaultValue: dim.dimension,
+                        }),
+                      })}
                     >
                       <span
                         className="progress-fill"
@@ -553,14 +569,14 @@ export function OverviewPage() {
             >
               <div className="flex items-start justify-between gap-sm">
                 <div>
-                  <p className="kicker">下一步</p>
-                  <h2 className="text-h2 text-text-primary">建议继续研究</h2>
+                  <p className="kicker">{t("next.kicker")}</p>
+                  <h2 className="text-h2 text-text-primary">{t("next.title")}</h2>
                 </div>
                 {pendingGap && !createdGap ? (
                   <span className="pill pill-warning">
                     {pendingGap.trigger === "coverage_below_threshold"
-                      ? "低覆盖"
-                      : "来源不足"}
+                      ? t("next.triggerCoverage")
+                      : t("next.triggerSources")}
                   </span>
                 ) : null}
               </div>
@@ -569,10 +585,10 @@ export function OverviewPage() {
               {createdGap ? (
                 <div className="flex flex-col gap-xs">
                   <p className="text-body text-text-primary">
-                    已创建任务「{createdGap.proposed_task.title}」。
+                    {t("next.createdTask", { title: createdGap.proposed_task.title })}
                   </p>
                   <p className="text-caption text-text-muted">
-                    新任务出现在「任务」页，可随时暂停或重试。
+                    {t("next.createdTaskHint")}
                   </p>
                 </div>
               ) : pendingGap ? (
@@ -592,11 +608,11 @@ export function OverviewPage() {
                           .catch(() => undefined)
                       }
                     >
-                      创建研究任务 →
+                      {t("next.createTask")}
                     </Button>
                     <Button
                       variant="ghost"
-                      aria-label="忽略该建议"
+                      aria-label={t("next.dismissAria")}
                       loading={gapActions.dismiss.isPending}
                       onClick={() =>
                         void gapActions.dismiss
@@ -604,13 +620,13 @@ export function OverviewPage() {
                           .catch(() => undefined)
                       }
                     >
-                      忽略
+                      {t("next.dismiss")}
                     </Button>
                   </div>
                 </>
               ) : (
                 <p className="text-body text-text-secondary">
-                  暂无缺口建议，当前覆盖良好。
+                  {t("next.empty")}
                 </p>
               )}
             </Card>

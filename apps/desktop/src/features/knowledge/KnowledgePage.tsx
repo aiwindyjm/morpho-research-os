@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { Badge, Button, Card, Input, Select, Tabs, useToast } from "@morpho/ui";
+import { useTranslation } from "react-i18next";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import { ClaimCard, KnowledgeCard } from "@/components/cards";
 import { KNOWLEDGE_NODE_TYPES } from "@/types/domain";
-import { NODE_TYPE_LABELS } from "@/types/labels";
 import {
   useClaims,
   useEvidence,
@@ -22,10 +22,13 @@ import { isMorphoError } from "@/services/errors";
  * four-column grid with mono type badges and conflict styling, rendered by
  * the registered KnowledgeCard (prototype card anatomy incl. the conflict
  * variant). Badge mapping lives in components/cards.tsx
- * (NODE_TYPE_BADGE_CLASS).
+ * (NODE_TYPE_BADGE_CLASS). All chrome strings go through t() (ADR-023,
+ * "knowledge" namespace); the node-type vocabulary resolves through
+ * common:vocab.nodeType.
  */
 
 export function KnowledgePage({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("knowledge");
   const knowledge = useKnowledge(projectId);
   const claims = useClaims(projectId);
   const sources = useSources(projectId);
@@ -43,34 +46,44 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
       .mutateAsync()
       .then((result) => {
         if (result.conflicts > 0) {
-          showToast({
-            title: "导出完成，但有冲突需要人工处理",
-            detail: `写入 ${result.written} 篇、无变化 ${result.unchanged} 篇；${
-              result.conflicts
-            } 篇因本地修改被保留为合并提案（${result.merge_proposals
+          const proposals =
+            result.merge_proposals
               .map((proposal) => proposal.path)
               .slice(0, 3)
-              .join("、")}${result.merge_proposals.length > 3 ? "…" : ""}）。导出目录：${
-              result.vault_root
-            }`,
+              .join(t("toast.listSeparator")) +
+            (result.merge_proposals.length > 3 ? t("toast.moreSuffix") : "");
+          showToast({
+            title: t("toast.conflictTitle"),
+            detail: t("toast.conflictDetail", {
+              written: result.written,
+              unchanged: result.unchanged,
+              conflicts: result.conflicts,
+              proposals,
+              root: result.vault_root,
+            }),
             variant: "warning",
           });
           return;
         }
         showToast({
-          title: "Vault 导出完成",
-          detail: `写入 ${result.written} 篇（来源 ${result.sources}、论断 ${result.claims}、索引 ${
-            result.maps
-          }），无变化 ${result.unchanged} 篇。导出目录：${result.vault_root}`,
+          title: t("toast.successTitle"),
+          detail: t("toast.successDetail", {
+            written: result.written,
+            sources: result.sources,
+            claims: result.claims,
+            maps: result.maps,
+            unchanged: result.unchanged,
+            root: result.vault_root,
+          }),
           variant: "success",
         });
       })
       .catch((error: unknown) => {
         showToast({
-          title: "Vault 导出失败",
+          title: t("toast.errorTitle"),
           detail: isMorphoError(error)
             ? error.userMessage
-            : "发生未知错误，请重试。",
+            : t("common:error.unknown"),
           variant: "error",
         });
       });
@@ -107,14 +120,14 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
       <div className="flex flex-wrap items-center gap-sm">
         <Input
           type="search"
-          aria-label="搜索知识节点"
-          placeholder="搜索标题、摘要或别名…"
+          aria-label={t("search")}
+          placeholder={t("searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
         />
         <span className="text-caption text-text-muted" role="status">
-          {filteredNodes.length} 个节点
+          {t("nodeCount", { total: filteredNodes.length })}
         </span>
       </div>
       <div className="grid gap-md md:grid-cols-2 xl:grid-cols-4">
@@ -124,7 +137,7 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
       </div>
       {filteredNodes.length === 0 ? (
         <Card className="text-center text-body text-text-secondary">
-          没有匹配的知识节点；试试更换关键词或清除过滤条件。
+          {t("noMatch")}
         </Card>
       ) : null}
     </div>
@@ -133,14 +146,14 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
   const claimsTab = (
     <div className="flex flex-col gap-md">
       <p className="text-caption text-text-secondary">
-        论断（Claim）与知识节点相互独立；相互矛盾的论断共存，并各自保留证据。
+        {t("claimsIntro")}
       </p>
       {(claims.data ?? []).map((claim) => (
         <ClaimRow
           key={claim.id}
           projectId={projectId}
           claimId={claim.id}
-          subjectTitle={titleById.get(claim.subject_node_id) ?? "未知主体"}
+          subjectTitle={titleById.get(claim.subject_node_id) ?? t("unknownSubject")}
           open={openEvidence.has(claim.id)}
           onToggle={() => toggleEvidence(claim.id)}
         />
@@ -150,21 +163,21 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
 
   return (
     <PageShell
-      kicker="知识库"
-      title="已提取的知识"
-      description="节点是实体和概念，结论与证据单独保存。"
+      kicker={t("kicker")}
+      title={t("title")}
+      description={t("description")}
       actions={
         <>
           <Select
-            aria-label="筛选类型"
+            aria-label={t("filterAria")}
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
             className="w-36"
           >
-            <option value="all">全部类型</option>
+            <option value="all">{t("filterAll")}</option>
             {KNOWLEDGE_NODE_TYPES.map((type) => (
               <option key={type} value={type}>
-                {NODE_TYPE_LABELS[type]}
+                {t(`common:vocab.nodeType.${type}`, { defaultValue: type })}
               </option>
             ))}
           </Select>
@@ -172,18 +185,22 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
             variant="primary"
             onClick={exportVaultToDisk}
             loading={exportVault.isPending}
-            title="把知识、来源与论断导出为 Markdown Vault"
+            title={t("exportTitle")}
           >
-            导出 Vault
+            {t("exportVault")}
           </Button>
         </>
       }
       toolbar={
         sources.data ? (
           <div className="flex items-center gap-sm text-caption text-text-muted">
-            <Badge variant="neutral">来源 {sources.data.length}</Badge>
-            <Badge variant="neutral">知识节点 {(knowledge.data ?? []).length}</Badge>
-            <Badge variant="neutral">论断 {(claims.data ?? []).length}</Badge>
+            <Badge variant="neutral">{t("toolbar.sources", { total: sources.data.length })}</Badge>
+            <Badge variant="neutral">
+              {t("toolbar.nodes", { total: (knowledge.data ?? []).length })}
+            </Badge>
+            <Badge variant="neutral">
+              {t("toolbar.claims", { total: (claims.data ?? []).length })}
+            </Badge>
           </div>
         ) : null
       }
@@ -199,16 +216,15 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
           (knowledge.data ?? []).length === 0 && (claims.data ?? []).length === 0
         }
         empty={{
-          title: "知识库还是空的",
-          description:
-            "研究运行完成内容归一化后，实体、论断与证据会出现在这里。",
+          title: t("empty.title"),
+          description: t("empty.description"),
         }}
       >
         <Tabs
-          label="知识视图"
+          label={t("tabs.label")}
           items={[
-            { id: "nodes", label: "知识节点", content: knowledgeTab },
-            { id: "claims", label: "论断与证据", content: claimsTab },
+            { id: "nodes", label: t("tabs.nodes"), content: knowledgeTab },
+            { id: "claims", label: t("tabs.claims"), content: claimsTab },
           ]}
         />
       </PageStates>
@@ -229,6 +245,7 @@ function ClaimRow({
   open: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation("knowledge");
   const claims = useClaims(projectId);
   const evidence = useEvidence(projectId, open ? claimId : "");
   const claim = (claims.data ?? []).find((c) => c.id === claimId);
@@ -240,7 +257,7 @@ function ClaimRow({
     <div className={conflicting ? "rounded-lg border border-warning/40 p-sm" : ""}>
       {conflicting ? (
         <Badge variant="warning" className="mb-sm">
-          存在冲突：支持与反驳证据均已保留
+          {t("conflictBadge")}
         </Badge>
       ) : null}
       <ClaimCard
@@ -252,7 +269,7 @@ function ClaimRow({
       />
       {open && evidence.isLoading ? (
         <p className="mt-sm text-caption text-text-muted" role="status">
-          正在加载证据…
+          {t("evidenceLoading")}
         </p>
       ) : null}
     </div>

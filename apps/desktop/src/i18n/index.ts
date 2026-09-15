@@ -43,8 +43,28 @@ export const REFERENCE_LANGUAGE: LanguageId = "zh-CN";
 /** Terminal fallback of the resolution ladder (non-zh browser, nothing stored). */
 export const FALLBACK_LANGUAGE: LanguageId = "en";
 
-/** Surfaces registered so far; I2 appends view namespaces (projects, tasks…). */
-export const NAMESPACES = ["common", "shell", "settings"] as const;
+/**
+ * Surfaces registered. Feature views own one namespace each; "cards" serves
+ * the shared card components; "common" additionally hosts the documented
+ * display vocabularies under `vocab.*` (see locales/zh-CN/common.ts).
+ */
+export const NAMESPACES = [
+  "common",
+  "shell",
+  "settings",
+  "projects",
+  "overview",
+  "config",
+  "plan",
+  "tasks",
+  "sources",
+  "knowledge",
+  "graph",
+  "journal",
+  "reports",
+  "assistant",
+  "cards",
+] as const;
 
 export type NamespaceId = (typeof NAMESPACES)[number];
 

@@ -1,15 +1,7 @@
 import { Badge, Button, Card } from "@morpho/ui";
 import { ArrowUpRight, BookOpen } from "lucide-react";
-import {
-  TASK_STATE_BADGE_VARIANT,
-  TASK_STATE_LABELS,
-  SOURCE_TYPE_LABELS,
-  SOURCE_STATUS_LABELS,
-  NODE_TYPE_LABELS,
-  CONFIDENCE_LABELS,
-  PLAN_STATUS_LABELS,
-  dimensionLabel,
-} from "@/types/labels";
+import { useTranslation } from "react-i18next";
+import { TASK_STATE_BADGE_VARIANT } from "@/types/labels";
 import {
   QUALITY_SOURCE_THRESHOLD,
   type Claim,
@@ -82,7 +74,11 @@ const CONFIDENCE_BADGE_VARIANT: Record<
   conflicting: "error",
 };
 
-/** Registered business component: ResearchStatusBadge. */
+/**
+ * Registered business component: ResearchStatusBadge. The label resolves
+ * through the shared common:vocab.* display vocabularies (ADR-023); the
+ * visual variant mapping stays here.
+ */
 export function ResearchStatusBadge({
   state,
   kind = "task",
@@ -90,24 +86,27 @@ export function ResearchStatusBadge({
   state: TaskState | PlanStatus | ConfidenceState;
   kind?: "task" | "plan" | "confidence";
 }) {
+  const { t } = useTranslation("cards");
+  const value = String(state);
   if (kind === "task") {
-    const key = state as TaskState;
     return (
-      <Badge variant={TASK_STATE_BADGE_VARIANT[key]}>
-        {TASK_STATE_LABELS[key] ?? key}
+      <Badge variant={TASK_STATE_BADGE_VARIANT[state as TaskState]}>
+        {t(`common:vocab.taskState.${value}`, { defaultValue: value })}
       </Badge>
     );
   }
   if (kind === "plan") {
-    const key = state as PlanStatus;
     const variant =
-      key === "approved" ? "success" : key === "rejected" ? "error" : "warning";
-    return <Badge variant={variant}>{PLAN_STATUS_LABELS[key] ?? key}</Badge>;
+      state === "approved" ? "success" : state === "rejected" ? "error" : "warning";
+    return (
+      <Badge variant={variant}>
+        {t(`common:vocab.planStatus.${value}`, { defaultValue: value })}
+      </Badge>
+    );
   }
-  const key = state as ConfidenceState;
   return (
-    <Badge variant={CONFIDENCE_BADGE_VARIANT[key]}>
-      {CONFIDENCE_LABELS[key] ?? key}
+    <Badge variant={CONFIDENCE_BADGE_VARIANT[state as ConfidenceState]}>
+      {t(`common:vocab.confidence.${value}`, { defaultValue: value })}
     </Badge>
   );
 }
@@ -134,19 +133,26 @@ function sourceTypeBadgeClass(type: Source["source_type"]): string {
   return "pill pill-neutral";
 }
 
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
 /** Prototype quality tier caption for the compact row. */
-function sourceTier(source: Source): { label: string; className: string } {
-  if (!source.quality) return { label: "待审核", className: "text-text-muted" };
+function sourceQualityTier(
+  source: Source,
+  t: Translate,
+): { label: string; className: string } {
+  if (!source.quality) return { label: t("tier.pending"), className: "text-text-muted" };
   return isQualitySource(source)
-    ? { label: "高质量", className: "text-success" }
-    : { label: "中等", className: "text-warning" };
+    ? { label: t("tier.high"), className: "text-success" }
+    : { label: t("tier.medium"), className: "text-warning" };
 }
 
 /**
  * Registered business component: SourceCard.
  * variant="card" (default): full card with URL and quality rationale.
  * variant="row": the prototype's compact list row (source-row testid) used
- * by the sources view — same data, prototype row anatomy.
+ * by the sources view — same data, prototype row anatomy. Labels resolve
+ * through common:vocab.* (type/status/dimension) and the "cards" namespace
+ * (tier captions, quality rationale).
  */
 export function SourceCard({
   source,
@@ -155,12 +161,20 @@ export function SourceCard({
   source: Source;
   variant?: "card" | "row";
 }) {
+  const { t } = useTranslation("cards");
+  const typeLabel = t(`common:vocab.sourceType.${source.source_type}`, {
+    defaultValue: source.source_type,
+  });
+  const statusLabel = t(`common:vocab.sourceStatus.${source.status}`, {
+    defaultValue: source.status,
+  });
+
   if (variant === "row") {
-    const tier = sourceTier(source);
+    const tier = sourceQualityTier(source, t);
     return (
       <li data-testid="source-row" className={SOURCE_ROW_GRID}>
         <span className={sourceTypeBadgeClass(source.source_type)}>
-          {SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type}
+          {typeLabel}
         </span>
         <div className="min-w-0">
           <strong className="text-body text-text-primary">{source.title}</strong>
@@ -168,7 +182,7 @@ export function SourceCard({
             <span>{sourceHost(source.url)}</span>
             <span aria-hidden="true"> · </span>
             <span>
-              {SOURCE_STATUS_LABELS[source.status] ?? source.status}
+              {statusLabel}
             </span>
           </small>
         </div>
@@ -184,7 +198,7 @@ export function SourceCard({
           href={source.url}
           target="_blank"
           rel="noreferrer"
-          aria-label="打开来源"
+          aria-label={t("sourceRow.openAria")}
           className="text-caption text-info hover:underline"
         >
           <ArrowUpRight size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -197,7 +211,7 @@ export function SourceCard({
     <Card className="flex flex-col gap-sm">
       <div className="flex items-start justify-between gap-md">
         <h3 className="text-h3 text-text-primary">{source.title}</h3>
-        <Badge variant="neutral">{SOURCE_TYPE_LABELS[source.source_type]}</Badge>
+        <Badge variant="neutral">{typeLabel}</Badge>
       </div>
       <a
         href={source.url}
@@ -208,21 +222,23 @@ export function SourceCard({
         {source.url}
       </a>
       <div className="flex flex-wrap items-center gap-sm text-caption text-text-secondary">
-        <Badge variant="info">{SOURCE_STATUS_LABELS[source.status]}</Badge>
+        <Badge variant="info">{statusLabel}</Badge>
         {source.dimensions.map((dim) => (
           <Badge key={dim} variant="neutral">
-            {dimensionLabel(dim)}
+            {t(`common:vocab.dimension.${dim}`, { defaultValue: dim })}
           </Badge>
         ))}
       </div>
       {source.quality ? (
         <p className="text-caption text-text-muted">
-          来源质量：权威性 {source.quality.authority.toFixed(2)} · 适配度{" "}
-          {source.quality.fitness.toFixed(2)} —— {source.quality.rationale}
-          （质量描述用途适配，不代表内容真伪）
+          {t("quality.rationale", {
+            authority: source.quality.authority.toFixed(2),
+            fitness: source.quality.fitness.toFixed(2),
+            rationale: source.quality.rationale,
+          })}
         </p>
       ) : (
-        <p className="text-caption text-text-muted">来源质量待评估。</p>
+        <p className="text-caption text-text-muted">{t("quality.pending")}</p>
       )}
     </Card>
   );
@@ -239,6 +255,7 @@ export function SourceCard({
  * nodes get the prototype conflict styling and their own testid.
  */
 export function KnowledgeCard({ node }: { node: KnowledgeNode }) {
+  const { t } = useTranslation("cards");
   const conflicting = node.status === "conflicting";
   return (
     <Card
@@ -249,12 +266,12 @@ export function KnowledgeCard({ node }: { node: KnowledgeNode }) {
     >
       <div className="flex items-center justify-between gap-sm">
         <span className={`badge-mono ${NODE_TYPE_BADGE_CLASS[node.type]}`}>
-          {NODE_TYPE_LABELS[node.type]}
+          {t(`common:vocab.nodeType.${node.type}`, { defaultValue: node.type })}
         </span>
         <span
           className={`text-caption ${conflicting ? "text-error" : "text-text-muted"}`}
         >
-          {CONFIDENCE_LABELS[node.status]}
+          {t(`common:vocab.confidence.${node.status}`, { defaultValue: node.status })}
         </span>
       </div>
       <h2 className="mt-md text-h3 text-text-primary">{node.title}</h2>
@@ -264,11 +281,11 @@ export function KnowledgeCard({ node }: { node: KnowledgeNode }) {
       <div className="mt-auto flex items-center gap-md text-caption text-text-muted">
         <span className="flex items-center gap-xs">
           <ArrowUpRight size={16} strokeWidth={1.75} aria-hidden="true" />
-          {node.source_ids.length} 来源
+          {t("knowledge.sourceCount", { total: node.source_ids.length })}
         </span>
         <span className="flex items-center gap-xs">
           <BookOpen size={16} strokeWidth={1.75} aria-hidden="true" />
-          {node.claim_ids.length} 结论
+          {t("knowledge.claimCount", { total: node.claim_ids.length })}
         </span>
       </div>
     </Card>
@@ -279,15 +296,11 @@ export function KnowledgeCard({ node }: { node: KnowledgeNode }) {
 /* EvidenceList                                                        */
 /* ------------------------------------------------------------------ */
 
-const DIRECTION_LABELS: Record<Evidence["direction"], string> = {
-  support: "支持",
-  contradict: "反驳",
-};
-
 /** Registered business component: EvidenceList. */
 export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
+  const { t } = useTranslation("cards");
   if (evidence.length === 0) {
-    return <p className="text-caption text-text-muted">该论断暂无证据记录。</p>;
+    return <p className="text-caption text-text-muted">{t("evidence.none")}</p>;
   }
   return (
     <ul className="flex flex-col gap-sm">
@@ -299,15 +312,20 @@ export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
         >
           <div className="flex items-center gap-sm">
             <Badge variant={item.direction === "support" ? "success" : "error"}>
-              {DIRECTION_LABELS[item.direction]}
+              {item.direction === "support"
+                ? t("evidence.directionSupport")
+                : t("evidence.directionContradict")}
             </Badge>
             <span className="text-caption text-text-muted">
-              定位：{item.locator.kind} · {item.locator.value} · 提取于{" "}
-              {item.retrieved_at.slice(0, 10)}
+              {t("evidence.locator", {
+                kind: item.locator.kind,
+                value: item.locator.value,
+                date: item.retrieved_at.slice(0, 10),
+              })}
             </span>
           </div>
           <blockquote className="mt-sm border-l-2 border-border pl-md text-body text-text-secondary">
-            “{item.quote}”
+            {t("evidence.quote", { quote: item.quote })}
           </blockquote>
         </li>
       ))}
@@ -334,12 +352,17 @@ export function ClaimCard({
   evidenceOpen: boolean;
   onToggleEvidence: (claimId: string) => void;
 }) {
+  const { t } = useTranslation("cards");
   return (
     <Card className="flex flex-col gap-sm" data-testid="claim-card">
       <div className="flex flex-wrap items-center gap-sm">
         <ResearchStatusBadge state={claim.status} kind="confidence" />
         <span className="text-caption text-text-muted">
-          主体：{subjectTitle} · 置信度 {claim.confidence.toFixed(2)} · 范围：{claim.scope}
+          {t("claim.meta", {
+            subject: subjectTitle,
+            confidence: claim.confidence.toFixed(2),
+            scope: claim.scope,
+          })}
         </span>
       </div>
       <p className="text-body text-text-primary">
@@ -349,7 +372,9 @@ export function ClaimCard({
       </p>
       <div>
         <Button size="sm" variant="ghost" onClick={() => onToggleEvidence(claim.id)}>
-          {evidenceOpen ? "收起证据" : `查看证据（${evidence.length}）`}
+          {evidenceOpen
+            ? t("claim.collapse")
+            : t("claim.expand", { total: evidence.length })}
         </Button>
         {evidenceOpen ? (
           <div className="mt-sm">

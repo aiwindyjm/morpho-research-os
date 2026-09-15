@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button, Card, Textarea } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import {
@@ -13,9 +14,12 @@ import type { JournalEntry } from "@/types/journal";
 
 /**
  * 对话日志(spec §7):本机私有工作日志。按日分组、显式下载;
- * 不进入研究 Vault,不发网络请求。
+ * 不进入研究 Vault,不发网络请求。All chrome strings go through t()
+ * (ADR-023, "journal" namespace); the "Morpho" author stays a brand
+ * constant.
  */
 export function JournalPage() {
+  const { t } = useTranslation("journal");
   const date = todayIso();
   const [entries, setEntries] = useState<JournalEntry[]>(() => listEntries(date));
   const [draft, setDraft] = useState("");
@@ -23,7 +27,7 @@ export function JournalPage() {
 
   function submit() {
     if (!draft.trim()) {
-      setError("请先写下要记录的内容。");
+      setError(t("errorEmpty"));
       return;
     }
     setError(null);
@@ -35,16 +39,16 @@ export function JournalPage() {
 
   return (
     <PageShell
-      kicker="私有工作日志"
-      title="对话日志"
-      description="今天的架构和产品讨论只保存在本机，不会进入 Git 或研究 Vault。"
+      kicker={t("kicker")}
+      title={t("title")}
+      description={t("description")}
       actions={
         <>
           <Button variant="secondary" onClick={() => downloadJson(date)}>
-            下载 JSON
+            {t("downloadJson")}
           </Button>
           <Button variant="primary" onClick={() => downloadMarkdown(date)}>
-            下载今日 Markdown
+            {t("downloadMarkdown")}
           </Button>
         </>
       }
@@ -53,10 +57,10 @@ export function JournalPage() {
         <Card className="flex flex-col p-lg" data-testid="journal-panel">
           <div className="flex items-center gap-md border-b border-border pb-md text-caption text-text-muted">
             <span className="pill pill-accent">{date}</span>
-            <span data-testid="journal-count">{entries.length} 条记录</span>
+            <span data-testid="journal-count">{t("count", { total: entries.length })}</span>
             <span className="ml-auto flex items-center gap-sm text-success">
               <span aria-hidden="true" className="inline-block size-dot rounded-full bg-success" />
-              仅本机
+              {t("localOnly")}
             </span>
           </div>
 
@@ -68,7 +72,7 @@ export function JournalPage() {
                   <strong
                     className={`text-micro ${entry.author === "user" ? "text-info" : "text-accent-alt"}`}
                   >
-                    {entry.author === "user" ? "用户" : "Morpho"}
+                    {entry.author === "user" ? t("authorUser") : "Morpho"}
                   </strong>
                   <p className="mt-xs text-caption text-text-secondary">{entry.content}</p>
                 </div>
@@ -76,15 +80,15 @@ export function JournalPage() {
             ))}
             {entries.length === 0 ? (
               <li className="py-lg text-caption text-text-muted">
-                还没有记录。写下今天的产品决定、问题或下一步。
+                {t("listEmpty")}
               </li>
             ) : null}
           </ul>
 
           <div className="border-t border-border pt-md">
             <Textarea
-              aria-label="日志内容"
-              placeholder="记录今天的产品决定、问题或下一步…"
+              aria-label={t("inputAria")}
+              placeholder={t("inputPlaceholder")}
               rows={3}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -95,33 +99,38 @@ export function JournalPage() {
               </p>
             ) : null}
             <div className="mt-sm flex items-center justify-between">
-              <span className="text-caption text-text-muted">保存到浏览器本地存储</span>
+              <span className="text-caption text-text-muted">{t("storageNote")}</span>
               <Button variant="primary" size="sm" onClick={submit}>
-                保存记录
+                {t("save")}
               </Button>
             </div>
           </div>
         </Card>
 
         <Card className="h-fit p-lg">
-          <p className="kicker mb-xs">保存规则</p>
-          <h2 className="text-h3 text-text-primary">只属于你的开发记录</h2>
+          <p className="kicker mb-xs">{t("rules.kicker")}</p>
+          <h2 className="text-h3 text-text-primary">{t("rules.title")}</h2>
           <ul className="mt-md grid gap-sm text-caption text-text-secondary">
-            {["按本地日期分组", "不上传、不进入 Git", "需要时显式下载 Markdown", "可以手动放入 private/conversations/"].map(
-              (rule) => (
-                <li key={rule} className="flex gap-sm">
-                  <span aria-hidden="true" className="mt-[2px] shrink-0 text-success">
-                    <Check size={16} strokeWidth={1.75} />
-                  </span>
-                  {rule}
-                </li>
-              ),
-            )}
+            {(
+              [
+                "rules.items.byLocalDate",
+                "rules.items.neverUploaded",
+                "rules.items.explicitDownload",
+                "rules.items.privateFolder",
+              ] as const
+            ).map((key) => (
+              <li key={key} className="flex gap-sm">
+                <span aria-hidden="true" className="mt-[2px] shrink-0 text-success">
+                  <Check size={16} strokeWidth={1.75} />
+                </span>
+                {t(key)}
+              </li>
+            ))}
           </ul>
           <div className="mt-lg rounded-md border border-[rgb(217_160_91/0.2)] bg-accent-soft p-md">
-            <strong className="text-nano text-text-primary">当前版本限制</strong>
+            <strong className="text-nano text-text-primary">{t("limits.title")}</strong>
             <p className="mt-xs text-nano leading-relaxed text-text-muted">
-              Web 预览无法直接写入工作区。正式桌面版会由 Rust Core 按日追加本地文件。
+              {t("limits.detail")}
             </p>
           </div>
         </Card>

@@ -10,10 +10,10 @@ import {
 } from "d3";
 import { Chip, Button, Card, Input, Select } from "@morpho/ui";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import { NODE_TYPE_BADGE_CLASS, ResearchStatusBadge } from "@/components/cards";
-import { CONFIDENCE_LABELS, NODE_TYPE_LABELS, dimensionLabel } from "@/types/labels";
 import type {
   ConfidenceState,
   GraphNode,
@@ -35,19 +35,22 @@ import { useGraph, useKnowledge } from "@/services/queries";
  *
  * Prototype alignment (spec §4, `view-graph`): one card with a chip toolbar,
  * the dark graph canvas (graph-canvas-bg) with accent-stroked node circles,
- * and an inspector overlay on the right edge from lg up.
+ * and an inspector overlay on the right edge from lg up. All chrome strings
+ * go through t() (ADR-023, "graph" namespace); confidence/dimension/node-type
+ * vocabularies resolve through common:vocab.*.
  */
 
 const CANVAS_WIDTH = 860;
 const CANVAS_HEIGHT = 560;
 
-/** Prototype type-filter chips; values map onto node.type. */
-const TYPE_FILTERS: Array<{ id: "all" | KnowledgeNodeType; label: string }> = [
-  { id: "all", label: "全部节点" },
-  { id: "Concept", label: "概念" },
-  { id: "Technology", label: "技术" },
-  { id: "Company", label: "企业" },
-  { id: "Paper", label: "论文" },
+/** Prototype type-filter chips (i18n keys); values map onto node.type. The
+ * Company chip keeps its prototype copy "企业" (canonical vocab: "公司"). */
+const TYPE_FILTERS: Array<{ id: "all" | KnowledgeNodeType; key: string }> = [
+  { id: "all", key: "filter.typeAll" },
+  { id: "Concept", key: "filter.typeConcept" },
+  { id: "Technology", key: "filter.typeTechnology" },
+  { id: "Company", key: "filter.typeCompany" },
+  { id: "Paper", key: "filter.typePaper" },
 ];
 
 /** Inspector panel: scrollable content, overlay on the canvas edge from lg up. */
@@ -128,6 +131,7 @@ function computeLayout(
 }
 
 export function GraphPage({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("graph");
   const { data, isLoading, error, refetch } = useGraph(projectId);
   const { data: knowledge } = useKnowledge(projectId);
   const [search, setSearch] = useState("");
@@ -228,27 +232,27 @@ export function GraphPage({ projectId }: { projectId: string }) {
     ) : (
       <aside
         data-testid="graph-inspector"
-        aria-label="图谱检查器"
+        aria-label={t("inspector.aria")}
         className={inspectorClassName}
       >
         <p className="text-body text-text-secondary">
-          {listMode ? "点击列表中的节点查看详情。" : "点击节点查看详情。"}
+          {listMode ? t("inspector.placeholderList") : t("inspector.placeholderGraph")}
         </p>
       </aside>
     );
 
   return (
     <PageShell
-      kicker="知识图谱"
-      title="研究关系地图"
-      description="从节点关系回到来源和证据，而不是只看一张漂亮的图。"
+      kicker={t("kicker")}
+      title={t("title")}
+      description={t("description")}
       actions={
         <>
           <Button size="sm" variant="secondary" onClick={() => setListMode((v) => !v)}>
-            {listMode ? "图形视图" : "列表视图（无障碍）"}
+            {listMode ? t("showGraph") : t("showList")}
           </Button>
-          <Button size="sm" variant="primary" disabled title="桌面版提供">
-            导出图片
+          <Button size="sm" variant="primary" disabled title={t("desktopOnly")}>
+            {t("exportImage")}
           </Button>
         </>
       }
@@ -259,20 +263,20 @@ export function GraphPage({ projectId }: { projectId: string }) {
         onRetry={() => void refetch()}
         isEmpty={(data?.nodes ?? []).length === 0}
         empty={{
-          title: "图谱还没有内容",
-          description: "研究运行完成知识归一化后，实体与关系会投影成 2D 图谱。",
+          title: t("empty.title"),
+          description: t("empty.description"),
         }}
       >
         <Card className="pb-lg">
           <div className="flex min-h-[63px] flex-wrap items-center justify-between gap-sm border-b border-border pb-md">
-            <div className="flex flex-wrap items-center gap-sm" role="group" aria-label="按类型过滤">
-              {TYPE_FILTERS.map(({ id, label }) => (
+            <div className="flex flex-wrap items-center gap-sm" role="group" aria-label={t("filter.byType")}>
+              {TYPE_FILTERS.map(({ id, key }) => (
                 <Chip
                   key={id}
                   selected={typeFilter === id}
                   onClick={() => setTypeFilter(id)}
                 >
-                  {label}
+                  {t(key)}
                 </Chip>
               ))}
             </div>
@@ -281,53 +285,53 @@ export function GraphPage({ projectId }: { projectId: string }) {
                 selected={clusterMode}
                 onClick={() => setClusterMode((v) => !v)}
                 data-testid="graph-cluster-toggle"
-                title="按研究维度分列布局"
+                title={t("filter.clusterTitle")}
               >
-                按维度聚类
+                {t("filter.cluster")}
               </Chip>
               <Input
                 type="search"
-                aria-label="搜索节点"
-                placeholder="按标题搜索…"
+                aria-label={t("filter.search")}
+                placeholder={t("filter.searchPlaceholder")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="max-w-[180px]"
               />
               <Select
-                aria-label="按维度过滤"
+                aria-label={t("filter.byDimension")}
                 value={dimensionFilter}
                 onChange={(e) => setDimensionFilter(e.target.value)}
                 className="max-w-44"
               >
-                <option value="all">全部维度</option>
+                <option value="all">{t("filter.dimensionAll")}</option>
                 {dimensions.map((dimension) => (
                   <option key={dimension} value={dimension}>
-                    {dimensionLabel(dimension)}
+                    {t(`common:vocab.dimension.${dimension}`, { defaultValue: dimension })}
                   </option>
                 ))}
               </Select>
               <Select
-                aria-label="按置信状态过滤"
+                aria-label={t("filter.byConfidence")}
                 value={confidenceFilter}
                 onChange={(e) =>
                   setConfidenceFilter(e.target.value as "all" | ConfidenceState)
                 }
                 className="max-w-40"
               >
-                <option value="all">全部置信</option>
+                <option value="all">{t("filter.confidenceAll")}</option>
                 {CONFIDENCE_STATES.map((state) => (
                   <option key={state} value={state}>
-                    {CONFIDENCE_LABELS[state]}
+                    {t(`common:vocab.confidence.${state}`, { defaultValue: state })}
                   </option>
                 ))}
               </Select>
               <Select
-                aria-label="按关系类型过滤"
+                aria-label={t("filter.byRelation")}
                 value={relationFilter}
                 onChange={(e) => setRelationFilter(e.target.value)}
                 className="max-w-40"
               >
-                <option value="all">全部关系</option>
+                <option value="all">{t("filter.relationAll")}</option>
                 {predicates.map((predicate) => (
                   <option key={predicate} value={predicate}>
                     {predicate}
@@ -335,12 +339,12 @@ export function GraphPage({ projectId }: { projectId: string }) {
                 ))}
               </Select>
               <Select
-                aria-label="起始年份"
+                aria-label={t("filter.yearFrom")}
                 value={yearFrom}
                 onChange={(e) => setYearFrom(e.target.value)}
                 className="max-w-32"
               >
-                <option value="all">年份从</option>
+                <option value="all">{t("filter.yearFromOption")}</option>
                 {years.map((year) => (
                   <option key={year} value={String(year)}>
                     {year}
@@ -348,12 +352,12 @@ export function GraphPage({ projectId }: { projectId: string }) {
                 ))}
               </Select>
               <Select
-                aria-label="结束年份"
+                aria-label={t("filter.yearTo")}
                 value={yearTo}
                 onChange={(e) => setYearTo(e.target.value)}
                 className="max-w-32"
               >
-                <option value="all">到</option>
+                <option value="all">{t("filter.yearToOption")}</option>
                 {years.map((year) => (
                   <option key={year} value={String(year)}>
                     {year}
@@ -361,7 +365,7 @@ export function GraphPage({ projectId }: { projectId: string }) {
                 ))}
               </Select>
               <span className="text-caption text-text-muted" role="status">
-                {filtered.nodes.length} 节点 · {filtered.relations.length} 关系
+                {t("counts", { nodes: filtered.nodes.length, relations: filtered.relations.length })}
               </span>
             </div>
           </div>
@@ -370,15 +374,15 @@ export function GraphPage({ projectId }: { projectId: string }) {
             <>
               <div className="mt-lg overflow-x-auto rounded-md border border-border">
                 <table className="w-full border-collapse text-body">
-                  <caption className="sr-only">知识节点列表（图谱替代视图）</caption>
+                  <caption className="sr-only">{t("canvas.caption")}</caption>
                   <thead>
                     <tr className="border-b border-border text-left text-label text-text-muted">
-                      <th scope="col" className="px-md py-sm">节点</th>
-                      <th scope="col" className="px-md py-sm">类型</th>
-                      <th scope="col" className="px-md py-sm">维度</th>
-                      <th scope="col" className="px-md py-sm">置信</th>
-                      <th scope="col" className="px-md py-sm">年份</th>
-                      <th scope="col" className="px-md py-sm">来源/论断</th>
+                      <th scope="col" className="px-md py-sm">{t("table.node")}</th>
+                      <th scope="col" className="px-md py-sm">{t("table.type")}</th>
+                      <th scope="col" className="px-md py-sm">{t("table.dimension")}</th>
+                      <th scope="col" className="px-md py-sm">{t("table.confidence")}</th>
+                      <th scope="col" className="px-md py-sm">{t("table.year")}</th>
+                      <th scope="col" className="px-md py-sm">{t("table.sourcesClaims")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -400,10 +404,10 @@ export function GraphPage({ projectId }: { projectId: string }) {
                       >
                         <td className="px-md py-sm text-text-primary">{node.title}</td>
                         <td className="px-md py-sm text-text-secondary">
-                          {NODE_TYPE_LABELS[node.type]}
+                          {t(`common:vocab.nodeType.${node.type}`, { defaultValue: node.type })}
                         </td>
                         <td className="px-md py-sm text-text-secondary">
-                          {dimensionLabel(node.dimension)}
+                          {t(`common:vocab.dimension.${node.dimension}`, { defaultValue: node.dimension })}
                         </td>
                         <td className="px-md py-sm">
                           <ResearchStatusBadge state={node.confidence} kind="confidence" />
@@ -430,7 +434,7 @@ export function GraphPage({ projectId }: { projectId: string }) {
                 viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
                 className="h-auto w-full"
                 role="group"
-                aria-label="知识图谱（2D 力导向布局）"
+                aria-label={t("canvas.aria")}
                 data-testid="graph-canvas"
               >
                 {filtered.relations.map((relation) => {
@@ -453,7 +457,11 @@ export function GraphPage({ projectId }: { projectId: string }) {
                           : "var(--morpho-color-graph-edge)"
                       }
                       strokeWidth={highlighted ? 2 : 1}
-                      aria-label={`关系：${source.title} ${relation.predicate} ${target.title}`}
+                      aria-label={t("canvas.edgeAria", {
+                        source: source.title,
+                        predicate: relation.predicate,
+                        target: target.title,
+                      })}
                     />
                   );
                 })}
@@ -465,7 +473,13 @@ export function GraphPage({ projectId }: { projectId: string }) {
                       transform={`translate(${node.x},${node.y})`}
                       role="button"
                       tabIndex={0}
-                      aria-label={`${node.title}（${NODE_TYPE_LABELS[node.type]}，置信 ${CONFIDENCE_LABELS[node.confidence]}）`}
+                      aria-label={t("canvas.nodeAria", {
+                        title: node.title,
+                        type: t(`common:vocab.nodeType.${node.type}`, { defaultValue: node.type }),
+                        confidence: t(`common:vocab.confidence.${node.confidence}`, {
+                          defaultValue: node.confidence,
+                        }),
+                      })}
                       className="cursor-pointer"
                       onClick={() => setSelectedId(node.id)}
                       onKeyDown={(e) => {
@@ -524,35 +538,38 @@ export function GraphNodeInspector({
   onClose: () => void;
   className?: string;
 }) {
+  const { t } = useTranslation("graph");
   return (
-    <aside className={className} data-testid="graph-inspector" aria-label="图谱检查器">
-      <p className="kicker mb-xs">当前选择</p>
+    <aside className={className} data-testid="graph-inspector" aria-label={t("inspector.aria")}>
+      <p className="kicker mb-xs">{t("inspector.current")}</p>
       <div className="flex items-start justify-between gap-sm">
         <h3 className="text-h3 text-text-primary">{node.title}</h3>
-        <Button size="sm" variant="ghost" aria-label="关闭详情" onClick={onClose}>
+        <Button size="sm" variant="ghost" aria-label={t("inspector.closeAria")} onClick={onClose}>
           <X size={16} strokeWidth={1.75} aria-hidden="true" />
         </Button>
       </div>
       <div className="mt-sm flex flex-wrap items-center gap-sm">
         <span className={`badge-mono ${NODE_TYPE_BADGE_CLASS[node.type]}`}>
-          {NODE_TYPE_LABELS[node.type]}
+          {t(`common:vocab.nodeType.${node.type}`, { defaultValue: node.type })}
         </span>
         <ResearchStatusBadge state={node.confidence} kind="confidence" />
       </div>
       <p className="mt-md text-caption text-text-secondary">
-        {summary ?? "暂无摘要"}
+        {summary ?? t("inspector.noSummary")}
       </p>
       <dl className="mt-md flex flex-col gap-xs text-caption text-text-secondary">
         <div className="flex justify-between">
-          <dt>来源数量</dt>
+          <dt>{t("inspector.sourceCount")}</dt>
           <dd>{node.source_count}</dd>
         </div>
         <div className="flex justify-between">
-          <dt>关联关系</dt>
+          <dt>{t("inspector.relationCount")}</dt>
           <dd>{relations.length}</dd>
         </div>
       </dl>
-      <h4 className="mt-md text-label text-text-secondary">关系（{relations.length}）</h4>
+      <h4 className="mt-md text-label text-text-secondary">
+        {t("inspector.relationsHeading", { total: relations.length })}
+      </h4>
       <ul className="mt-xs flex flex-col gap-xs text-caption text-text-muted">
         {relations.map((relation) => {
           const otherId =
@@ -574,9 +591,9 @@ export function GraphNodeInspector({
         variant="secondary"
         className="mt-md w-full"
         disabled
-        title="桌面版提供"
+        title={t("desktopOnly")}
       >
-        打开 Markdown
+        {t("inspector.openMarkdown")}
       </Button>
     </aside>
   );

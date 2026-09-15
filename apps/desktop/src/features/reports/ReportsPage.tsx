@@ -1,7 +1,7 @@
+import { useTranslation } from "react-i18next";
 import { Button, Card, Table, TBody, TD, TH, THead, TR } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
-import { dimensionLabel } from "@/types/labels";
 import {
   useClaims,
   useCoverage,
@@ -16,7 +16,8 @@ import {
  * the explainable coverage score with a dimension table, and recent run
  * events. Report export (Vault/Markdown briefing) stays an explicitly
  * disabled placeholder until the export pipeline lands; the page never
- * pretends the export works.
+ * pretends the export works. All chrome strings go through t() (ADR-023,
+ * "reports" namespace); dimension labels resolve through common:vocab.*.
  */
 
 /** Prototype summary tile: one 21px number plus a caption. */
@@ -47,6 +48,7 @@ function SummaryTile({
 }
 
 export function ReportsPage({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("reports");
   const sources = useSources(projectId);
   const knowledge = useKnowledge(projectId);
   const claims = useClaims(projectId);
@@ -64,9 +66,9 @@ export function ReportsPage({ projectId }: { projectId: string }) {
 
   return (
     <PageShell
-      kicker="研究报告"
-      title="项目研究简报"
-      description="从当前项目的来源、知识与覆盖度生成一页汇总；正式简报导出即将提供。"
+      kicker={t("kicker")}
+      title={t("title")}
+      description={t("description")}
     >
       <PageStates
         isLoading={
@@ -88,9 +90,8 @@ export function ReportsPage({ projectId }: { projectId: string }) {
           claimList.length === 0
         }
         empty={{
-          title: "报告还没有内容",
-          description:
-            "研究运行产出来源、知识节点与论断后，这里会汇总成项目简报。",
+          title: t("empty.title"),
+          description: t("empty.description"),
         }}
       >
         <div data-testid="reports-page" className="flex flex-col gap-xl">
@@ -99,16 +100,16 @@ export function ReportsPage({ projectId }: { projectId: string }) {
             data-testid="report-summary"
             className="grid grid-cols-2 gap-sm md:grid-cols-4"
           >
-            <SummaryTile testId="report-metric-sources" label="来源" value={String(sourceList.length)} />
+            <SummaryTile testId="report-metric-sources" label={t("metrics.sources")} value={String(sourceList.length)} />
             <SummaryTile
               testId="report-metric-knowledge"
-              label="知识节点"
+              label={t("metrics.knowledge")}
               value={String(nodeList.length)}
             />
-            <SummaryTile testId="report-metric-claims" label="论断" value={String(claimList.length)} />
+            <SummaryTile testId="report-metric-claims" label={t("metrics.claims")} value={String(claimList.length)} />
             <SummaryTile
               testId="report-metric-coverage"
-              label="研究覆盖度"
+              label={t("metrics.coverage")}
               value={`${overallPct}%`}
               tone="text-success"
               progress={overallPct}
@@ -119,8 +120,8 @@ export function ReportsPage({ projectId }: { projectId: string }) {
             {/* 维度覆盖度表 */}
             <Card data-testid="report-dimensions" className="flex flex-col gap-md">
               <div>
-                <p className="kicker">覆盖度</p>
-                <h2 className="text-h2 text-text-primary">维度覆盖表</h2>
+                <p className="kicker">{t("dimensions.kicker")}</p>
+                <h2 className="text-h2 text-text-primary">{t("dimensions.title")}</h2>
               </div>
               {/* Narrow table strategy (DESIGN_TOKENS.md): the real table
                   keeps its columns and scrolls horizontally below the point
@@ -129,15 +130,15 @@ export function ReportsPage({ projectId }: { projectId: string }) {
               <div className="overflow-x-auto" data-testid="report-dimensions-table">
                 <Table className="w-full min-w-[480px] border-collapse text-body">
                 <caption className="sr-only">
-                  各研究维度的覆盖率与关键输入
+                  {t("dimensions.caption")}
                 </caption>
                 <THead>
                   <TR className="border-b border-border text-left text-label text-text-muted">
-                    <TH scope="col" className="px-md py-sm">维度</TH>
-                    <TH scope="col" className="px-md py-sm">覆盖率</TH>
-                    <TH scope="col" className="px-md py-sm">任务完成</TH>
-                    <TH scope="col" className="px-md py-sm">知识节点</TH>
-                    <TH scope="col" className="px-md py-sm">高质量来源</TH>
+                    <TH scope="col" className="px-md py-sm">{t("dimensions.colDimension")}</TH>
+                    <TH scope="col" className="px-md py-sm">{t("dimensions.colCoverage")}</TH>
+                    <TH scope="col" className="px-md py-sm">{t("dimensions.colTasks")}</TH>
+                    <TH scope="col" className="px-md py-sm">{t("dimensions.colNodes")}</TH>
+                    <TH scope="col" className="px-md py-sm">{t("dimensions.colQualitySources")}</TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -148,7 +149,9 @@ export function ReportsPage({ projectId }: { projectId: string }) {
                       className="border-b border-border/60"
                     >
                       <TD className="px-md py-sm text-text-primary">
-                        {dimensionLabel(dimension.dimension)}
+                        {t(`common:vocab.dimension.${dimension.dimension}`, {
+                          defaultValue: dimension.dimension,
+                        })}
                       </TD>
                       <TD className="px-md py-sm">
                         <div className="flex items-center gap-sm">
@@ -184,13 +187,13 @@ export function ReportsPage({ projectId }: { projectId: string }) {
             {/* 最近研究运行 */}
             <Card data-testid="report-recent-runs" className="flex flex-col gap-md">
               <div>
-                <p className="kicker">运行记录</p>
-                <h2 className="text-h2 text-text-primary">最近研究运行</h2>
+                <p className="kicker">{t("runs.kicker")}</p>
+                <h2 className="text-h2 text-text-primary">{t("runs.title")}</h2>
               </div>
               <ul className="flex flex-col gap-sm">
                 {recentRuns.length === 0 ? (
                   <li className="text-caption text-text-muted">
-                    还没有研究运行记录；开始运行后事件会出现在这里。
+                    {t("runs.empty")}
                   </li>
                 ) : (
                   recentRuns.map((entry) => (
@@ -215,16 +218,16 @@ export function ReportsPage({ projectId }: { projectId: string }) {
           {/* 导出占位（诚实禁用） */}
           <Card data-testid="report-export" className="flex flex-col gap-sm p-lg">
             <div className="flex items-center gap-sm">
-              <p className="kicker">导出</p>
-              <span className="pill pill-neutral">即将提供</span>
+              <p className="kicker">{t("export.kicker")}</p>
+              <span className="pill pill-neutral">{t("export.soon")}</span>
             </div>
-            <h2 className="text-h3 text-text-primary">导出报告</h2>
+            <h2 className="text-h3 text-text-primary">{t("export.title")}</h2>
             <p className="text-caption text-text-secondary">
-              研究综合简报与 Vault 导出会在研究流程集成后提供；当前版本先在此汇总数据。
+              {t("export.description")}
             </p>
             <div>
-              <Button variant="primary" disabled title="即将提供">
-                导出报告
+              <Button variant="primary" disabled title={t("export.soon")}>
+                {t("export.title")}
               </Button>
             </div>
           </Card>

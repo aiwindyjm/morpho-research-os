@@ -10,6 +10,7 @@ import {
   Plus,
   type LucideIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Alert, Button, Card, Checkbox, Chip, Input, SegmentedControl } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -21,11 +22,6 @@ import {
   type ResearchDepth,
   type SourceType,
 } from "@/types/domain";
-import {
-  DEPTH_LABELS,
-  SOURCE_TYPE_LABELS,
-  dimensionLabel,
-} from "@/types/labels";
 import { researchConfigSchema } from "@/types/schemas";
 import { useConfig, useUpdateConfig } from "@/services/queries";
 import { isMorphoError } from "@/services/errors";
@@ -39,7 +35,9 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
  * to an existing ResearchConfig field; the useConfig/useUpdateConfig flow,
  * save validation, and error handling are unchanged. The 放弃修改 action
  * (spec States/Interactions) rolls the local draft back to the last-saved
- * server values while staying on the page.
+ * server values while staying on the page. All chrome strings go through
+ * t() (ADR-023, "config" namespace); the dimension/source-type/depth
+ * vocabularies resolve through common:vocab.*.
  */
 
 /** Year ⇄ ISO-8601 mapping for the prototype's year-range inputs. */
@@ -114,19 +112,21 @@ function toggleValue(list: string[], value: string): string[] {
 
 /** Source-type preference cards (04 来源偏好); values are the canonical
  * SourceType vocabulary, presentation only. Icons are lucide components
- * (COMPONENT_REGISTRY.md "Iconography"), never glyph characters. */
+ * (COMPONENT_REGISTRY.md "Iconography"), never glyph characters. The
+ * per-type descriptions are i18n resource keys ("config" namespace); the
+ * visible type names come from common:vocab.sourceType. */
 const SOURCE_TYPE_PREFERENCES: Array<{
   value: SourceType;
   icon: LucideIcon;
-  description: string;
+  descriptionKey: string;
 }> = [
-  { value: "paper", icon: FileText, description: "期刊、预印本与会议资料" },
-  { value: "documentation", icon: BookMarked, description: "官方文档与机构指南" },
-  { value: "web_page", icon: Globe, description: "行业报道与专业媒体" },
-  { value: "repository", icon: GitBranch, description: "代码与开源实现" },
-  { value: "dataset", icon: Database, description: "公开数据与实验材料" },
-  { value: "book", icon: Book, description: "教材、专著与手册" },
-  { value: "video", icon: Play, description: "讲座与会议录像" },
+  { value: "paper", icon: FileText, descriptionKey: "paper" },
+  { value: "documentation", icon: BookMarked, descriptionKey: "documentation" },
+  { value: "web_page", icon: Globe, descriptionKey: "web_page" },
+  { value: "repository", icon: GitBranch, descriptionKey: "repository" },
+  { value: "dataset", icon: Database, descriptionKey: "dataset" },
+  { value: "book", icon: Book, descriptionKey: "book" },
+  { value: "video", icon: Play, descriptionKey: "video" },
 ];
 
 /** Numbered form section from the prototype's form-panel (spec §6.2). */
@@ -159,6 +159,7 @@ function FormSection({
 }
 
 export function ConfigPage({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("config");
   const { data, isLoading, error, refetch } = useConfig(projectId);
   const updateConfig = useUpdateConfig(projectId);
   const setActiveView = useWorkspaceStore((s) => s.setActiveView);
@@ -169,9 +170,9 @@ export function ConfigPage({ projectId }: { projectId: string }) {
   if (!current && (isLoading || error)) {
     return (
       <PageShell
-        kicker="研究配置"
-        title="定义你的研究问题"
-        description="这些信息会决定研究计划的范围、深度和来源选择。"
+        kicker={t("kicker")}
+        title={t("title")}
+        description={t("description")}
       >
         <PageStates
           isLoading={isLoading}
@@ -188,12 +189,12 @@ export function ConfigPage({ projectId }: { projectId: string }) {
   if (!current) {
     return (
       <PageShell
-        kicker="研究配置"
-        title="定义你的研究问题"
-        description="这些信息会决定研究计划的范围、深度和来源选择。"
+        kicker={t("kicker")}
+        title={t("title")}
+        description={t("description")}
       >
-        <Alert title="请先选择或创建项目">
-          研究配置属于具体的项目；切换或新建项目后再来配置。
+        <Alert title={t("noProject.title")}>
+          {t("noProject.description")}
         </Alert>
       </PageShell>
     );
@@ -208,7 +209,11 @@ export function ConfigPage({ projectId }: { projectId: string }) {
     const parsed = researchConfigSchema.safeParse(current);
     if (!parsed.success) {
       const first = parsed.error.issues[0];
-      setSaveError(`配置未通过校验：${first.path.join(".")} ${first.message}`);
+      setSaveError(
+        t("saveError.validation", {
+          issue: `${first.path.join(".")} ${first.message}`,
+        }),
+      );
       return;
     }
     try {
@@ -218,7 +223,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
       setSaveError(
         isMorphoError(err)
           ? err.userMessage
-          : "保存失败，请稍后重试。",
+          : t("saveError.failed"),
       );
     }
   }
@@ -231,9 +236,9 @@ export function ConfigPage({ projectId }: { projectId: string }) {
 
   return (
     <PageShell
-      kicker="研究配置"
-      title="定义你的研究问题"
-      description="这些信息会决定研究计划的范围、深度和来源选择。"
+      kicker={t("kicker")}
+      title={t("title")}
+      description={t("description")}
       actions={
         <>
           <Button
@@ -242,7 +247,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
               setActiveView(projectId !== "" ? "overview" : "projects")
             }
           >
-            取消
+            {t("cancel")}
           </Button>
           <Button
             variant="ghost"
@@ -252,7 +257,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
             }}
             disabled={!dirty}
           >
-            放弃修改
+            {t("discard")}
           </Button>
           <Button
             variant="primary"
@@ -260,14 +265,14 @@ export function ConfigPage({ projectId }: { projectId: string }) {
             loading={updateConfig.isPending}
             disabled={!dirty}
           >
-            保存配置
+            {t("save")}
           </Button>
         </>
       }
     >
       {saveError ? (
         <div className="mb-lg">
-          <Alert variant="error" title="无法保存">
+          <Alert variant="error" title={t("saveError.title")}>
             {saveError}
           </Alert>
         </div>
@@ -283,8 +288,8 @@ export function ConfigPage({ projectId }: { projectId: string }) {
         <Card className="px-xl py-sm">
           <FormSection
             number="01"
-            title="研究主题"
-            help="先明确你要理解的对象和最终用途。"
+            title={t("section01.title")}
+            help={t("section01.help")}
           >
             <div className="grid grid-cols-1 gap-lg md:grid-cols-2">
               <div className="flex flex-col gap-xs">
@@ -292,13 +297,13 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                   htmlFor="config-domain"
                   className="text-label text-text-secondary"
                 >
-                  研究领域
+                  {t("field.domain")}
                 </label>
                 <Input
                   id="config-domain"
                   value={current.domain}
                   onChange={(e) => update({ domain: e.target.value })}
-                  placeholder="例如：神经工程"
+                  placeholder={t("field.domainPlaceholder")}
                 />
               </div>
               <div className="flex flex-col gap-xs">
@@ -306,14 +311,14 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                   htmlFor="config-topic"
                   className="text-label text-text-secondary"
                 >
-                  研究主题 <span aria-hidden="true" className="text-error">*</span>
+                  {t("field.topic")} <span aria-hidden="true" className="text-error">*</span>
                 </label>
                 <Input
                   id="config-topic"
                   required
                   value={current.topic}
                   onChange={(e) => update({ topic: e.target.value })}
-                  placeholder="例如：脑机接口在运动康复中的应用"
+                  placeholder={t("field.topicPlaceholder")}
                 />
               </div>
               <div className="md:col-span-2">
@@ -327,13 +332,13 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                   htmlFor="config-audience"
                   className="text-label text-text-secondary"
                 >
-                  使用对象 / 受众
+                  {t("field.audience")}
                 </label>
                 <Input
                   id="config-audience"
                   value={current.audience}
                   onChange={(e) => update({ audience: e.target.value })}
-                  placeholder="例如：康复医学研究者"
+                  placeholder={t("field.audiencePlaceholder")}
                 />
               </div>
             </div>
@@ -341,18 +346,18 @@ export function ConfigPage({ projectId }: { projectId: string }) {
 
           <FormSection
             number="02"
-            title="研究范围"
-            help="范围越清晰，计划越容易执行和复核。"
+            title={t("section02.title")}
+            help={t("section02.help")}
           >
             <div className="grid grid-cols-1 gap-lg md:grid-cols-2">
               <div className="flex flex-col gap-xs">
-                <span className="text-label text-text-secondary">研究深度</span>
+                <span className="text-label text-text-secondary">{t("field.depth")}</span>
                 {/* Registered SegmentedControl: controlled radiogroup with
                     roving tabindex and arrow-key movement; the value is the
                     numeric depth level re-expressed as the primitive's
                     string option value. */}
                 <SegmentedControl
-                  label="研究深度"
+                  label={t("field.depth")}
                   options={DEPTH_LEVELS.map((level) => ({
                     value: String(level.value),
                     label: String(level.value),
@@ -363,15 +368,15 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                   }
                 />
                 <small className="text-caption text-text-muted">
-                  {DEPTH_LABELS[current.depth]}
+                  {t(`common:vocab.depth.${current.depth}`)}
                 </small>
               </div>
               <div className="flex flex-col gap-xs">
-                <span className="text-label text-text-secondary">时间范围</span>
+                <span className="text-label text-text-secondary">{t("field.timeRange")}</span>
                 <div className="flex items-center gap-sm">
                   <YearInput
-                    label="开始年份"
-                    placeholder="如 2015"
+                    label={t("field.yearStart")}
+                    placeholder={t("field.yearStartPlaceholder")}
                     iso={current.time_range.from}
                     edge="start"
                     onCommit={(from) =>
@@ -382,11 +387,11 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                     aria-hidden="true"
                     className="text-caption text-text-muted"
                   >
-                    至
+                    {t("field.yearTo")}
                   </span>
                   <YearInput
-                    label="结束年份"
-                    placeholder="如 2026"
+                    label={t("field.yearEnd")}
+                    placeholder={t("field.yearEndPlaceholder")}
                     iso={current.time_range.to}
                     edge="end"
                     onCommit={(to) =>
@@ -396,7 +401,9 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                 </div>
               </div>
               <div className="flex flex-col gap-sm">
-                <span className="text-label text-text-secondary">语言</span>
+                <span className="text-label text-text-secondary">{t("field.languages")}</span>
+                {/* Language self-names ("中文"/"English") are locale-invariant
+                    — the same constant pattern as the settings language row. */}
                 <div className="flex gap-lg">
                   <Checkbox
                     label="中文"
@@ -419,13 +426,13 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                   htmlFor="config-scope"
                   className="text-label text-text-secondary"
                 >
-                  地域范围
+                  {t("field.geographicScope")}
                 </label>
                 <Input
                   id="config-scope"
                   value={current.geographic_scope}
                   onChange={(e) => update({ geographic_scope: e.target.value })}
-                  placeholder="例如：global"
+                  placeholder={t("field.geographicScopePlaceholder")}
                 />
               </div>
             </div>
@@ -433,8 +440,8 @@ export function ConfigPage({ projectId }: { projectId: string }) {
 
           <FormSection
             number="03"
-            title="研究维度"
-            help="选择计划必须覆盖的角度，可在生成计划后继续调整。"
+            title={t("section03.title")}
+            help={t("section03.help")}
           >
             <div className="flex flex-wrap gap-sm">
               {[...DEFAULT_DIMENSIONS, ...customDimensions].map((dimension) => {
@@ -450,25 +457,28 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                     }
                     className="py-1.5"
                   >
-                    {dimensionLabel(dimension)}
+                    {t(`common:vocab.dimension.${dimension}`, { defaultValue: dimension })}
                   </Chip>
                 );
               })}
-              <Chip disabled title="桌面版提供" className="gap-xs border-dashed text-accent-alt">
+              <Chip disabled title={t("dimensions.customTitle")} className="gap-xs border-dashed text-accent-alt">
                 <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
-                自定义维度
+                {t("dimensions.custom")}
               </Chip>
             </div>
           </FormSection>
 
           <FormSection
             number="04"
-            title="来源偏好"
-            help="Morpho 会优先搜索这些来源，并保留每个结论的出处。"
+            title={t("section04.title")}
+            help={t("section04.help")}
           >
             <div className="grid grid-cols-1 gap-sm md:grid-cols-2 xl:grid-cols-4">
               {SOURCE_TYPE_PREFERENCES.map((preference) => {
                 const checked = current.source_types.includes(preference.value);
+                const typeLabel = t(`common:vocab.sourceType.${preference.value}`, {
+                  defaultValue: preference.value,
+                });
                 return (
                   <label
                     key={preference.value}
@@ -481,7 +491,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                     <input
                       type="checkbox"
                       className="sr-only"
-                      aria-label={SOURCE_TYPE_LABELS[preference.value]}
+                      aria-label={typeLabel}
                       checked={checked}
                       onChange={() =>
                         update({
@@ -500,10 +510,10 @@ export function ConfigPage({ projectId }: { projectId: string }) {
                     </span>
                     <span>
                       <strong className="block text-caption text-text-primary">
-                        {SOURCE_TYPE_LABELS[preference.value]}
+                        {typeLabel}
                       </strong>
                       <small className="mt-1 block text-caption text-text-muted">
-                        {preference.description}
+                        {t(`sourcePref.${preference.descriptionKey}`)}
                       </small>
                     </span>
                   </label>
@@ -514,7 +524,7 @@ export function ConfigPage({ projectId }: { projectId: string }) {
         </Card>
 
         <p className="py-md text-caption text-text-muted">
-          更新频率当前固定为手动（update_frequency: manual）；自动增量研究将在后续版本提供。
+          {t("footer")}
         </p>
         {/* Hidden native submit target so Enter in any field submits the form. */}
         <Button type="submit" className="sr-only" />

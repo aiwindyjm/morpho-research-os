@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button, Card, Chip, Input } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -11,12 +12,15 @@ import { useSources } from "@/services/queries";
  * and compact prototype rows rendered by the registered SourceCard
  * (variant="row"). Quality describes authority and fitness for purpose
  * only — it never declares a low-rated source false (docs/PRD.md §6).
+ * All chrome strings go through t() (ADR-023, "sources" namespace).
  */
 
+/** Prototype type-filter chips; the copy differs from the canonical
+ * vocab.sourceType labels ("官方文档" vs "技术文档") and stays verbatim. */
 const TYPE_FILTERS = [
-  { id: "all", label: "全部类型" },
-  { id: "paper", label: "论文" },
-  { id: "documentation", label: "官方文档" },
+  { id: "all", key: "filter.all" },
+  { id: "paper", key: "filter.paper" },
+  { id: "documentation", key: "filter.documentation" },
 ] as const;
 
 /** Prototype `source-summary` tile: one 21px number plus a caption. */
@@ -39,6 +43,7 @@ function SummaryTile({
 
 /** Sources view — every claim stays traceable to its origin. */
 export function SourcesPage({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("sources");
   const { data: sources, isLoading, error, refetch } = useSources(projectId);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -67,20 +72,20 @@ export function SourcesPage({ projectId }: { projectId: string }) {
 
   return (
     <PageShell
-      kicker="来源库"
-      title="已发现的来源"
-      description="每个来源都会保留规范化地址、来源类型、质量信息和贡献的结论。"
+      kicker={t("kicker")}
+      title={t("title")}
+      description={t("description")}
       actions={
         <>
-          <Button variant="secondary" disabled title="桌面版提供">
-            导入链接
+          <Button variant="secondary" disabled title={t("desktopOnly")}>
+            {t("importLinks")}
           </Button>
           <Button
             variant="primary"
             aria-pressed={onlyQuality}
             onClick={() => setOnlyQuality((value) => !value)}
           >
-            按质量筛选
+            {t("qualityToggle")}
           </Button>
         </>
       }
@@ -91,42 +96,42 @@ export function SourcesPage({ projectId }: { projectId: string }) {
         onRetry={() => void refetch()}
         isEmpty={list.length === 0}
         empty={{
-          title: "还没有来源",
-          description: "批准研究计划并开始运行后，检索到的来源会出现在这里。",
+          title: t("empty.title"),
+          description: t("empty.description"),
         }}
       >
         <div
           data-testid="source-summary"
           className="mb-lg grid grid-cols-2 gap-sm md:grid-cols-4"
         >
-          <SummaryTile label="全部" value={summary.all} tone="text-text-primary" />
-          <SummaryTile label="高质量" value={summary.high} tone="text-success" />
-          <SummaryTile label="中等" value={summary.medium} tone="text-warning" />
-          <SummaryTile label="待审核" value={summary.pending} tone="text-text-muted" />
+          <SummaryTile label={t("summary.all")} value={summary.all} tone="text-text-primary" />
+          <SummaryTile label={t("summary.high")} value={summary.high} tone="text-success" />
+          <SummaryTile label={t("summary.medium")} value={summary.medium} tone="text-warning" />
+          <SummaryTile label={t("summary.pending")} value={summary.pending} tone="text-text-muted" />
         </div>
 
         <div className="mb-lg flex flex-wrap items-center gap-md">
           <Input
             type="search"
-            aria-label="搜索来源或关键词"
-            placeholder="搜索标题或地址…"
+            aria-label={t("search")}
+            placeholder={t("searchPlaceholder")}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="max-w-xs"
           />
           <div className="flex items-center gap-sm">
-            {TYPE_FILTERS.map(({ id, label }) => (
+            {TYPE_FILTERS.map(({ id, key }) => (
               <Chip
                 key={id}
                 selected={typeFilter === id}
                 onClick={() => setTypeFilter(id)}
               >
-                {label}
+                {t(key)}
               </Chip>
             ))}
           </div>
           <span className="ml-auto text-caption text-text-muted" role="status">
-            {visible.length} 个来源
+            {t("count", { total: visible.length })}
           </span>
         </div>
 
@@ -141,7 +146,7 @@ export function SourcesPage({ projectId }: { projectId: string }) {
         </div>
         {visible.length === 0 ? (
           <Card className="text-center text-body text-text-secondary">
-            没有匹配的来源；试试更换关键词或清除筛选条件。
+            {t("noMatch")}
           </Card>
         ) : null}
       </PageStates>

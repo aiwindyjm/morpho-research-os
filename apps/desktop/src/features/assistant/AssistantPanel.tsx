@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Alert, Button, Textarea, useToast } from "@morpho/ui";
-import { ASSISTANT_ACTION_LABELS } from "@/types/labels";
 import type { AssistantAction, AssistantResponse } from "@/types/domain";
 import type { JournalAuthor } from "@/types/journal";
 import {
@@ -27,6 +27,8 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
  *
  * Prototype alignment (spec §8): popup shell with a Morpho AI header, an
  * accent context strip, and a footer that jumps to the conversation journal.
+ * All chrome strings go through t() (ADR-023, "assistant" namespace); the
+ * four action labels resolve through common:vocab.assistantAction.
  */
 
 /** Prototype card style shared by the response and decision cards. */
@@ -47,6 +49,7 @@ const CONTEXT_ACTIONS: Array<{
 ];
 
 export function AssistantPanel() {
+  const { t } = useTranslation("assistant");
   const projectId = useWorkspaceProjectId();
   const setAssistantOpen = useWorkspaceStore((s) => s.setAssistantOpen);
   const setActiveView = useWorkspaceStore((s) => s.setActiveView);
@@ -82,7 +85,7 @@ export function AssistantPanel() {
     try {
       if (action === "record_decision") {
         if (!decisionDraft.trim()) {
-          setError("请先写下要保存的决定内容。");
+          setError(t("decision.empty"));
           return;
         }
         await saveDecision.mutateAsync(decisionDraft.trim());
@@ -96,13 +99,16 @@ export function AssistantPanel() {
       // The exchange becomes part of the savable conversation transcript.
       setTranscript((prev) => [
         ...prev,
-        { author: "user", content: ASSISTANT_ACTION_LABELS[action] },
+        {
+          author: "user",
+          content: t(`common:vocab.assistantAction.${action}`, { defaultValue: action }),
+        },
         { author: "morpho", content: result.summary },
       ]);
       setJournalSaveState("idle");
     } catch (err) {
       setError(
-        isMorphoError(err) ? err.userMessage : "助手暂时不可用，请重试。",
+        isMorphoError(err) ? err.userMessage : t("error.fallback"),
       );
     }
   }
@@ -110,37 +116,40 @@ export function AssistantPanel() {
   /** Explicit save (second click) — see DO_NOT_BREAK #12. */
   function confirmSaveToJournal() {
     if (transcript.length === 0) return;
-    const projectName = context?.project_name ?? "未知项目";
+    const projectName = context?.project_name ?? t("entry.unknownProject");
     const content = [
-      `从 AI 助手保存的对话（项目：${projectName} · ID ${projectId}）`,
-      ...transcript.map(
-        (message) => `[${message.author === "user" ? "用户" : "Morpho"}] ${message.content}`,
+      t("entry.header", { project: projectName, id: projectId }),
+      ...transcript.map((message) =>
+        t("entry.line", {
+          author: message.author === "user" ? t("entry.authorLabel") : "Morpho",
+          content: message.content,
+        }),
       ),
     ].join("\n");
     addEntry(todayIso(), "morpho", content);
     setJournalSaveState("saved");
     showToast({
-      title: "已保存到对话日志",
-      detail: `共 ${transcript.length} 条消息（仅本机）`,
+      title: t("toast.savedTitle"),
+      detail: t("toast.savedDetail", { total: transcript.length }),
       variant: "success",
     });
   }
 
   return (
     <section
-      aria-label="AI 研究助手"
+      aria-label={t("aria")}
       className="flex h-full min-h-0 flex-col overflow-hidden"
       data-testid="assistant-panel-body"
     >
       <header className="flex items-start justify-between border-b border-border p-md">
         <div>
-          <p className="kicker mb-xs">当前项目助手</p>
+          <p className="kicker mb-xs">{t("kicker")}</p>
           <h2 className="text-h3 text-text-primary">Morpho AI</h2>
         </div>
         <Button
           size="sm"
           variant="ghost"
-          aria-label="关闭 AI 助手"
+          aria-label={t("closeAria")}
           onClick={() => setAssistantOpen(false)}
         >
           <X size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -149,16 +158,18 @@ export function AssistantPanel() {
 
       <div className="bg-accent-soft px-md py-sm text-nano text-text-muted">
         {isLoading ? (
-          <p role="status">正在加载项目上下文…</p>
+          <p role="status">{t("context.loading")}</p>
         ) : context ? (
           <p>
-            正在使用 <strong>{context.project_name}</strong> 的研究上下文
+            {t("context.usingBefore")}
+            <strong>{context.project_name}</strong>
+            {t("context.usingAfter")}
           </p>
         ) : null}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-sm overflow-y-auto p-md">
-        <nav aria-label="助手动作" className="flex flex-col gap-xs">
+        <nav aria-label={t("navAria")} className="flex flex-col gap-xs">
           {CONTEXT_ACTIONS.map(({ action }) => (
             <Button
               key={action}
@@ -167,13 +178,13 @@ export function AssistantPanel() {
               onClick={() => void runAction(action)}
               loading={act.isPending && act.variables === action}
             >
-              {ASSISTANT_ACTION_LABELS[action]}
+              {t(`common:vocab.assistantAction.${action}`, { defaultValue: action })}
             </Button>
           ))}
         </nav>
 
         {error ? (
-          <Alert variant="error" title="操作未完成">
+          <Alert variant="error" title={t("error.title")}>
             {error}
           </Alert>
         ) : null}
@@ -195,26 +206,25 @@ export function AssistantPanel() {
         ) : null}
 
         <div className={PANEL_CARD_CLASS} data-testid="assistant-journal-save">
-          <p className="text-label text-text-primary">保存对话到日志</p>
+          <p className="text-label text-text-primary">{t("journalSave.title")}</p>
           <p className="mt-xs text-caption text-text-muted">
-            当前对话共 {transcript.length} 条消息；只有你点击「确认保存」才会写入
-            本机对话日志，不会自动保存。
+            {t("journalSave.idle", { total: transcript.length })}
           </p>
           {journalSaveState === "confirming" ? (
-            <div className="mt-sm flex flex-col gap-xs" role="group" aria-label="确认保存对话">
+            <div className="mt-sm flex flex-col gap-xs" role="group" aria-label={t("journalSave.groupAria")}>
               <p className="text-caption text-text-secondary">
-                将把 {transcript.length} 条消息保存到今天的对话日志（{todayIso()}，仅本机）。
+                {t("journalSave.confirmDetail", { total: transcript.length, date: todayIso() })}
               </p>
               <div className="flex items-center gap-sm">
                 <Button size="sm" variant="primary" onClick={confirmSaveToJournal}>
-                  确认保存
+                  {t("journalSave.confirm")}
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => setJournalSaveState("idle")}
                 >
-                  取消
+                  {t("journalSave.cancel")}
                 </Button>
               </div>
             </div>
@@ -226,32 +236,32 @@ export function AssistantPanel() {
               disabled={transcript.length === 0}
               onClick={() => setJournalSaveState("confirming")}
             >
-              保存到日志
+              {t("journalSave.arm")}
             </Button>
           )}
           {journalSaveState === "saved" ? (
             <p className="mt-xs text-caption text-success" role="status">
-              已保存 {transcript.length} 条消息到今天的对话日志。{" "}
+              {t("journalSave.saved", { total: transcript.length })}{" "}
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-auto px-xs py-0 align-baseline text-info! hover:underline"
                 onClick={() => setActiveView("journal")}
               >
-                查看对话日志 →
+                {t("journalSave.viewJournal")}
               </Button>
             </p>
           ) : null}
         </div>
 
         <div className={PANEL_CARD_CLASS}>
-          <p className="text-label text-text-primary">记录决定</p>
+          <p className="text-label text-text-primary">{t("decision.title")}</p>
           <p className="mt-xs text-caption text-text-muted">
-            决定只在本项目内保存；点击「保存决定」才会写入。
+            {t("decision.hint")}
           </p>
           <Textarea
-            aria-label="决定内容"
-            placeholder="例如：下一轮优先补充量化方向的论文来源"
+            aria-label={t("decision.inputAria")}
+            placeholder={t("decision.inputPlaceholder")}
             value={decisionDraft}
             onChange={(e) => setDecisionDraft(e.target.value)}
             rows={3}
@@ -263,16 +273,18 @@ export function AssistantPanel() {
             onClick={() => void runAction("record_decision")}
             loading={saveDecision.isPending}
           >
-            保存决定
+            {t("decision.save")}
           </Button>
           {savedNotice ? (
             <p className="mt-xs text-caption text-success" role="status">
-              决定已保存（显式保存，共 {(decisions ?? []).length} 条）。
+              {t("decision.saved", { total: (decisions ?? []).length })}
             </p>
           ) : null}
           {(decisions ?? []).length > 0 ? (
             <details className="mt-xs text-caption text-text-muted">
-              <summary className="cursor-pointer">已保存的决定（{(decisions ?? []).length}）</summary>
+              <summary className="cursor-pointer">
+                {t("decision.listSummary", { total: (decisions ?? []).length })}
+              </summary>
               <ul className="mt-xs flex flex-col gap-xs">
                 {(decisions ?? []).map((decision) => (
                   <li key={decision.id} className="rounded-sm bg-surface-raised p-xs">
@@ -286,14 +298,14 @@ export function AssistantPanel() {
       </div>
 
       <footer className="flex items-center justify-between border-t border-border px-md pb-sm pt-xs text-[9px] text-text-muted">
-        <span>AI 会基于当前项目工作区回答</span>
+        <span>{t("footer.note")}</span>
         <Button
           variant="ghost"
           size="sm"
           className="h-auto px-xs py-0 text-info! hover:underline"
           onClick={() => setActiveView("journal")}
         >
-          记录对话
+          {t("footer.openJournal")}
         </Button>
       </footer>
     </section>

@@ -1,6 +1,10 @@
 /**
  * English common resources (ADR-023). Authored translations of the zh-CN
- * reference strings — concise product UI English.
+ * reference strings — concise product UI English. The `vocab` groups mirror
+ * the zh-CN reference vocabulary (task states, plan statuses, confidence
+ * bands, node types, dimensions, …) with the shared product glossary:
+ * task / plan / source / knowledge node / claim / evidence / run /
+ * coverage / dimension / gap.
  */
 const common = {
   loading: "Loading…",
@@ -10,6 +14,116 @@ const common = {
     retryableSuffix: " (retryable)",
     technicalDetail: "Technical details: {{detail}}",
     retry: "Retry",
+  },
+  vocab: {
+    taskState: {
+      PENDING: "Pending",
+      PLANNING: "Planning",
+      RUNNING: "Running",
+      VALIDATING: "Validating",
+      COMPLETED: "Completed",
+      NEEDS_REVIEW: "Needs review",
+      PAUSED: "Paused",
+      FAILED: "Failed",
+      CANCELLED: "Cancelled",
+    },
+    planStatus: {
+      draft: "Pending review",
+      approved: "Approved",
+      rejected: "Rejected",
+    },
+    confidence: {
+      confirmed: "Confirmed",
+      high: "High confidence",
+      medium: "Medium confidence",
+      low: "Low confidence",
+      unverified: "Unverified",
+      conflicting: "Conflicting",
+    },
+    nodeType: {
+      Concept: "Concept",
+      Person: "Person",
+      Organization: "Organization",
+      Company: "Company",
+      Paper: "Paper",
+      Book: "Book",
+      Experiment: "Experiment",
+      Event: "Event",
+      Technology: "Technology",
+      Product: "Product",
+      Application: "Application",
+      Policy: "Policy",
+      Dataset: "Dataset",
+      Controversy: "Controversy",
+    },
+    purpose: {
+      learning: "Learning",
+      teaching: "Teaching",
+      writing: "Writing",
+      research: "Research",
+      industry: "Industry analysis",
+      product: "Product research",
+      strategy: "Strategy",
+      custom: "Custom",
+    },
+    dimension: {
+      concepts: "Core concepts",
+      history: "History",
+      theory: "Theoretical foundations",
+      technology: "Methods & technology",
+      experiments: "Experiments",
+      papers: "Key papers",
+      people: "Key people",
+      organizations: "Organizations",
+      companies: "Companies",
+      products: "Products",
+      applications: "Applications",
+      industry: "Industry landscape",
+      policy: "Policy & regulation",
+      market: "Market size",
+      investment: "Investment activity",
+      controversy: "Controversies",
+      risk: "Risks & ethics",
+      recent_developments: "Recent developments",
+      future_trends: "Future trends",
+    },
+    sourceType: {
+      web_page: "Web page",
+      paper: "Paper",
+      documentation: "Documentation",
+      book: "Book",
+      dataset: "Dataset",
+      video: "Video",
+      repository: "Repository",
+    },
+    sourceStatus: {
+      discovered: "Discovered",
+      evaluated: "Evaluated",
+      fetched: "Fetched",
+      indexed: "Indexed",
+      rejected: "Rejected",
+    },
+    taskKind: {
+      search: "Source search",
+      source_evaluation: "Source evaluation",
+      extraction: "Extraction",
+      normalization: "Normalization",
+      validation: "Validation",
+      synthesis: "Synthesis",
+    },
+    depth: {
+      1: "1 · Get oriented",
+      2: "2 · Build understanding",
+      3: "3 · Structured research",
+      4: "4 · Expert research",
+      5: "5 · Frontier tracking",
+    },
+    assistantAction: {
+      explain_progress: "Explain progress",
+      suggest_next_task: "Suggest next task",
+      list_pending_reviews: "List pending reviews",
+      record_decision: "Record decision",
+    },
   },
 };
 

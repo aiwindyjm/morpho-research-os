@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { Ellipsis, Plus, Search } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button, Card, Dialog, Input, Textarea } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
@@ -15,9 +16,11 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
  * (List pattern). Every project is an isolated workspace; switching
  * projects swaps all data. Client-side search filters by name and
  * description; the dashed card and the header action open the same
- * create dialog.
+ * create dialog. All chrome strings go through t() (ADR-023, "projects"
+ * namespace).
  */
 export function ProjectsPage() {
+  const { t } = useTranslation("projects");
   const { data: projects, isLoading, error, refetch } = useProjects();
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
   const setActiveProject = useWorkspaceStore((s) => s.setActiveProject);
@@ -41,7 +44,7 @@ export function ProjectsPage() {
 
   async function submitCreate() {
     if (!name.trim()) {
-      setDialogError("项目名称不能为空。");
+      setDialogError(t("error.nameRequired"));
       return;
     }
     setDialogError(null);
@@ -56,22 +59,22 @@ export function ProjectsPage() {
       setDescription("");
       setActiveView("config");
     } catch {
-      setDialogError("创建失败，请重试。");
+      setDialogError(t("error.createFailed"));
     }
   }
 
   const openCreateDialog = (
     <Button variant="primary" onClick={() => setDialogOpen(true)}>
       <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
-      新建研究
+      {t("newResearch")}
     </Button>
   );
 
   return (
     <PageShell
-      kicker="我的研究"
-      title="所有研究项目"
-      description="每个主题都是一个独立的研究空间。你可以随时切换、继续或新建研究。"
+      kicker={t("kicker")}
+      title={t("title")}
+      description={t("description")}
       actions={openCreateDialog}
     >
       <PageStates
@@ -80,8 +83,8 @@ export function ProjectsPage() {
         onRetry={() => void refetch()}
         isEmpty={projectList.length === 0}
         empty={{
-          title: "还没有研究项目",
-          description: "创建第一个项目，把一个研究问题变成可持续生长的知识库。",
+          title: t("empty.title"),
+          description: t("empty.description"),
           action: openCreateDialog,
         }}
       >
@@ -95,13 +98,13 @@ export function ProjectsPage() {
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索我的研究"
-                aria-label="搜索我的研究"
+                placeholder={t("search")}
+                aria-label={t("search")}
                 className="w-64 border-none bg-transparent text-body text-text-primary placeholder:text-text-muted"
               />
             </div>
             <span className="text-caption text-text-muted">
-              {filtered.length} 个项目
+              {t("count", { total: filtered.length })}
             </span>
           </div>
 
@@ -136,10 +139,10 @@ export function ProjectsPage() {
                 <Plus size={18} strokeWidth={1.75} />
               </span>
               <strong className="text-label text-text-primary">
-                新建一个研究
+                {t("createCard.title")}
               </strong>
               <small className="mt-xs text-caption text-text-muted">
-                从一个问题开始
+                {t("createCard.hint")}
               </small>
             </Button>
           </div>
@@ -149,8 +152,8 @@ export function ProjectsPage() {
       <Dialog
         open={dialogOpen}
         onClose={closeDialog}
-        title="新建研究项目"
-        description="每个项目拥有独立的配置、计划、任务、知识与助手上下文。"
+        title={t("dialog.title")}
+        description={t("dialog.description")}
       >
         <form
           className="flex flex-col gap-lg"
@@ -161,13 +164,13 @@ export function ProjectsPage() {
         >
           <div className="flex flex-col gap-xs">
             <label htmlFor="projects-page-project-name" className="text-label text-text-secondary">
-              项目名称 <span aria-hidden="true" className="text-error">*</span>
+              {t("dialog.nameLabel")} <span aria-hidden="true" className="text-error">*</span>
             </label>
             <Input
               id="projects-page-project-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="例如：大语言模型推理优化"
+              placeholder={t("dialog.namePlaceholder")}
               aria-invalid={Boolean(dialogError)}
               autoFocus
             />
@@ -182,21 +185,21 @@ export function ProjectsPage() {
               htmlFor="projects-page-project-description"
               className="text-label text-text-secondary"
             >
-              项目描述
+              {t("dialog.descriptionLabel")}
             </label>
             <Textarea
               id="projects-page-project-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="一句话说明这个项目要回答什么问题"
+              placeholder={t("dialog.descriptionPlaceholder")}
             />
           </div>
           <div className="flex justify-end gap-sm">
             <Button variant="ghost" onClick={() => setDialogOpen(false)}>
-              取消
+              {t("dialog.cancel")}
             </Button>
             <Button variant="primary" type="submit" loading={createProject.isPending}>
-              创建项目
+              {t("dialog.create")}
             </Button>
           </div>
         </form>
@@ -222,6 +225,7 @@ function ProjectCard({
   onOpen: () => void;
   onConfigure: () => void;
 }) {
+  const { t } = useTranslation("projects");
   const { data: context } = useAssistantContext(projectId);
 
   const total = context?.tasks_total ?? 0;
@@ -229,10 +233,10 @@ function ProjectCard({
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   const status =
     context === undefined || context.plan_status === "none" || total === 0
-      ? { label: "草稿", pill: "pill pill-neutral" }
+      ? { label: t("card.statusDraft"), pill: "pill pill-neutral" }
       : done < total
-        ? { label: "进行中", pill: "pill pill-success" }
-        : { label: "已暂停", pill: "pill pill-warning" };
+        ? { label: t("card.statusInProgress"), pill: "pill pill-success" }
+        : { label: t("card.statusPaused"), pill: "pill pill-warning" };
 
   return (
     <Card
@@ -245,7 +249,7 @@ function ProjectCard({
     >
       <div className="flex items-center justify-between gap-sm">
         <span className={status.pill}>{status.label}</span>
-        <Button size="icon" variant="ghost" aria-label="打开项目" onClick={onOpen}>
+        <Button size="icon" variant="ghost" aria-label={t("card.openAria")} onClick={onOpen}>
           <Ellipsis size={16} strokeWidth={1.75} aria-hidden="true" />
         </Button>
       </div>
@@ -256,9 +260,9 @@ function ProjectCard({
         {description}
       </p>
       <div className="mt-md flex flex-wrap gap-md text-caption text-text-muted">
-        <span>{total > 0 ? `${pct}% 覆盖` : "未开始"}</span>
-        <span>{total} 任务</span>
-        <span>更新于 {updatedAt.slice(0, 10)}</span>
+        <span>{total > 0 ? t("card.coverage", { percent: pct }) : t("card.notStarted")}</span>
+        <span>{t("card.taskCount", { total })}</span>
+        <span>{t("card.updatedAt", { date: updatedAt.slice(0, 10) })}</span>
       </div>
       <div className="mt-auto pt-md">
         <div
@@ -267,17 +271,17 @@ function ProjectCard({
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={pct}
-          aria-label="项目进度"
+          aria-label={t("card.progressAria")}
         >
           <span className="progress-fill" style={{ width: `${pct}%` }} />
         </div>
       </div>
       <div className="mt-md flex gap-sm">
         <Button size="sm" variant={active ? "secondary" : "primary"} onClick={onOpen}>
-          {active ? "进入工作台" : "切换到此项目"}
+          {active ? t("card.enterWorkspace") : t("card.switchTo")}
         </Button>
         <Button size="sm" variant="ghost" onClick={onConfigure}>
-          研究配置
+          {t("card.configure")}
         </Button>
       </div>
     </Card>
