@@ -124,7 +124,7 @@ export function KnowledgePage({ projectId }: { projectId: string }) {
           placeholder={t("searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs"
+          className="max-w-[20rem]"
         />
         <span className="text-caption text-text-muted" role="status">
           {t("nodeCount", { total: filteredNodes.length })}

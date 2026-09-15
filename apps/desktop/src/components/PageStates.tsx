@@ -43,7 +43,7 @@ export function PageEmpty({
       data-testid="page-empty"
     >
       <p className="text-h3 text-text-primary">{title}</p>
-      <p className="max-w-md text-body text-text-secondary">{description}</p>
+      <p className="max-w-[28rem] text-body text-text-secondary">{description}</p>
       {action ? <div className="mt-sm">{action}</div> : null}
     </div>
   );

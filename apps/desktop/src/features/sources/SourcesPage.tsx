@@ -117,7 +117,7 @@ export function SourcesPage({ projectId }: { projectId: string }) {
             placeholder={t("searchPlaceholder")}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="max-w-xs"
+            className="max-w-[20rem]"
           />
           <div className="flex items-center gap-sm">
             {TYPE_FILTERS.map(({ id, key }) => (

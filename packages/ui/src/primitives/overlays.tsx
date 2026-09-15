@@ -89,7 +89,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className="w-full max-w-lg rounded-lg border border-border bg-surface-raised p-xl shadow-overlay animate-[var(--morpho-motion-slow)_var(--morpho-motion-ease)_morpho-overlay-in]"
+        className="w-full max-w-[32rem] rounded-lg border border-border bg-surface-raised p-xl shadow-overlay animate-[var(--morpho-motion-slow)_var(--morpho-motion-ease)_morpho-overlay-in]"
       >
         <h2 id={titleId} className="text-h2 text-text-primary">
           {title}
@@ -289,7 +289,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 function ToastItem({ toast }: { toast: ToastMessage }) {
   return (
     <div
-      className={`fixed bottom-lg right-lg z-50 max-w-sm rounded-md border bg-surface-raised px-md py-sm shadow-panel animate-[var(--morpho-motion-base)_var(--morpho-motion-ease)_morpho-overlay-in] ${toastVariantClasses[toast.variant]}`}
+      className={`fixed bottom-lg right-lg z-50 max-w-[24rem] rounded-md border bg-surface-raised px-md py-sm shadow-panel animate-[var(--morpho-motion-base)_var(--morpho-motion-ease)_morpho-overlay-in] ${toastVariantClasses[toast.variant]}`}
     >
       <p className="text-label">{toast.title}</p>
       {toast.detail ? (
