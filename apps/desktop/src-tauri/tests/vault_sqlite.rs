@@ -48,6 +48,7 @@ fn vault_writer_works_against_the_sqlite_artifact_index() {
         KnowledgeNodes::upsert_by_slug(
             tx,
             &NewKnowledgeNode {
+                id: None,
                 project_id: project_id.clone(),
                 node_type: "Technology".into(),
                 title: "Wikilink".into(),

@@ -39,8 +39,10 @@ pub struct WorkerVersionInfo {
 }
 
 /// A job to execute. Core-side identity plus the worker wire payload: the
-/// HTTP transport sends `params` as the job `config` and `approve_plan` as
-/// the plan-review decision (`kind` maps 1:1, e.g. `research_run`).
+/// HTTP transport sends `params` as the job `config`, `approve_plan` as the
+/// plan-review decision, and — for `research_run` jobs — the approved plan
+/// (`plan`, ADR-024): the core's task tree with core task ids, which the
+/// worker executes verbatim instead of re-planning.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JobRequest {
     /// Core-side job id. The worker mints the authoritative wire id; the
@@ -54,6 +56,11 @@ pub struct JobRequest {
     /// job (`PLAN_NOT_APPROVED`) and no DAG runs.
     #[serde(default)]
     pub approve_plan: bool,
+    /// The approved plan payload (ADR-024): sections + tasks with core task
+    /// ids and dependency edges. `None` keeps the worker's legacy
+    /// self-planning path (CLI runs).
+    #[serde(default)]
+    pub plan: Option<Value>,
 }
 
 /// Acknowledgement of `POST /jobs`. `job_id` is the worker's authoritative
@@ -90,6 +97,9 @@ pub trait WorkerTransport {
     fn job_status(&mut self, job_id: &str) -> Result<Value, CoreError>;
     fn cancel_job(&mut self, job_id: &str) -> Result<(), CoreError>;
     fn poll_events(&mut self, job_id: &str, cursor: u64) -> Result<Vec<WorkerEvent>, CoreError>;
+    /// `GET /jobs/{id}/results` (ADR-024): every validated record the job's
+    /// result sink collected, as the raw JSON envelope.
+    fn fetch_job_results(&mut self, job_id: &str) -> Result<Value, CoreError>;
     fn shutdown(&mut self) -> Result<(), CoreError>;
     /// Cheap liveness probe; false means the process crashed and the
     /// supervisor must restart it.
@@ -172,10 +182,13 @@ pub enum SupervisorState {
 /// A tracked job: submitted to a live worker instance.
 #[derive(Debug, Clone, PartialEq)]
 struct ActiveJob {
-    #[allow(dead_code)]
     job_id: String,
     run_id: String,
     task_id: Option<String>,
+    /// Set by `cancel_job`: the job stays pollable until its terminal event
+    /// has been forwarded (audit F5) so the core converges on the worker's
+    /// final state instead of a silent RUNNING forever.
+    cancelling: bool,
 }
 
 /// Supervises one worker process: start, health/version gating, bounded
@@ -355,6 +368,7 @@ impl Supervisor {
                 job_id: ack.job_id.clone(),
                 run_id: request.run_id.clone(),
                 task_id: request.task_id.clone(),
+                cancelling: false,
             },
         );
         Ok(ack)
@@ -372,6 +386,9 @@ impl Supervisor {
     }
 
     /// Cancels a job through the protocol (never by killing the process).
+    /// The job stays tracked so the event pump can still forward the
+    /// terminal `job.cancelled` / `run.cancelled` events (audit F5); it is
+    /// retired once its terminal event has been delivered.
     pub fn cancel_job(&mut self, job_id: &str) -> Result<(), CoreError> {
         self.ensure_started()?;
         let transport = self
@@ -379,13 +396,38 @@ impl Supervisor {
             .as_mut()
             .ok_or_else(|| worker_unavailable("no transport attached", false))?;
         transport.cancel_job(job_id)?;
-        self.active_jobs.remove(job_id);
+        if let Some(job) = self.active_jobs.get_mut(job_id) {
+            job.cancelling = true;
+        }
         Ok(())
     }
 
-    /// Polls new events for a job and forwards them as redacted
-    /// [`ResearchEvent`]s. Duplicate or stale sequences (re-delivered after
-    /// reconnect) are dropped, so events are never forwarded twice.
+    /// Removes a job from the active set after its terminal event has been
+    /// forwarded and its results drained (the pump calls this).
+    pub fn retire_job(&mut self, job_id: &str) {
+        self.active_jobs.remove(job_id);
+    }
+
+    /// The run id a job executes (the pump needs it to resolve the project
+    /// for result ingestion).
+    pub fn run_of_job(&self, job_id: &str) -> Option<String> {
+        self.active_jobs.get(job_id).map(|job| job.run_id.clone())
+    }
+
+    /// Whether a cancel was requested for a still-active job.
+    pub fn is_cancelling(&self, job_id: &str) -> bool {
+        self.active_jobs
+            .get(job_id)
+            .map(|job| job.cancelling)
+            .unwrap_or(false)
+    }
+
+    /// Fetches new events for a job WITHOUT advancing the consumption
+    /// cursor: the pump acknowledges each sequence explicitly through
+    /// [`Supervisor::acknowledge_events`] once the event is persisted
+    /// (persist-before-acknowledge, audit F5). Stale sequences at or below
+    /// the cursor are dropped, so an unacknowledged batch re-delivers from
+    /// the worker while acknowledged ones never forward twice.
     pub fn poll_events(&mut self, job_id: &str) -> Result<Vec<ResearchEvent>, CoreError> {
         self.ensure_started()?;
         let job = self
@@ -408,8 +450,6 @@ impl Supervisor {
             if event.sequence <= last {
                 continue; // duplicate or stale delivery
             }
-            self.event_cursors
-                .insert(job_id.to_string(), event.sequence);
             forwarded.push(ResearchEvent::new(
                 run_id.clone(),
                 task_id.clone(),
@@ -420,6 +460,32 @@ impl Supervisor {
             ));
         }
         Ok(forwarded)
+    }
+
+    /// Acknowledges consumption through `through_sequence` (monotonic): the
+    /// next poll resumes after it. Only the pump calls this, and only after
+    /// the events repository persisted the corresponding event.
+    pub fn acknowledge_events(&mut self, job_id: &str, through_sequence: u64) {
+        let entry = self.event_cursors.entry(job_id.to_string()).or_insert(0);
+        if through_sequence > *entry {
+            *entry = through_sequence;
+        }
+    }
+
+    /// The last acknowledged (persisted) sequence for a job.
+    pub fn acknowledged_cursor(&self, job_id: &str) -> u64 {
+        self.event_cursors.get(job_id).copied().unwrap_or(0)
+    }
+
+    /// Fetches a terminal job's validated result records (ADR-024). The
+    /// envelope shape is the worker contract's; ingestion validates it.
+    pub fn fetch_job_results(&mut self, job_id: &str) -> Result<Value, CoreError> {
+        self.ensure_started()?;
+        let transport = self
+            .transport
+            .as_mut()
+            .ok_or_else(|| worker_unavailable("no transport attached", false))?;
+        transport.fetch_job_results(job_id)
     }
 
     /// Shuts the worker down cleanly. Active jobs are recorded as
@@ -479,7 +545,7 @@ fn parse_semver(text: &str) -> Option<(u64, u64, u64)> {
 
 /// Minimal tracing stand-in: tauri's log plugin is wired in W2-05; until
 /// then failures are only counted in memory by tests via returned errors.
-fn tracing_note(_message: String) {}
+pub(crate) fn tracing_note(_message: String) {}
 
 #[cfg(test)]
 mod tests {
@@ -516,6 +582,7 @@ mod tests {
             kind: "search".into(),
             params: json!({"query": "llm scaling"}),
             approve_plan: false,
+            plan: None,
         }
     }
 
@@ -653,22 +720,34 @@ mod tests {
         assert_eq!(first[0].run_id, "run-1");
         assert!(first[0].timestamp_ms >= clock.now_ms());
 
-        // Second poll re-delivers sequence 2 (reconnect scenario) — it must
-        // be dropped, not forwarded again.
+        // Acknowledgment gates consumption (audit F5): before it, a poll
+        // re-fetches the same batch (the pump persists first); after it, the
+        // re-delivered duplicate (reconnect scenario) is dropped.
+        assert_eq!(supervisor.acknowledged_cursor("job-1"), 0);
+        let replayed = supervisor.poll_events("job-1").unwrap();
+        assert_eq!(replayed.len(), 2, "unacknowledged events re-deliver");
+        supervisor.acknowledge_events("job-1", 2);
         let second = supervisor.poll_events("job-1").unwrap();
         assert!(
             second.is_empty(),
-            "duplicate sequences must not be forwarded"
+            "duplicate sequences must not be forwarded after acknowledgement"
         );
     }
 
     #[test]
-    fn cancel_goes_through_the_protocol() {
+    fn cancel_keeps_the_job_pollable_until_the_pump_retires_it() {
         let (mut supervisor, _clock, _sleeper, handle) = supervisor(FakeWorkerScript::healthy());
         supervisor.submit_job(&job("job-1")).unwrap();
         supervisor.cancel_job("job-1").unwrap();
         assert_eq!(handle.cancelled_jobs(), vec!["job-1".to_string()]);
         assert!(supervisor.interrupted_jobs().is_empty());
+        // Still active (cancelling): the pump keeps polling for the terminal
+        // job.cancelled event instead of dropping the job on the floor.
+        assert!(supervisor.is_cancelling("job-1"));
+        assert_eq!(supervisor.active_job_ids(), vec!["job-1".to_string()]);
+        // The pump retires after the terminal event has been forwarded.
+        supervisor.retire_job("job-1");
+        assert!(supervisor.active_job_ids().is_empty());
         let err = supervisor.poll_events("job-1").unwrap_err();
         assert!(err.developer_detail.contains("not active"));
     }

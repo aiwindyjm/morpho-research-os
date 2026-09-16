@@ -44,6 +44,11 @@ const tasks = {
     retry: "Reintentar",
     confirmContinue: "Confirmar y continuar",
     cancel: "Cancelar",
+    unsupportedTitle: "No disponible en V0.1",
+    unsupportedHint: "Los controles por tarea (pausar/reanudar/reintentar/cancelar) requieren distribución por tarea y llegarán en una versión posterior; por ahora puede detener toda la ejecución con «Cancelar ejecución».",
+  },
+  runStartFailedToast: {
+    title: "No se pudo iniciar la ejecución de investigación",
   },
 };
 

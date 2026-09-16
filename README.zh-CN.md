@@ -14,7 +14,7 @@ Morpho 是一个 Local-first、AI 驱动、兼容 Obsidian 的研究工作台。
 
 ## 当前状态
 
-🚧 早期开发中 — 当前处于 Architecture Phase。正在公开建设协议、架构与治理体系，下一步是仓库基础和 Research Planner。
+🚧 早期开发中 — 工程内测（engineering alpha）。离线 V0.1 研究闭环已端到端打通（计划批准 → 执行 → 知识持久化 → Vault 导出 → 重启读回，由离线真实进程 smoke 验证）；真实 Provider、按任务派发与安装包仍在推进 — 见 CHANGELOG 与 docs/testing/REAL_WORKER_SMOKE.md。
 
 ## 核心能力
 

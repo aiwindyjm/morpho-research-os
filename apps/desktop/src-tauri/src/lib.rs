@@ -11,6 +11,7 @@ pub mod coverage;
 pub mod db;
 pub mod error;
 pub mod ids;
+pub mod ingestion;
 pub mod ipc;
 pub mod orchestrator;
 pub mod projections;
@@ -89,6 +90,9 @@ pub fn run() {
             commands::run_start,
             commands::run_get,
             commands::run_cancel,
+            commands::run_latest_get,
+            commands::plan_latest_view,
+            commands::gap_report_get,
             commands::sources_list,
             commands::knowledge_list,
             commands::claims_list,

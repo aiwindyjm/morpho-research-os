@@ -788,7 +788,7 @@ mod tests {
                 tx,
                 &NewStandaloneTask {
                     id: None,
-                    plan_id: plan_id,
+                    plan_id,
                     section_id: None,
                     title: "again".into(),
                     description: String::new(),

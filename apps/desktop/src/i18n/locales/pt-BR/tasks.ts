@@ -44,6 +44,11 @@ const tasks = {
     retry: "Tentar novamente",
     confirmContinue: "Confirmar e continuar",
     cancel: "Cancelar",
+    unsupportedTitle: "Indisponível na V0.1",
+    unsupportedHint: "Controles por tarefa (pausar/retomar/tentar novamente/cancelar) exigem despacho por tarefa e chegam em uma versão futura; por enquanto é possível parar toda a execução com «Cancelar execução».",
+  },
+  runStartFailedToast: {
+    title: "Não foi possível iniciar a execução da pesquisa",
   },
 };
 

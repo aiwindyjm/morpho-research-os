@@ -61,7 +61,15 @@ class SourceContentResolver:
 
         # Draft content path: the search result carries the content (mock
         # provider or snippet). Real fetch adapters are post-freeze work.
-        content = str(source.metadata.get("content") or "") or source.snippet
+        # The provenance marker is explicit (audit F3): "full-text" for
+        # provider-delivered content, "snippet" when only the search summary
+        # is available, "unavailable" when neither — a snippet is never
+        # presented as the source's full text.
+        content = str(source.metadata.get("content") or "")
+        locator_base = "full-text"
+        if not content:
+            content = source.snippet
+            locator_base = "snippet" if content else "unavailable"
         fetched_at = self._clock.now_utc().isoformat() if self._clock else ""
         resolved = SourceContent(
             source_id=source.source_id,
@@ -69,6 +77,7 @@ class SourceContentResolver:
             content=content,
             fingerprint=content_fingerprint(content),
             fetched_at=fetched_at,
+            locator_base=locator_base,
         )
         if self._cache is not None:
             self._cache.put(NAMESPACE_SOURCE_CONTENT, key, resolved.model_dump(mode="json"))

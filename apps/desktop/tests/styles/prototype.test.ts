@@ -10,6 +10,11 @@ import { describe, expect, it } from "vitest";
  * via `color-mix(in srgb, <token> N%, transparent)`, so both skins get
  * identical effect geometry. The pins assert the color-mix form plus the
  * tuned percentage.
+ *
+ * Lives under `tests/` (not `src/`) on purpose: the architecture check
+ * scans `apps/desktop/src` for frontend filesystem access, and this test
+ * legitimately reads CSS fixtures through node:fs — production frontend
+ * code must never do that.
  */
 
 // Vitest runs per package, so paths resolve against the package root (the

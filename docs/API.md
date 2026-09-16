@@ -22,10 +22,11 @@ Startup prints one line to stdout — `morpho-worker listening on http://HOST:PO
 |---|---|
 | `GET /health` | `{schema_version, status, worker_version, protocol_version}`. |
 | `GET /version` | Compatibility handshake: `{schema_version, worker_version, protocol_version, accepted_protocol_versions}` (**draft**: the protocol version is the string `"1"`, not the frozen `"1.0"` minor form). |
-| `POST /jobs` | Strict request envelope `{schema_version: "1", kind, config, approve_plan}`; unknown fields are rejected. Only `kind: "research_run"` exists; the request fails with `PLAN_NOT_APPROVED` unless `approve_plan` is `true` (no DAG is ever built before plan approval). The worker — not the Rust core — mints the `job_id` (**draft** divergence from `worker-job-request.v1.json`, which has a core-minted durable id and `idempotency_key`). |
+| `POST /jobs` | Strict request envelope `{schema_version: "1", kind, config, approve_plan, plan?}`; unknown fields are rejected. Only `kind: "research_run"` exists; the request fails with `PLAN_NOT_APPROVED` unless `approve_plan` is `true` (no DAG is ever built before plan approval). The worker — not the Rust core — mints the `job_id` (**draft** divergence from `worker-job-request.v1.json`, which has a core-minted durable id and `idempotency_key`). The optional `plan` member (ADR-024, **draft** extension) carries the core-approved task tree — `{plan_id, project_id, sections: [{section_id, title, dimension, tasks: [{task_id, title, description, runtime_type, params, depends_on}]}]}` — and when present the worker executes exactly that DAG with the given task ids verbatim (no re-planning, no worker-side approval); its runtime types are `search` / `source_evaluation` / `normalization` / `validate` / `writer`. |
 | `GET /jobs/{job_id}` | Job envelope with the mapped status (`PENDING`/`PLANNING`/`RUNNING`/`VALIDATING`/`NEEDS_REVIEW`/`PAUSED`/`COMPLETED`/`FAILED`/`CANCELLED`) plus task counts (**draft** status vocabulary). |
 | `POST /jobs/{job_id}/cancel` | Cooperative cancel through the DAG runner; idempotent — cancelling a terminal job returns the terminal state (**draft**: the frozen cancel contract specifies an error envelope there). |
 | `GET /jobs/{job_id}/events` | SSE stream of the job's events; see below. |
+| `GET /jobs/{job_id}/results` | Every validated record the job's result sink collected (**draft**, ADR-024): `{schema_version: "1", job_id, records: [{kind, record}]}` with `kind` ∈ `source`/`source-content`/`extraction`/`node`/`relation`/`claim`/`evidence`/`dropped`/`validation-report`/`note`/`incremental-report`. Records are the worker's validated pydantic models — normalized domain records, never raw provider output. The Rust core drains this once per terminal job, re-validates each record against typed serde structs (unknown fields rejected), and writes the traceability chain (`source → source-content → node → relation → claim → evidence + claim_evidence`) transactionally into SQLite. |
 
 A `POST /compatibility` probe (requested vs. worker protocol version) also exists on the transport (**draft**, test-facing).
 
@@ -66,7 +67,7 @@ The worker's legacy draft event types canonicalize onto the closed `event.v1` vo
 
 The Rust core (`src/worker/http.rs`, hand-rolled HTTP/1.1 over `TcpStream`, loopback only) mirrors this wire format: bearer-token framing, content-length/chunked/connection-close response bodies, and SSE decoding in which canonical field names are preferred and legacy spellings (`type`/`event_type`/`kind`, `sequence`/`seq`) are tolerated, with the SSE `id:` line as the sequence fallback and the `event:` line as the type fallback. Canonical envelope fields (`event_id`, `run_id`, `project_id`, `occurred_at`, `task_id`) are folded into the persisted payload. Non-2xx bodies map onto `CoreError`: the frozen error-envelope codes map 1:1 keeping the worker's `retryable` flag; every unknown code — including the draft transport codes above — becomes a generic non-retryable `WORKER_NOT_AVAILABLE` that preserves the worker's developer detail and correlation id. A body that is not a parseable envelope is itself a protocol failure.
 
-`src/worker/process.rs` launches `python -m morpho_worker.serve` with exactly the three environment variables above, drains the child's stderr into the app log, waits for loopback readiness, and kills the child on shutdown or drop. The supervisor restarts a dead worker with bounded backoff and reports `WORKER_NOT_AVAILABLE` after exhaustion. The event pump (`src/state.rs`) persists every forwarded event through the events repository (monotonic per-run sequence) and re-emits it to all windows as `morpho://events` — payloads already redacted. Secrets remain in the OS keychain.
+`src/worker/process.rs` launches `python -m morpho_worker.serve` with exactly the three environment variables above (provider routing arrives through the child's inherited environment per `serve.py::build_worker_config` — an unconfigured environment stays offline; a configured provider failure surfaces structurally and never falls back to a mock), drains the child's stderr into the app log, waits for loopback readiness, and kills the child on shutdown or drop. The supervisor restarts a dead worker with bounded backoff and reports `WORKER_NOT_AVAILABLE` after exhaustion. The event pump (`src/state.rs`) fetches events WITHOUT advancing the consumption cursor, persists each one through the events repository (monotonic per-run sequence), and only then acknowledges the cursor through that sequence (ADR-024: persist-before-acknowledge — a transient database failure replays from the worker instead of skipping events, and unpersisted events are never emitted to windows as `morpho://events`). Cancelling a job keeps it pollable until its terminal event has been persisted; at that point the pump drains `GET /jobs/{id}/results` once, ingests the validated domain records, and retires the job. Secrets remain in the OS keychain.
 
 ## Providers
 
@@ -89,18 +90,18 @@ Status legend: **wired** — real Tauri invoke works today; **deferred** — not
 | `project.get` | `project_get` | wired |
 | `config.get` | `research_config_get` | wired |
 | `config.update` | `research_config_put` (appends a new config generation) | wired |
-| `plan.get` | `plan_list` (latest plan entry; sections served from the transport's plan-view cache) | wired |
-| `plan.approve` | `plan_approve`, then `plan_list` re-read | wired |
-| `run.start` | `run_start` (sends `approve_plan: true` + real config snapshot via `research_config_get`) + `plan_list` | wired |
-| `run.get` | `run_get` (transport-level session job registry maps project → worker job) | wired |
-| `run.cancel` | `run_cancel` | wired |
+| `plan.get` | `plan_list` + `plan_latest_view` (persisted sectioned projection) | wired |
+| `plan.approve` | `plan_approve`, then `plan_latest_view` re-read | wired |
+| `run.start` | `plan_list` + `run_start` (sends `approve_plan: true` and the approved plan payload, ADR-024) + `run_latest_get` | wired |
+| `run.get` | `run_latest_get` (persisted run + rollup + frozen config snapshot) | wired |
+| `run.cancel` | `run_latest_get` (resolves the persisted `worker_job_id`) + `run_cancel` | wired |
 | `task.list` | `plan_list` (tasks embedded in plan records; latest generation only) | wired |
 | `source.list` | `sources_list` | wired |
 | `knowledge.list` | `knowledge_list` | wired |
 | `claim.list` | `claims_list` | wired |
 | `relation.list` | `relations_list` | wired |
 | `coverage.get` | `coverage_get` | wired |
-| `gap.list` | `coverage_get` (gap list embedded in the coverage report; approve/dismiss decisions merged transport-side) | wired |
+| `gap.list` | `gap_report_get` (decision-merged report, persisted decisions included) | wired |
 | `timeline.get` | `events_list` | wired |
 | `secrets.setProviderKey` | `secrets_set_provider_key` | wired |
 | `secrets.listProviders` | `secrets_list_providers` | wired |
@@ -126,4 +127,4 @@ Status legend: **wired** — real Tauri invoke works today; **deferred** — not
 
 Note on `config.*`: the Rust `config_get`/`config_put` commands transport the **application** config (providers/worker/secrets) and are intentionally NOT mapped to the frontend's `config.get`/`config.update`, which carry the project-scoped **research** config — that role belongs to `research_config_get`/`research_config_put` (ADR-020). The `research_config_get` response always returns `time_range` as an object `{from, to}` (nullable members), unlike the worker-wire form which emits bare `null` when unbounded.
 
-Every response crosses the `{schema_version, request_id, data, error}` envelope and the Zod response-schema registry in `commands.ts` before reaching components. Two transport-level bridges cover read-side gaps pending future core read commands (candidates recorded in ADR-020): gap approve/dismiss decisions are merged into the coverage-bridged gap list in the transport, and plan sections are served from a per-session plan-view cache refreshed by regenerate/update/reject. The earlier `config_snapshot` placeholder on `run.start` is gone — the real config snapshot is read via `research_config_get`.
+Every response crosses the `{schema_version, request_id, data, error}` envelope and the Zod response-schema registry in `commands.ts` before reaching components. The former transport-level bridges are gone (ADR-024): run/plan/gap reads now come from persisted core reads (`run_latest_get` with the frozen config snapshot and the `worker_job_id` binding from migration 004, `plan_latest_view`, `gap_report_get`), so a reload or restart reads the same facts with no session state.

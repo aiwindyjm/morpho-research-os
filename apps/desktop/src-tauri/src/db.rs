@@ -11,7 +11,7 @@ use rusqlite::{Connection, Transaction};
 use std::path::Path;
 
 /// Highest schema version shipped in `migrations/`.
-pub const LATEST_SCHEMA_VERSION: i64 = 3;
+pub const LATEST_SCHEMA_VERSION: i64 = 4;
 
 /// A numbered SQL migration. `sql` may contain multiple statements.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +39,11 @@ pub fn embedded_migrations() -> Vec<Migration> {
             version: 3,
             name: "plan_metadata_and_gap_decisions",
             sql: include_str!("../migrations/003_plan_metadata_and_gap_decisions.sql"),
+        },
+        Migration {
+            version: 4,
+            name: "run_worker_job_id",
+            sql: include_str!("../migrations/004_run_worker_job_id.sql"),
         },
     ]
 }
@@ -200,7 +205,7 @@ mod tests {
         let versions: Vec<i64> = migrations.iter().map(|m| m.version).collect();
         assert_eq!(
             versions,
-            vec![1, 2, 3],
+            vec![1, 2, 3, 4],
             "migrations must be gapless and ordered"
         );
         assert_eq!(LATEST_SCHEMA_VERSION, migrations.last().unwrap().version);
@@ -215,7 +220,8 @@ mod tests {
             vec![
                 (1, "initial"),
                 (2, "task_skip_and_orchestrator"),
-                (3, "plan_metadata_and_gap_decisions")
+                (3, "plan_metadata_and_gap_decisions"),
+                (4, "run_worker_job_id")
             ]
         );
         assert_eq!(outcome.current, LATEST_SCHEMA_VERSION);
@@ -254,7 +260,7 @@ mod tests {
         };
         let mut conn = open_in_memory().unwrap();
 
-        let outcome = migrate(&mut conn, &[first.clone()]).unwrap();
+        let outcome = migrate(&mut conn, std::slice::from_ref(&first)).unwrap();
         assert_eq!(outcome.current, 1);
 
         let outcome = migrate(&mut conn, &[first, second]).unwrap();
@@ -280,7 +286,7 @@ mod tests {
             sql: "CREATE TABLE doomed (id TEXT PRIMARY KEY);\nTHIS IS NOT SQL;",
         };
         let mut conn = open_in_memory().unwrap();
-        migrate(&mut conn, &[good.clone()]).unwrap();
+        migrate(&mut conn, std::slice::from_ref(&good)).unwrap();
 
         let err = migrate(&mut conn, &[good, bad]).unwrap_err();
         assert_eq!(err.code, ErrorCode::DatabaseError);
@@ -441,16 +447,17 @@ mod tests {
             .is_err();
         assert!(skipped_rejected, "v1 CHECK must not know SKIPPED");
 
-        // Upgrade applies exactly migrations 2 and 3.
+        // Upgrade applies exactly migrations 2, 3, and 4.
         let outcome = migrate(&mut conn, &embedded_migrations()).unwrap();
         assert_eq!(
             outcome.applied,
             vec![
                 (2, "task_skip_and_orchestrator"),
-                (3, "plan_metadata_and_gap_decisions")
+                (3, "plan_metadata_and_gap_decisions"),
+                (4, "run_worker_job_id")
             ]
         );
-        assert_eq!(current_schema_version(&conn).unwrap(), 3);
+        assert_eq!(current_schema_version(&conn).unwrap(), 4);
 
         // Every rebuild table kept its rows and values.
         let (tasks, deps, events, usage): (i64, i64, i64, i64) = conn

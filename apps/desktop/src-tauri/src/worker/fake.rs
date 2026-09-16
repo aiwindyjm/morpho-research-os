@@ -29,6 +29,9 @@ pub struct FakeWorkerScript {
     pub redeliver_last_event: bool,
     /// Events returned by `poll_events`, in order.
     pub events: Vec<WorkerEvent>,
+    /// Envelope returned by `fetch_job_results` (ADR-024); `None` serves an
+    /// empty records list.
+    pub job_results: Option<Value>,
 }
 
 impl Default for FakeWorkerScript {
@@ -41,6 +44,7 @@ impl Default for FakeWorkerScript {
             crash_after_job_submit: false,
             redeliver_last_event: false,
             events: Vec::new(),
+            job_results: None,
         }
     }
 }
@@ -93,6 +97,7 @@ struct FakeInner {
     alive_instance: Option<u64>,
     received_tokens: Vec<String>,
     submitted_jobs: Vec<String>,
+    submitted_requests: Vec<JobRequest>,
     cancelled_jobs: Vec<String>,
     shut_down: bool,
 }
@@ -133,6 +138,16 @@ impl FakeHandle {
             .lock()
             .expect("fake worker state poisoned")
             .submitted_jobs
+            .clone()
+    }
+
+    /// Full submitted job requests, in submission order (assert on wire
+    /// payloads such as the ADR-024 approved plan member).
+    pub fn submitted_requests(&self) -> Vec<JobRequest> {
+        self.state
+            .lock()
+            .expect("fake worker state poisoned")
+            .submitted_requests
             .clone()
     }
 
@@ -221,6 +236,7 @@ impl WorkerTransport for FakeWorker {
         self.ensure_alive()?;
         let mut state = self.state.lock().expect("fake worker state poisoned");
         state.submitted_jobs.push(request.job_id.clone());
+        state.submitted_requests.push(request.clone());
         if self.script.crash_after_job_submit {
             self.kill_self(&mut state);
         }
@@ -287,6 +303,27 @@ impl WorkerTransport for FakeWorker {
             }
         }
         Ok(events)
+    }
+
+    fn fetch_job_results(&mut self, job_id: &str) -> Result<Value, CoreError> {
+        self.ensure_alive()?;
+        let state = self.state.lock().expect("fake worker state poisoned");
+        if state.submitted_jobs.iter().any(|id| id == job_id) {
+            Ok(self.script.job_results.clone().unwrap_or_else(|| {
+                serde_json::json!({
+                    "schema_version": "1",
+                    "job_id": job_id,
+                    "records": [],
+                })
+            }))
+        } else {
+            Err(CoreError::new(
+                ErrorCode::WorkerNotAvailable,
+                "The research worker reported an error.",
+                format!("fake worker has no job '{job_id}'"),
+                false,
+            ))
+        }
     }
 
     fn shutdown(&mut self) -> Result<(), CoreError> {

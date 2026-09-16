@@ -65,7 +65,15 @@ class PlanStatus(str, Enum):
 
 
 class RuntimeTaskType(str, Enum):
-    """Task types the orchestrator's DAG executes."""
+    """Task types the orchestrator's DAG executes.
+
+    ``SOURCE_EVALUATION`` and ``NORMALIZATION`` are the provided-plan
+    runtimes (ADR-024): a caller-approved plan splits the section pipeline
+    into search (sources only), source evaluation (content + quality + LLM
+    extraction for the section's sources, inline — no dynamic fan-out), and
+    normalization (entity + relation normalization plus claim/evidence
+    building in one task).
+    """
 
     SEARCH = "search"
     EXTRACT = "extract"
@@ -75,18 +83,29 @@ class RuntimeTaskType(str, Enum):
     #: Vault-ready note projections from the run's knowledge nodes
     #: (deterministic composition; no LLM call required).
     WRITER = "writer"
+    SOURCE_EVALUATION = "source_evaluation"
+    NORMALIZATION = "normalization"
 
 
 class PlannerTaskDraft(BaseModel):
-    """One planned unit of work inside a section (plan-level, no runtime
-    identity yet; the DAG materializes runtime tasks from these)."""
+    """One planned unit of work inside a section.
+
+    Worker-planned drafts carry no runtime identity (the DAG materializes
+    runtime tasks from them); drafts that arrive inside a core-approved plan
+    (ADR-024) carry the core's ``task_id`` verbatim plus ``depends_on``
+    edges referencing sibling task ids, and the DAG uses them unchanged."""
 
     model_config = ConfigDict(extra="forbid")
 
     title: str
     objective: str = ""
+    description: str = ""
     runtime_type: RuntimeTaskType = RuntimeTaskType.SEARCH
     params: dict = Field(default_factory=dict)
+    #: Core task id (provided plans only); ``None`` for worker-planned tasks.
+    task_id: str | None = None
+    #: Dependency edges as TASK IDS (provided plans only).
+    depends_on: list[str] = Field(default_factory=list)
 
 
 class ResearchSection(BaseModel):

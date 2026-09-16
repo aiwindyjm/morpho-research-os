@@ -612,3 +612,190 @@ def test_job_without_plan_approval_never_creates_a_job():
         assert status == 400
         assert payload["error"]["code"] == "PLAN_NOT_APPROVED"
         assert payload["error"]["retryable"] is False
+
+
+# Provided-plan execution (ADR-024) ------------------------------------------
+
+
+def provided_plan() -> dict:
+    """The exact plan member shape the Rust core builds: sections with the
+    core's task ids, titles, and dependency edges (task-id references)."""
+
+    def task(task_id: str, runtime: str, title: str, depends: list[str]) -> dict:
+        return {
+            "task_id": task_id,
+            "title": title,
+            "description": "",
+            "runtime_type": runtime,
+            # The core always carries the search query for search tasks
+            # (approved_plan_wire builds it from topic + dimension).
+            "params": {"query": f"quantum entanglement {title.split()[-1]}"}
+            if runtime == "search"
+            else {},
+            "depends_on": depends,
+        }
+
+    return {
+        "plan_id": "plan-core-1",
+        "project_id": "proj-core-1",
+        "sections": [
+            {
+                "section_id": "sec-concepts",
+                "title": "concepts",
+                "dimension": "concepts",
+                "tasks": [
+                    task("core-search-1", "search", "search concepts", []),
+                    task(
+                        "core-eval-1",
+                        "source_evaluation",
+                        "evaluate concepts",
+                        ["core-search-1"],
+                    ),
+                    task(
+                        "core-norm-1",
+                        "normalization",
+                        "normalize concepts",
+                        ["core-eval-1"],
+                    ),
+                ],
+            },
+            {
+                "section_id": "sec-history",
+                "title": "history",
+                "dimension": "history",
+                "tasks": [
+                    task("core-search-2", "search", "search history", []),
+                    task(
+                        "core-eval-2",
+                        "source_evaluation",
+                        "evaluate history",
+                        ["core-search-2"],
+                    ),
+                    task(
+                        "core-norm-2",
+                        "normalization",
+                        "normalize history",
+                        ["core-eval-2"],
+                    ),
+                ],
+            },
+            {
+                "section_id": "sec-synthesis",
+                "title": "synthesis",
+                "dimension": "concepts",
+                "tasks": [
+                    task(
+                        "core-validate",
+                        "validate",
+                        "validate claims",
+                        ["core-norm-1", "core-norm-2"],
+                    ),
+                    task("core-synthesis", "writer", "write notes", ["core-validate"]),
+                ],
+            },
+        ],
+    }
+
+
+def test_provided_plan_executes_the_approved_task_tree_verbatim():
+    with running_worker() as (client, _jobs):
+        status, payload = client.post("/jobs", job_request(plan=provided_plan()))
+        assert status == 201
+        job_id = payload["job"]["job_id"]
+
+        finished = wait_for_terminal(client, job_id)
+        assert finished["status"] == "COMPLETED", finished
+        assert finished["plan_id"] == "plan-core-1"
+        counts = finished["counts"]
+        assert counts["tasks_total"] == 8, "exactly the 8 approved tasks ran"
+        assert counts["tasks_completed"] == 8
+
+        # The event stream references the CORE task ids verbatim and carries
+        # no worker re-planning (no plan.drafted/plan.approved lies).
+        events = parse_stream(stream_text(client, f"/jobs/{job_id}/events"))
+        types = [event.type for event in events]
+        assert "plan.drafted" not in types
+        assert "plan.approved" not in types
+        started_ids = {
+            event.task_id for event in events if event.type == "task.started"
+        }
+        assert started_ids == {
+            "core-search-1",
+            "core-search-2",
+            "core-eval-1",
+            "core-eval-2",
+            "core-norm-1",
+            "core-norm-2",
+            "core-validate",
+            "core-synthesis",
+        }
+        completed_ids = {
+            event.task_id for event in events if event.type == "task.completed"
+        }
+        assert completed_ids == started_ids
+
+
+def test_provided_plan_results_endpoint_returns_domain_records():
+    with running_worker() as (client, _jobs):
+        status, payload = client.post("/jobs", job_request(plan=provided_plan()))
+        job_id = payload["job"]["job_id"]
+        wait_for_terminal(client, job_id)
+
+        status, results = client.get(f"/jobs/{job_id}/results")
+        assert status == 200
+        assert results["schema_version"] == "1"
+        kinds = {record["kind"] for record in results["records"]}
+        # The full traceability chain reached the sink.
+        assert {
+            "source",
+            "source-content",
+            "node",
+            "relation",
+            "claim",
+            "evidence",
+        } <= kinds
+        sources = [r["record"] for r in results["records"] if r["kind"] == "source"]
+        assert sources, "the split pipeline persisted the discovered sources"
+        # No dynamic extract tasks materialized: every task id in the event
+        # stream belongs to the approved tree (asserted above), and sources
+        # were evaluated inside the source_evaluation task.
+        evaluated = [s for s in sources if s.get("quality") is not None]
+        assert evaluated, "source evaluation scored the section's sources"
+
+        # Unknown jobs 404 through the structured envelope.
+        status, payload = client.get("/jobs/nope/results")
+        assert status == 404
+        assert payload["error"]["code"] == "NOT_FOUND"
+
+
+def test_provided_plan_member_is_validated_strictly():
+    with running_worker() as (client, _jobs):
+        cases = [
+            job_request(plan={"plan_id": "p", "unknown": 1}),
+            job_request(plan="not-an-object"),
+            job_request(plan=None),
+            job_request(
+                plan={
+                    "plan_id": "p",
+                    "sections": [
+                        {
+                            "section_id": "s",
+                            "title": "t",
+                            "dimension": "d",
+                            "tasks": [
+                                {
+                                    "task_id": "t1",
+                                    "title": "T",
+                                    "runtime_type": "time-travel",
+                                    "depends_on": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+        ]
+        for request in cases:
+            status, payload = client.post("/jobs", request)
+            assert status == 400, request
+            assert payload["error"]["code"] == "BAD_REQUEST"

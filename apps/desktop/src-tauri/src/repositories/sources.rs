@@ -99,6 +99,34 @@ impl Sources {
         Ok((record, true))
     }
 
+    /// Persists a source-quality evaluation (RES-04): the overall score plus
+    /// the explainable quality report as JSON notes, and the evaluated
+    /// status. Unknown source ids are a structured error.
+    pub fn apply_evaluation(
+        tx: &Transaction<'_>,
+        id: &str,
+        score: f64,
+        notes: &str,
+    ) -> Result<(), CoreError> {
+        if !(0.0..=1.0).contains(&score) {
+            return Err(CoreError::database(format!(
+                "quality score {score} outside 0.0..=1.0"
+            )));
+        }
+        let changed = tx
+            .execute(
+                "UPDATE sources SET quality_score = ?2, quality_notes = ?3,
+                                    status = 'evaluated', updated_at = ?4
+                 WHERE id = ?1",
+                params![id, score, notes, now_unix_ms()],
+            )
+            .map_err(CoreError::from)?;
+        if changed == 0 {
+            return Err(CoreError::database(format!("source '{id}' not found")));
+        }
+        Ok(())
+    }
+
     pub fn get_by_canonical_url(
         conn: &Connection,
         project_id: &str,
@@ -140,6 +168,37 @@ impl Sources {
             .collect::<Result<Vec<_>, _>>()
             .map_err(CoreError::from)?;
         Ok(rows)
+    }
+}
+
+/// Cached source-content rows (`source_contents`): one fetchable payload per
+/// source, idempotent by primary key so re-ingesting a run's results never
+/// duplicates content.
+pub struct SourceContents;
+
+impl SourceContents {
+    pub fn upsert(
+        tx: &Transaction<'_>,
+        id: &str,
+        source_id: &str,
+        content_hash: &str,
+        format: &str,
+        byte_size: i64,
+        extracted_at: i64,
+    ) -> Result<(), CoreError> {
+        tx.execute(
+            "INSERT INTO source_contents (id, source_id, content_hash, format, cache_path,
+                                           byte_size, extracted_at, created_at)
+             VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?6)
+             ON CONFLICT (id) DO UPDATE SET
+                 content_hash = excluded.content_hash,
+                 format = excluded.format,
+                 byte_size = excluded.byte_size,
+                 extracted_at = excluded.extracted_at",
+            params![id, source_id, content_hash, format, byte_size, extracted_at],
+        )
+        .map_err(CoreError::from)?;
+        Ok(())
     }
 }
 

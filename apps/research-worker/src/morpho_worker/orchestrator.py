@@ -38,6 +38,7 @@ from morpho_worker.dag.runner import DagRunner, TaskOutcome
 from morpho_worker.dag.states import RunStatus, TaskStatus
 from morpho_worker.dag.store import InMemoryStateStore, RunRecord, StateStore, TaskRecord
 from morpho_worker.domain.research import (
+    PlanStatus,
     ResearchConfig,
     ResearchPlan,
     RuntimeTaskType,
@@ -184,6 +185,50 @@ class ResearchOrchestrator:
         """
 
         plan = self._plan_store.require_approved(plan_id)
+        return self._drive_plan(plan, on_run_created=on_run_created)
+
+    def start_provided_plan(
+        self, plan: ResearchPlan, *, on_run_created: Callable[[str], None] | None = None
+    ) -> str:
+        """Execute a plan the CALLER already approved (ADR-024).
+
+        The plan arrives from the core inside the job envelope: its section
+        tasks carry the core's task ids and dependency edges verbatim, and
+        this worker neither re-plans nor re-approves anything. Every draft
+        task must carry an explicit ``task_id`` — the executed DAG is the
+        approved DAG, exactly.
+        """
+
+        if plan.status is not PlanStatus.APPROVED:
+            raise MorphoError(
+                ErrorCode.PLAN_NOT_APPROVED,
+                "The provided research plan is not approved.",
+                developer_detail=f"plan_id={plan.plan_id} status={plan.status.value}",
+                retryable=False,
+            )
+        for section in plan.sections:
+            for draft in section.tasks:
+                if not draft.task_id:
+                    raise MorphoError(
+                        ErrorCode.PLAN_NOT_APPROVED,
+                        "Every task of a provided plan must carry the core task id.",
+                        developer_detail=(
+                            f"plan_id={plan.plan_id} section={section.section_id} "
+                            f"task title={draft.title!r} has no task_id"
+                        ),
+                        retryable=False,
+                    )
+        return self._drive_plan(plan, on_run_created=on_run_created)
+
+    def _drive_plan(
+        self,
+        plan: ResearchPlan,
+        *,
+        on_run_created: Callable[[str], None] | None,
+    ) -> str:
+        """Shared run lifecycle: baseline capture, run record, DAG build,
+        drive, incremental report."""
+
         with self._incremental_lock:
             prior_baseline = self._baselines.get(plan.project_id)
         run_id = new_id()
@@ -199,7 +244,14 @@ class ResearchOrchestrator:
         )
         if on_run_created is not None:
             on_run_created(run_id)
-        for task in self._static_tasks(run_id, plan):
+        provided = any(
+            draft.task_id for section in plan.sections for draft in section.tasks
+        )
+        for task in (
+            self._provided_tasks(run_id, plan)
+            if provided
+            else self._static_tasks(run_id, plan)
+        ):
             self._store.add_task(task)
         # No "run.created" here: the canonical event.v1 vocabulary starts a
         # run with "run.started", which the DAG runner emits once the run
@@ -279,6 +331,12 @@ class ResearchOrchestrator:
 
     def task_status(self, run_id: str):
         return self._store.list_tasks(run_id)
+
+    @property
+    def sink(self):
+        """The injected result sink (the job results endpoint, ADR-024,
+        reads the validated records from here)."""
+        return self._sink
 
     def shutdown(self) -> None:
         self._runner.shutdown()
@@ -424,6 +482,33 @@ class ResearchOrchestrator:
         validate_dag(tasks)  # reject bad plans up front
         return tasks
 
+    def _provided_tasks(self, run_id: str, plan: ResearchPlan) -> list[TaskRecord]:
+        """DAG for a caller-provided plan (ADR-024): one runtime task per
+        approved draft, keeping the core's task ids and dependency edges
+        verbatim — the executed DAG is exactly the approved DAG."""
+
+        tasks: list[TaskRecord] = []
+        for section in plan.sections:
+            for draft in section.tasks:
+                params = {
+                    **draft.params,
+                    "section_id": section.section_id,
+                    "dimension": section.dimension,
+                }
+                tasks.append(
+                    TaskRecord(
+                        task_id=draft.task_id or "",
+                        run_id=run_id,
+                        task_type=draft.runtime_type,
+                        title=draft.title,
+                        params=params,
+                        depends_on=list(draft.depends_on),
+                        idempotency_key=f"{run_id}:{draft.task_id}",
+                    )
+                )
+        validate_dag(tasks)
+        return tasks
+
     @staticmethod
     def _task_id(run_id: str, kind: str, scope: str) -> str:
         return stable_id("task", f"{run_id}:{kind}:{scope}")
@@ -463,19 +548,41 @@ class ResearchOrchestrator:
             return self._run_normalize(task, context, ctx)
         if task.task_type is RuntimeTaskType.CLAIMS:
             return self._run_claims(task, context, ctx)
+        if task.task_type is RuntimeTaskType.SOURCE_EVALUATION:
+            return self._run_source_evaluation(task, context, ctx)
+        if task.task_type is RuntimeTaskType.NORMALIZATION:
+            return self._run_normalization(task, context, ctx)
         if task.task_type is RuntimeTaskType.VALIDATE:
             return self._run_validate(task, context)
         if task.task_type is RuntimeTaskType.WRITER:
             return self._run_writer(task, context)
         raise dependency_error(f"unknown task type {task.task_type}")  # pragma: no cover
 
+    def _uses_split_pipeline(self, run_id: str) -> bool:
+        """True when the run contains a SOURCE_EVALUATION task (an
+        ADR-024 provided plan): the section pipeline splits search (sources
+        only) from evaluation (content + quality + extraction)."""
+
+        return any(
+            task.task_type is RuntimeTaskType.SOURCE_EVALUATION
+            for task in self._store.list_tasks(run_id)
+        )
+
     def _run_search(self, task: TaskRecord, context: StageContext, ctx) -> TaskOutcome:
         sources = self._search_stage.search(str(task.params["query"]), context)
         created = 0
+        split = self._uses_split_pipeline(task.run_id)
+        source_ids: list[str] = []
         for source in sources:
             if ctx.should_cancel():
                 return TaskOutcome(status=TaskStatus.COMPLETED)
             self._sink.persist("source", source)
+            source_ids.append(source.source_id)
+            if split:
+                # Provided-plan split (ADR-024): content, quality, and the
+                # extraction fan-out belong to the section's
+                # source_evaluation task, not to search.
+                continue
             content = self._extraction_stage.content_for(source)
             self._sink.persist("source-content", content)
             quality = self._extraction_stage.evaluate(source, content, context)
@@ -504,7 +611,112 @@ class ResearchOrchestrator:
                 created += 1
         return TaskOutcome(
             status=TaskStatus.COMPLETED,
-            result={"source_count": len(sources), "extract_tasks_created": created},
+            result={
+                "source_ids": source_ids,
+                "source_count": len(sources),
+                "extract_tasks_created": created,
+            },
+        )
+
+    def _section_source_ids(self, task: TaskRecord) -> list[str]:
+        """Source ids discovered by THIS section's search tasks."""
+
+        section_id = task.params.get("section_id")
+        ids: list[str] = []
+        for other in self._store.list_tasks(task.run_id):
+            if (
+                other.task_type is RuntimeTaskType.SEARCH
+                and other.params.get("section_id") == section_id
+                and other.status is TaskStatus.COMPLETED
+                and other.result
+            ):
+                ids.extend(other.result.get("source_ids", []))
+        return sorted(set(ids))
+
+    def _section_extractions_from_evaluations(self, task: TaskRecord) -> list:
+        """Extraction records produced by THIS section's source-evaluation
+        tasks (split pipeline)."""
+
+        section_id = task.params.get("section_id")
+        ids: list[str] = []
+        for other in self._store.list_tasks(task.run_id):
+            if (
+                other.task_type is RuntimeTaskType.SOURCE_EVALUATION
+                and other.params.get("section_id") == section_id
+                and other.status is TaskStatus.COMPLETED
+                and other.result
+            ):
+                ids.extend(other.result.get("extraction_ids", []))
+        extractions = []
+        for extraction_id in sorted(set(ids)):
+            found = self._sink.get("extraction", extraction_id)
+            if found is not None:
+                extractions.append(found)
+        return extractions
+
+    def _run_source_evaluation(self, task: TaskRecord, context: StageContext, ctx) -> TaskOutcome:
+        """Content + quality + LLM extraction for the section's sources,
+        inline (ADR-024 split pipeline; no dynamic fan-out tasks)."""
+
+        extraction_ids: list[str] = []
+        for source_id in self._section_source_ids(task):
+            if ctx.should_cancel():
+                return TaskOutcome(status=TaskStatus.COMPLETED)
+            source = self._sink.get("source", source_id)
+            if source is None:  # pragma: no cover - search persisted it
+                continue
+            content = self._extraction_stage.content_for(source)
+            self._sink.persist("source-content", content)
+            quality = self._extraction_stage.evaluate(source, content, context)
+            self._sink.persist("source", source.model_copy(update={"quality": quality}))
+            extraction = self._extraction_stage.extract(source, content, context)
+            self._sink.persist("extraction", extraction)
+            extraction_ids.append(extraction.extraction_id)
+        return TaskOutcome(
+            status=TaskStatus.COMPLETED,
+            result={"extraction_ids": extraction_ids},
+        )
+
+    def _run_normalization(self, task: TaskRecord, context: StageContext, ctx) -> TaskOutcome:
+        """Entity + relation normalization plus claim/evidence building for
+        the section (ADR-024 provided-plan pipeline)."""
+
+        extractions = self._section_extractions_from_evaluations(task)
+        nodes = self._entities.normalize_entities(extractions, context, clock=self._clock)
+        relations = self._relations.normalize_relations(
+            extractions, nodes, context, clock=self._clock
+        )
+        node_ids = []
+        for node in nodes:
+            self._sink.persist("node", node)
+            node_ids.append(node.node_id)
+        relation_ids = []
+        for relation in relations:
+            self._sink.persist("relation", relation)
+            relation_ids.append(relation.relation_id)
+        bundle = self._claims.build_claims(extractions, nodes, context, clock=self._clock)
+        claim_ids = []
+        evidence_ids = []
+        for claim in bundle.claims:
+            self._sink.persist("claim", claim)
+            claim_ids.append(claim.claim_id)
+        for evidence in bundle.evidence:
+            self._sink.persist("evidence", evidence)
+            evidence_ids.append(evidence.evidence_id)
+        for dropped in bundle.dropped:
+            self._sink.persist("dropped", dropped)
+        _ = ctx  # checkpointing is per-node in the legacy path; the split
+        # pipeline processes whole sections and stays resumable at the task
+        # boundary (the core's checkpoint projection, ADR-019).
+        return TaskOutcome(
+            status=TaskStatus.COMPLETED,
+            result={
+                "node_ids": node_ids,
+                "relation_ids": relation_ids,
+                "claim_ids": claim_ids,
+                "evidence_ids": evidence_ids,
+                "dropped_count": len(bundle.dropped),
+            },
         )
 
     def _run_extract(self, task: TaskRecord, context: StageContext, ctx) -> TaskOutcome:
@@ -560,7 +772,12 @@ class ResearchOrchestrator:
     def _run_validate(self, task: TaskRecord, context: StageContext) -> TaskOutcome:
         # Orchestration-only transition into the documented validating state.
         self._store.transition(task.task_id, TaskStatus.VALIDATING)
-        claims = self._run_records(task.run_id, RuntimeTaskType.CLAIMS, "claim_ids", "claim")
+        claims = self._run_records_of_types(
+            task.run_id,
+            [RuntimeTaskType.CLAIMS, RuntimeTaskType.NORMALIZATION],
+            "claim_ids",
+            "claim",
+        )
         nodes = self._run_nodes(task.run_id)
         dropped = self._all_records(task.run_id, "dropped")
         report = self._validation.validate(
@@ -585,7 +802,12 @@ class ResearchOrchestrator:
         # Deterministic composition of the run's validated material; the
         # notes are projections handed to the sink, never written to disk.
         nodes = self._run_nodes(task.run_id)
-        claims = self._run_records(task.run_id, RuntimeTaskType.CLAIMS, "claim_ids", "claim")
+        claims = self._run_records_of_types(
+            task.run_id,
+            [RuntimeTaskType.CLAIMS, RuntimeTaskType.NORMALIZATION],
+            "claim_ids",
+            "claim",
+        )
         relations = self._all_records(task.run_id, "relation")
         evidence = self._all_records(task.run_id, "evidence")
         notes = self._writer.build_notes(
@@ -624,15 +846,28 @@ class ResearchOrchestrator:
 
     def _run_nodes(self, run_id: str):
         nodes = []
-        for node_id in self._collect_ids(run_id, RuntimeTaskType.NORMALIZE, "node_ids"):
+        for node_id in self._collect_ids_of_types(
+            run_id, [RuntimeTaskType.NORMALIZE, RuntimeTaskType.NORMALIZATION], "node_ids"
+        ):
             found = self._sink.get("node", node_id)
             if found is not None:
                 nodes.append(found)
         return nodes
 
-    def _run_records(self, run_id: str, task_type: RuntimeTaskType, result_key: str, sink_kind: str):
+    def _run_records(
+        self, run_id: str, task_type: RuntimeTaskType, result_key: str, sink_kind: str
+    ):
+        return self._run_records_of_types(run_id, [task_type], result_key, sink_kind)
+
+    def _run_records_of_types(
+        self,
+        run_id: str,
+        task_types: list[RuntimeTaskType],
+        result_key: str,
+        sink_kind: str,
+    ):
         records = []
-        for record_id in self._collect_ids(run_id, task_type, result_key):
+        for record_id in self._collect_ids_of_types(run_id, task_types, result_key):
             found = self._sink.get(sink_kind, record_id)
             if found is not None:
                 records.append(found)
@@ -644,9 +879,18 @@ class ResearchOrchestrator:
     def _collect_ids(
         self, run_id: str, task_type: RuntimeTaskType, result_key: str
     ) -> list[str]:
+        return self._collect_ids_of_types(run_id, [task_type], result_key)
+
+    def _collect_ids_of_types(
+        self, run_id: str, task_types: list[RuntimeTaskType], result_key: str
+    ) -> list[str]:
         ids: list[str] = []
         for task in self._store.list_tasks(run_id):
-            if task.task_type is task_type and task.status is TaskStatus.COMPLETED and task.result:
+            if (
+                task.task_type in task_types
+                and task.status is TaskStatus.COMPLETED
+                and task.result
+            ):
                 ids.extend(task.result.get(result_key, []))
         return sorted(set(ids))
 

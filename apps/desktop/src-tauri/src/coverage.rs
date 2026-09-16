@@ -467,6 +467,7 @@ mod tests {
             KnowledgeNodes::upsert_by_slug(
                 tx,
                 &NewKnowledgeNode {
+                    id: None,
                     project_id: project_id.to_string(),
                     node_type: node_type.to_string(),
                     title: format!("{node_type}-1"),

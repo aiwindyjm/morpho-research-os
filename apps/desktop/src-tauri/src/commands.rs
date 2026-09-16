@@ -8,7 +8,7 @@
 //! in-memory database and the fake worker transport (no Tauri app needed).
 
 use crate::coverage::CoverageReport;
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorCode as CoreErrorCode};
 use crate::ipc::{IpcRequest, IpcResponse};
 use crate::repositories::claims::ClaimRecord;
 use crate::repositories::configs::{NewResearchConfig, ResearchConfigRecord, ResearchConfigs};
@@ -709,8 +709,10 @@ fn plan_reject_impl(
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunStartRequest {
     pub plan_id: String,
-    /// The caller's plan-review decision carried into the job envelope;
-    /// without it the worker rejects the job (PLAN_NOT_APPROVED).
+    /// The caller's plan-review decision carried into the job envelope.
+    /// The core independently refuses to run plans whose persisted status is
+    /// not `approved` (ADR-024), so this flag is defense in depth — the
+    /// worker rejects the job without it (PLAN_NOT_APPROVED).
     #[serde(default)]
     pub approve_plan: bool,
 }
@@ -742,12 +744,48 @@ pub fn run_start(
     wrapped(&request.request_id, run_start_impl(&state, request.data))
 }
 
-fn run_start_impl(state: &AppState, request: RunStartRequest) -> Result<RunStarted, CoreError> {
-    // Phase 1 (database): resolve the plan's config and create the run.
-    let (run, config_value) = {
+/// Public for the real-process smoke test (`tests/real_worker_smoke.rs`),
+/// which drives the genuine command path against a real worker process.
+pub fn run_start_impl(state: &AppState, request: RunStartRequest) -> Result<RunStarted, CoreError> {
+    // Phase 1 (database): gate on the plan's persisted status, resolve its
+    // config, build the approved task-tree payload, and create the run.
+    let (run, config_value, plan_value) = {
         let mut conn = state.conn.lock().expect("database mutex poisoned");
         let plan = crate::repositories::plans::Plans::get(&conn, &request.plan_id)?
             .ok_or_else(|| CoreError::database(format!("plan '{}' not found", request.plan_id)))?;
+        if plan.status != "approved" {
+            return Err(CoreError::new(
+                CoreErrorCode::DatabaseError,
+                "只有已批准的研究计划可以启动运行。",
+                format!(
+                    "plan '{}' is '{}' — only approved plans can run (approve the plan first)",
+                    plan.id, plan.status
+                ),
+                false,
+            ));
+        }
+        // Idempotency rule (ADR-024): one non-terminal run per plan. A
+        // completed/failed/cancelled run may be followed by a fresh run;
+        // while a run is in flight, starting again is a structured error.
+        for existing in crate::repositories::runs::Runs::list_for_project(&conn, &plan.project_id)?
+        {
+            if existing.plan_id == plan.id
+                && matches!(
+                    existing.status.as_str(),
+                    "running" | "paused" | "needs_review"
+                )
+            {
+                return Err(CoreError::new(
+                    CoreErrorCode::DatabaseError,
+                    "该计划已有进行中的运行，请先等待完成或取消后再启动。",
+                    format!(
+                        "plan '{}' already has an active run '{}' (status '{}')",
+                        plan.id, existing.id, existing.status
+                    ),
+                    false,
+                ));
+            }
+        }
         let config =
             crate::repositories::configs::ResearchConfigs::get(&conn, &plan.research_config_id)?
                 .ok_or_else(|| {
@@ -756,6 +794,7 @@ fn run_start_impl(state: &AppState, request: RunStartRequest) -> Result<RunStart
                         plan.research_config_id
                     ))
                 })?;
+        let plan_value = approved_plan_wire(&conn, &plan, &config)?;
         let run = crate::repositories::with_write_tx(&mut conn, |tx| {
             crate::repositories::runs::Runs::insert(
                 tx,
@@ -767,25 +806,196 @@ fn run_start_impl(state: &AppState, request: RunStartRequest) -> Result<RunStart
                 },
             )
         })?;
-        (run, research_config_wire(&config))
+        (run, research_config_wire(&config), plan_value)
     };
 
-    // Phase 2 (worker): submit the research_run job with the approval
-    // decision. Locks are taken sequentially, never nested.
+    // Phase 2 (worker): submit the research_run job carrying the APPROVED
+    // task tree (core task ids travel verbatim; the worker neither re-plans
+    // nor re-approves). Locks are taken sequentially, never nested.
     let mut supervisor = state.supervisor.lock().expect("supervisor mutex poisoned");
-    let ack = supervisor.submit_job(&crate::worker::JobRequest {
-        job_id: crate::ids::new_id(),
-        run_id: run.id.clone(),
-        task_id: None,
-        kind: "research_run".into(),
-        params: config_value,
-        approve_plan: request.approve_plan,
-    })?;
+    let ack = {
+        let ack = supervisor.submit_job(&crate::worker::JobRequest {
+            job_id: crate::ids::new_id(),
+            run_id: run.id.clone(),
+            task_id: None,
+            kind: "research_run".into(),
+            params: config_value,
+            approve_plan: request.approve_plan,
+            plan: Some(plan_value),
+        });
+        match ack {
+            Ok(ack) => ack,
+            // A failed submission must not leave a converged-looking RUNNING run
+            // behind (audit F1): the run has no events, tasks, or job binding
+            // yet, so removing it restores the pre-start state. If even that
+            // fails, the run is closed as failed so the state stays honest.
+            Err(err) => {
+                let mut conn = state.conn.lock().expect("database mutex poisoned");
+                let cleanup = crate::repositories::with_write_tx(&mut conn, |tx| {
+                    tx.execute("DELETE FROM runs WHERE id = ?1", rusqlite::params![run.id])
+                        .map(|_| ())
+                        .map_err(CoreError::from)
+                });
+                if cleanup.is_err() {
+                    let _ = crate::repositories::with_write_tx(&mut conn, |tx| {
+                        crate::repositories::runs::Runs::update_status(tx, &run.id, "failed")
+                            .map(|_| ())
+                    });
+                }
+                return Err(err);
+            }
+        }
+    };
+    // Persist the job binding (migration 004) so run.get / run.cancel
+    // survive a restart. A failure here must not strand an executing job
+    // with no bound run: the run row is removed and the job cancelled.
+    {
+        let mut conn = state.conn.lock().expect("database mutex poisoned");
+        let bound = crate::repositories::with_write_tx(&mut conn, |tx| {
+            crate::repositories::runs::Runs::set_worker_job(tx, &run.id, &ack.job_id)
+        });
+        if let Err(err) = bound {
+            let _ = supervisor.cancel_job(&ack.job_id);
+            let _ = crate::repositories::with_write_tx(&mut conn, |tx| {
+                tx.execute("DELETE FROM runs WHERE id = ?1", rusqlite::params![run.id])
+                    .map(|_| ())
+                    .map_err(CoreError::from)
+            });
+            return Err(err);
+        }
+    }
     Ok(RunStarted {
         project_id: run.project_id,
         run_id: run.id,
         job_id: ack.job_id,
     })
+}
+
+/// Maps a core plan task type onto the worker's runtime task type
+/// vocabulary (ADR-024). Unknown types are rejected before submission.
+fn worker_runtime_type(task_type: &str) -> Result<&'static str, CoreError> {
+    Ok(match task_type {
+        "search" => "search",
+        "source_evaluation" => "source_evaluation",
+        "normalization" => "normalization",
+        "validation" => "validate",
+        "synthesis" => "writer",
+        other => {
+            return Err(CoreError::database(format!(
+                "task type '{other}' has no worker runtime mapping"
+            )))
+        }
+    })
+}
+
+/// Builds the `plan` member of the research_run job envelope (ADR-024): the
+/// approved task tree with the core's task ids, titles, edited descriptions,
+/// and dependency edges (core task ids), plus the per-dimension query
+/// parameters the worker stages need.
+fn approved_plan_wire(
+    conn: &rusqlite::Connection,
+    plan: &crate::repositories::plans::PlanRecord,
+    config: &ResearchConfigRecord,
+) -> Result<Value, CoreError> {
+    use crate::repositories::plans::Plans;
+
+    let sections = Plans::sections_for_plan(conn, &plan.id)?;
+    let tasks = Plans::tasks_for_plan(conn, &plan.id)?;
+
+    let mut section_payloads = Vec::with_capacity(sections.len() + 1);
+    let mut emitted: usize = 0;
+    for section in &sections {
+        let mut task_payloads = Vec::new();
+        for task in tasks
+            .iter()
+            .filter(|t| t.section_id == Some(section.id.clone()))
+        {
+            task_payloads.push(approved_task_wire(conn, task, section, config)?);
+            emitted += 1;
+        }
+        section_payloads.push(json!({
+            "section_id": section.id,
+            "title": section.title,
+            "dimension": section.dimension,
+            "tasks": task_payloads,
+        }));
+    }
+    // Sectionless tasks (gap follow-ups attach to sections, but the schema
+    // allows None) still execute: they travel in a synthetic plan-level
+    // section so every approved task is in the wire DAG.
+    let sectionless: Vec<&TaskRecord> = tasks.iter().filter(|t| t.section_id.is_none()).collect();
+    if !sectionless.is_empty() {
+        let mut task_payloads = Vec::new();
+        let synthetic = crate::repositories::plans::SectionRecord {
+            id: plan.id.clone(),
+            plan_id: plan.id.clone(),
+            title: plan.title.clone(),
+            order_index: i64::MAX,
+            summary: String::new(),
+            dimension: config
+                .dimensions
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "general".into()),
+            objectives: Vec::new(),
+            created_at: 0,
+        };
+        for task in &sectionless {
+            task_payloads.push(approved_task_wire(conn, task, &synthetic, config)?);
+            emitted += 1;
+        }
+        section_payloads.push(json!({
+            "section_id": synthetic.id,
+            "title": synthetic.title,
+            "dimension": synthetic.dimension,
+            "tasks": task_payloads,
+        }));
+    }
+    debug_assert_eq!(
+        emitted,
+        tasks.len(),
+        "every approved task must travel in the wire plan"
+    );
+    Ok(json!({
+        "plan_id": plan.id,
+        "project_id": plan.project_id,
+        "sections": section_payloads,
+    }))
+}
+
+/// One approved task as the wire shape the worker's strict pydantic models
+/// accept: the core's task id verbatim, the user-edited title/description,
+/// the runtime type mapping, dependency edges as task ids, and the stage
+/// parameters (search query included).
+fn approved_task_wire(
+    conn: &rusqlite::Connection,
+    task: &TaskRecord,
+    section: &crate::repositories::plans::SectionRecord,
+    config: &ResearchConfigRecord,
+) -> Result<Value, CoreError> {
+    use crate::repositories::tasks::Tasks;
+    let deps = Tasks::dependencies_of(conn, &task.id)?
+        .into_iter()
+        .map(|dep| Value::String(dep.depends_on_task_id))
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "task_id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "runtime_type": worker_runtime_type(&task.task_type)?,
+        "params": {
+            "section_id": section.id,
+            "dimension": section.dimension,
+            "query": format!("{} {}", config.topic, section.dimension)
+                .trim()
+                .to_string(),
+            "topic": config.topic,
+            "languages": config.languages,
+            "source_types": config.source_types,
+            "source_domains": config.source_domains,
+        },
+        "depends_on": deps,
+    }))
 }
 
 /// Builds the exact `ResearchConfig` payload the worker's strict pydantic
@@ -887,7 +1097,191 @@ pub fn run_cancel(
 
 fn run_cancel_impl(state: &AppState, job_id: &str) -> Result<bool, CoreError> {
     let mut supervisor = state.supervisor.lock().expect("supervisor mutex poisoned");
-    supervisor.cancel_job(job_id).map(|_| true)
+    match supervisor.cancel_job(job_id) {
+        // The worker no longer knows the job (restart): converge locally by
+        // applying the same cancellation projection the worker's
+        // run.cancelled event would drive (ADR-019 state machine; audit F5),
+        // so the persisted run cannot dangle at running forever.
+        Err(err)
+            if err.developer_detail.contains("has no job")
+                || err.developer_detail.contains("NOT_FOUND") =>
+        {
+            drop(supervisor);
+            let run_id = {
+                let conn = state.conn.lock().expect("database mutex poisoned");
+                find_run_by_worker_job(&conn, job_id)
+            };
+            if let Some(run_id) = run_id {
+                let mut conn = state.conn.lock().expect("database mutex poisoned");
+                let event = crate::ipc::ResearchEvent::new(
+                    run_id.clone(),
+                    None,
+                    0,
+                    crate::ids::now_unix_ms() as u64,
+                    "run.cancelled",
+                    json!({"reason": "worker job no longer exists"}),
+                );
+                if persist_local_event(&mut conn, &event).is_ok() {
+                    let _ = crate::orchestrator::OrchestratorService::apply_event(
+                        &mut conn,
+                        &crate::orchestrator::CanonicalEvent::from(&event),
+                    );
+                }
+            }
+            Ok(true)
+        }
+        result => result.map(|_| true),
+    }
+}
+
+/// Persists a core-originated event (no worker involved): sequence
+/// allocation stays per-run and atomic.
+fn persist_local_event(
+    conn: &mut rusqlite::Connection,
+    event: &crate::ipc::ResearchEvent,
+) -> Result<(), CoreError> {
+    crate::repositories::services::EventService::append_event(
+        conn,
+        crate::repositories::events::NewEvent {
+            run_id: event.run_id.clone(),
+            task_id: event.task_id.clone(),
+            event_type: event.event_type.clone(),
+            payload: serde_json::to_string(&event.payload).map_err(|err| {
+                CoreError::database(format!("serialize event payload failed: {err}"))
+            })?,
+        },
+    )
+    .map(|_| ())
+}
+
+fn find_run_by_worker_job(conn: &rusqlite::Connection, job_id: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT id FROM runs WHERE worker_job_id = ?1 ORDER BY created_at DESC LIMIT 1",
+        rusqlite::params![job_id],
+        |row| row.get(0),
+    )
+    .ok()
+}
+
+// ---------------------------------------------------------------------------
+// Restart-safe reads (ADR-020 batch 3, ADR-024)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct RunLatestGetRequest {
+    pub project_id: String,
+}
+
+#[tauri::command]
+pub fn run_latest_get(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<RunLatestGetRequest>,
+) -> IpcResponse<Value> {
+    wrapped(
+        &request.request_id,
+        run_latest_get_impl(&state, &request.data.project_id),
+    )
+}
+
+/// The project's latest run read from SQLite (never session state): the
+/// persisted task rollup, the plan title, and the FROZEN config snapshot —
+/// the config generation the executed plan was generated from, immune to
+/// later config edits (audit F4). The live worker envelope is optional
+/// enrichment: when the worker no longer knows the job (restart), the
+/// persisted rollup stands alone.
+/// Public for the real-process smoke test's restart-readback phase.
+pub fn run_latest_get_impl(state: &AppState, project_id: &str) -> Result<Value, CoreError> {
+    let conn = state.conn.lock().expect("database mutex poisoned");
+    let Some(run) = crate::repositories::runs::Runs::latest_for_project(&conn, project_id)? else {
+        return Ok(Value::Null);
+    };
+    let plan = crate::repositories::plans::Plans::get(&conn, &run.plan_id)?;
+    let config = plan
+        .as_ref()
+        .and_then(|plan| {
+            crate::repositories::configs::ResearchConfigs::get(&conn, &plan.research_config_id)
+                .ok()
+                .flatten()
+        })
+        .map(|record| {
+            serde_json::to_value(crate::projections::research_config_view(&record))
+                .unwrap_or(Value::Null)
+        })
+        .unwrap_or(Value::Null);
+
+    // Persisted rollup (same shape as run_get's task_rollup).
+    let tasks = crate::repositories::tasks::Tasks::list_for_run(&conn, &run.id)?;
+    let mut counts: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    for task in &tasks {
+        *counts.entry(task.status.clone()).or_insert(0) += 1;
+    }
+    Ok(json!({
+        "run": {
+            "id": run.id,
+            "project_id": run.project_id,
+            "plan_id": run.plan_id,
+            "status": run.status,
+            "worker_job_id": run.worker_job_id,
+            "started_at": run.started_at,
+            "finished_at": run.finished_at,
+            "created_at": run.created_at,
+            "updated_at": run.updated_at,
+        },
+        "task_rollup": {
+            "run_id": run.id,
+            "run_status": run.status,
+            "task_counts": counts,
+            "tasks": tasks
+                .iter()
+                .map(|task| json!({"task_id": task.id, "status": task.status}))
+                .collect::<Vec<_>>(),
+        },
+        "plan_title": plan.as_ref().map(|p| p.title.clone()).unwrap_or_default(),
+        "config_snapshot": config,
+    }))
+}
+
+#[tauri::command]
+pub fn plan_latest_view(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<ProjectScopedRequest>,
+) -> IpcResponse<Value> {
+    wrapped(
+        &request.request_id,
+        plan_latest_view_impl(&state, &request.data.project_id),
+    )
+}
+
+/// The full sectioned `PlanView` of the latest plan generation, read from
+/// SQLite — the persisted sections replace the frontend's session cache
+/// (audit F4).
+fn plan_latest_view_impl(state: &AppState, project_id: &str) -> Result<Value, CoreError> {
+    let conn = state.conn.lock().expect("database mutex poisoned");
+    let plan = crate::repositories::plans::Plans::latest_for_project(&conn, project_id)?
+        .ok_or_else(|| CoreError::database(format!("project '{project_id}' has no plan")))?;
+    let view = crate::projections::plan_view(&conn, &plan)?;
+    serde_json::to_value(view)
+        .map_err(|err| CoreError::database(format!("serializing plan view failed: {err}")))
+}
+
+#[tauri::command]
+pub fn gap_report_get(
+    state: tauri::State<'_, AppState>,
+    request: IpcRequest<ProjectScopedRequest>,
+) -> IpcResponse<Value> {
+    wrapped(
+        &request.request_id,
+        gap_report_get_impl(&state, &request.data.project_id),
+    )
+}
+
+/// The decision-merged gap report: persisted `gap_decisions` included, so
+/// the frontend no longer bridges them through a session map (audit F4).
+fn gap_report_get_impl(state: &AppState, project_id: &str) -> Result<Value, CoreError> {
+    let conn = state.conn.lock().expect("database mutex poisoned");
+    let view = crate::projections::gap_report(&conn, project_id)?;
+    serde_json::to_value(view)
+        .map_err(|err| CoreError::database(format!("serializing gap report failed: {err}")))
 }
 
 // ---------------------------------------------------------------------------
@@ -1332,6 +1726,85 @@ mod tests {
         }
     }
 
+    /// Test state plus the fake worker's observable handle.
+    fn test_state_with_handle() -> (AppState, crate::worker::fake::FakeHandle) {
+        let conn = migrated_memory_db().unwrap();
+        let (factory, handle) = FakeWorkerScript::healthy().factory();
+        let supervisor = Supervisor::new(
+            factory,
+            RestartPolicy::default(),
+            Box::new(FakeClock::default()),
+            Box::new(FakeSleeper::default()),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.keep();
+        (
+            AppState::new(
+                conn,
+                supervisor,
+                Arc::new(FakeKeychain::new()),
+                root.join("config").join("app.json"),
+                root.join("vault"),
+            ),
+            handle,
+        )
+    }
+
+    /// Test state whose worker can never be started (every spawn fails), for
+    /// submit-failure convergence paths.
+    fn test_state_with_dead_worker() -> AppState {
+        let conn = migrated_memory_db().unwrap();
+        let mut script = FakeWorkerScript::healthy();
+        script.spawn_failures_before_success = u32::MAX;
+        let (factory, _handle) = script.factory();
+        let supervisor = Supervisor::new(
+            factory,
+            RestartPolicy {
+                max_restarts: 1,
+                base_delay_ms: 1,
+                max_delay_ms: 1,
+            },
+            Box::new(FakeClock::default()),
+            Box::new(FakeSleeper::default()),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.keep();
+        AppState::new(
+            conn,
+            supervisor,
+            Arc::new(FakeKeychain::new()),
+            root.join("config").join("app.json"),
+            root.join("vault"),
+        )
+    }
+
+    /// Creates a project and regenerates the full scripted plan draft (two
+    /// dimensions kept small: theory + experiments), returning
+    /// `(project_id, plan_id)`.
+    fn seeded_scripted_plan(state: &AppState) -> (String, String) {
+        let project_id = project_create_impl(
+            state,
+            ProjectCreateRequest {
+                name: "Scripted".into(),
+                description: String::new(),
+                config: ConfigInput {
+                    domain: "AI".into(),
+                    topic: "LLM scaling".into(),
+                    dimensions: vec!["theory".into(), "experiments".into()],
+                    ..default_config_input()
+                },
+            },
+        )
+        .unwrap()
+        .project
+        .id;
+        let plan = {
+            let mut conn = state.conn.lock().expect("database mutex poisoned");
+            PlanService::regenerate_plan(&mut conn, &project_id).unwrap()
+        };
+        (project_id, plan.id)
+    }
+
     /// Creates a project and returns its id.
     fn seeded_project(state: &AppState) -> String {
         project_create_impl(state, create_request())
@@ -1514,6 +1987,215 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.developer_detail.contains("not found"));
+    }
+
+    #[test]
+    fn run_start_rejects_unapproved_rejected_and_superseded_plans() {
+        let state = test_state();
+        let (_project_id, plan_id) = seeded_plan(&state);
+
+        // Draft: refused before any run or job exists.
+        let err = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id: plan_id.clone(),
+                approve_plan: true,
+            },
+        )
+        .unwrap_err();
+        assert!(!err.retryable);
+        assert!(err.developer_detail.contains("draft"));
+        assert!(err.user_message.contains("批准"));
+
+        // Rejected: refused as well.
+        let _ = plan_reject_impl(&state, &_project_id).unwrap();
+        let err = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id: plan_id.clone(),
+                approve_plan: true,
+            },
+        )
+        .unwrap_err();
+        assert!(err.developer_detail.contains("rejected"));
+
+        // The approve_plan flag must not bypass the persisted gate.
+        let err = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id: plan_id.clone(),
+                approve_plan: true,
+            },
+        )
+        .unwrap_err();
+        assert!(err.developer_detail.contains("rejected"));
+        let conn = state.conn.lock().expect("database mutex poisoned");
+        assert!(
+            Runs::list_for_project(&conn, &_project_id)
+                .unwrap()
+                .is_empty(),
+            "no run row may appear for a refused start"
+        );
+    }
+
+    #[test]
+    fn run_start_refuses_a_second_active_run_but_allows_after_terminal() {
+        let state = test_state();
+        let (_project_id, plan_id) = seeded_plan(&state);
+        plan_approve_impl(&state, &plan_id).unwrap();
+
+        let first = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id: plan_id.clone(),
+                approve_plan: true,
+            },
+        )
+        .unwrap();
+
+        // While the first run is in flight, starting again is refused.
+        let err = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id: plan_id.clone(),
+                approve_plan: true,
+            },
+        )
+        .unwrap_err();
+        assert!(err.developer_detail.contains("active run"));
+
+        // A terminal run (here: cancelled) re-opens the plan for a new run.
+        {
+            let mut conn = state.conn.lock().expect("database mutex poisoned");
+            with_write_tx(&mut conn, |tx| {
+                Runs::update_status(tx, &first.run_id, "cancelled").map(|_| ())
+            })
+            .unwrap();
+        }
+        let second = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id,
+                approve_plan: true,
+            },
+        )
+        .unwrap();
+        assert_ne!(second.run_id, first.run_id);
+    }
+
+    #[test]
+    fn run_start_carries_the_approved_task_tree_with_core_ids() {
+        let (state, handle) = test_state_with_handle();
+        let (project_id, plan_id) = seeded_scripted_plan(&state);
+        plan_approve_impl(&state, &plan_id).unwrap();
+
+        let started = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id: plan_id.clone(),
+                approve_plan: true,
+            },
+        )
+        .unwrap();
+
+        let requests = handle.submitted_requests();
+        assert_eq!(requests.len(), 1);
+        let request = &requests[0];
+        assert_eq!(request.run_id, started.run_id);
+        let plan = request.plan.as_ref().expect("the approved plan travels");
+        assert_eq!(plan["plan_id"], json!(plan_id));
+        assert_eq!(plan["project_id"], json!(project_id));
+
+        // Sections carry the core's section ids and the tasks the core's
+        // task ids verbatim, with dependency edges as task ids and the
+        // search query derived from topic + dimension.
+        let sections = plan["sections"].as_array().unwrap();
+        assert_eq!(
+            sections.len(),
+            3,
+            "two dimension sections plus the synthesis section"
+        );
+        let tasks: Vec<&serde_json::Value> = sections
+            .iter()
+            .flat_map(|section| section["tasks"].as_array().unwrap())
+            .collect();
+        let types: Vec<&str> = tasks
+            .iter()
+            .map(|task| task["runtime_type"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            types,
+            vec![
+                "search",
+                "source_evaluation",
+                "normalization", //
+                "search",
+                "source_evaluation",
+                "normalization", //
+                "validate",
+                "writer",
+            ],
+            "runtime mapping in execution order"
+        );
+        let validation = tasks[6];
+        let normalize_ids: Vec<String> = [2_usize, 5]
+            .iter()
+            .map(|i| tasks[*i]["task_id"].as_str().unwrap().to_string())
+            .collect();
+        let deps: Vec<String> = validation["depends_on"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            deps, normalize_ids,
+            "validation waits for both normalizations"
+        );
+        let search = tasks[0];
+        assert!(
+            search["params"]["query"]
+                .as_str()
+                .unwrap()
+                .contains("LLM scaling"),
+            "the query derives from the config topic"
+        );
+        // Real core task ids: every task_id resolves to a tasks row.
+        let conn = state.conn.lock().expect("database mutex poisoned");
+        for task in &tasks {
+            let id = task["task_id"].as_str().unwrap();
+            assert!(
+                crate::repositories::tasks::Tasks::get(&conn, id)
+                    .unwrap()
+                    .is_some(),
+                "wire task id '{id}' must be a core task id"
+            );
+        }
+    }
+
+    #[test]
+    fn run_start_without_a_worker_converges_instead_of_a_fake_running_run() {
+        // The worker never becomes available: the run row must not linger.
+        let state = test_state_with_dead_worker();
+        let (_project_id, plan_id) = seeded_plan(&state);
+        plan_approve_impl(&state, &plan_id).unwrap();
+
+        let err = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id,
+                approve_plan: true,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err.code, CoreErrorCode::WorkerNotAvailable);
+        let conn = state.conn.lock().expect("database mutex poisoned");
+        assert!(
+            Runs::list_for_project(&conn, &_project_id)
+                .unwrap()
+                .is_empty(),
+            "a failed submission must not leave a converged-looking run"
+        );
     }
 
     #[test]
@@ -1766,6 +2448,7 @@ mod tests {
                 KnowledgeNodes::upsert_by_slug(
                     tx,
                     &NewKnowledgeNode {
+                        id: None,
                         project_id: project_id.clone(),
                         node_type: "Concept".into(),
                         title: "Transformer".into(),

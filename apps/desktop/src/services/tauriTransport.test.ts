@@ -204,6 +204,29 @@ const planView = {
   updated_at: "2024-01-02T03:04:06.000Z",
 };
 
+/** `run_latest_get` payload (ADR-024): persisted run + rollup + frozen config. */
+const runLatestView = {
+  run: {
+    id: RUN_ID,
+    project_id: PROJECT_ID,
+    plan_id: PLAN_ID,
+    status: "needs_review",
+    worker_job_id: JOB_ID,
+    started_at: 1700000000000,
+    finished_at: null,
+    created_at: 1700000000000,
+    updated_at: 1700000000500,
+  },
+  task_rollup: {
+    run_id: RUN_ID,
+    run_status: "needs_review",
+    task_counts: { RUNNING: 1 },
+    tasks: [{ task_id: TASK_ID, status: "RUNNING" }],
+  },
+  plan_title: "T",
+  config_snapshot: researchConfigView,
+};
+
 const evidenceViews = [
   {
     id: "7f000000-0000-7000-8000-00000000000a",
@@ -320,11 +343,11 @@ describe("tauri transport command mapping", () => {
     ]);
   });
 
-  it("maps run.start onto plan_list + run_start with plan_id/approve_plan", async () => {
+  it("maps run.start onto plan_list + run_start and serves the persisted view", async () => {
     const invoke = vi.fn(async (command: string): Promise<unknown> => {
       if (command === "plan_list") return okEnvelope([planWithTasks]);
       if (command === "run_start") return okEnvelope(runStarted);
-      if (command === "research_config_get") return okEnvelope(researchConfigView);
+      if (command === "run_latest_get") return okEnvelope(runLatestView);
       throw new Error(`unexpected rust command '${command}'`);
     });
     const run = await createTauriTransport({ invoke }).invoke("run.start", {
@@ -345,70 +368,52 @@ describe("tauri transport command mapping", () => {
         data: { plan_id: PLAN_ID, approve_plan: true },
       },
     });
+    // The response is the persisted read, not an optimistic snapshot.
+    expect(invoke).toHaveBeenNthCalledWith(3, "run_latest_get", {
+      request: {
+        schema_version: "1.0",
+        request_id: expect.any(String),
+        data: { project_id: PROJECT_ID },
+      },
+    });
     expect(run).toMatchObject({
       id: RUN_ID,
       project_id: PROJECT_ID,
       plan_id: PLAN_ID,
-      state: "RUNNING",
+      state: "NEEDS_REVIEW",
       plan_snapshot_title: "T",
-      // The run carries the project's real research config (batch 2), not a
-      // placeholder.
+      // The frozen config snapshot (the generation the plan was built from).
       config_snapshot: { topic: "LLM interpretability", depth: 4 },
     });
   });
 
-  it("run.get reads null before any session run and bridges onto run_get after run.start", async () => {
+  it("run.get reads null without a run and serves the persisted view after run.start", async () => {
     const invoke = vi.fn(async (command: string): Promise<unknown> => {
-      if (command === "run_get") {
-        return okEnvelope({
-          schema_version: "1",
-          job: {
-            job_id: JOB_ID,
-            run_id: RUN_ID,
-            status: "RUNNING",
-            created_at: "2023-11-14T22:13:20.000Z",
-            updated_at: "2023-11-14T22:13:25.000Z",
-          },
-          task_rollup: {
-            run_id: RUN_ID,
-            run_status: "needs_review",
-            task_counts: { RUNNING: 1 },
-            tasks: [{ task_id: TASK_ID, status: "RUNNING" }],
-          },
-        });
-      }
+      if (command === "run_latest_get") return okEnvelope(runLatestView);
       if (command === "plan_list") return okEnvelope([planWithTasks]);
       if (command === "run_start") return okEnvelope(runStarted);
-      if (command === "research_config_get") return okEnvelope(researchConfigView);
       throw new Error(`unexpected rust command '${command}'`);
     });
     const transport = createTauriTransport({ invoke });
 
-    // No run started from this window → null, and no Rust round-trip.
-    expect(await transport.invoke("run.get", { project_id: PROJECT_ID })).toBeNull();
-    expect(invoke).not.toHaveBeenCalled();
+    // No persisted run → null (the read itself is persisted-state driven).
+    const noRunInvoke = vi.fn(async (): Promise<unknown> => okEnvelope(null));
+    await expect(
+      createTauriTransport({ invoke: noRunInvoke }).invoke("run.get", {
+        project_id: PROJECT_ID,
+      }),
+    ).resolves.toBeNull();
 
     await transport.invoke("run.start", { project_id: PROJECT_ID });
     const run = await transport.invoke("run.get", { project_id: PROJECT_ID });
 
-    // run_get (job-keyed) plus the batch-2 config snapshot read.
-    expect(invoke.mock.calls).toContainEqual([
-      "run_get",
-      {
-        request: {
-          schema_version: "1.0",
-          request_id: expect.any(String),
-          data: { job_id: JOB_ID },
-        },
-      },
-    ]);
     expect(invoke).toHaveBeenLastCalledWith(
-      "research_config_get",
+      "run_latest_get",
       expect.objectContaining({
         request: expect.objectContaining({ data: { project_id: PROJECT_ID } }),
       }),
     );
-    // The orchestrator rollup (needs_review) wins over the worker status.
+    // The persisted rollup (needs_review) is the authority.
     expect(run).toMatchObject({
       id: RUN_ID,
       project_id: PROJECT_ID,
@@ -416,25 +421,29 @@ describe("tauri transport command mapping", () => {
       state: "NEEDS_REVIEW",
       plan_snapshot_title: "T",
       started_at: "2023-11-14T22:13:20.000Z",
+      config_snapshot: { topic: "LLM interpretability", depth: 4 },
     });
   });
 
-  it("run.cancel fails typed without a session job and maps onto run_cancel after run.start", async () => {
+  it("run.cancel resolves the job through the persisted run binding", async () => {
     const invoke = vi.fn(async (command: string): Promise<unknown> => {
-      if (command === "plan_list") return okEnvelope([planWithTasks]);
-      if (command === "run_start") return okEnvelope(runStarted);
-      if (command === "research_config_get") return okEnvelope(researchConfigView);
+      if (command === "run_latest_get") return okEnvelope(runLatestView);
       if (command === "run_cancel") return okEnvelope(true);
       throw new Error(`unexpected rust command '${command}'`);
     });
     const transport = createTauriTransport({ invoke });
 
+    // No run at all → typed NOT_FOUND.
+    const noRun = vi.fn(async (command: string): Promise<unknown> => {
+      if (command === "run_latest_get") return okEnvelope(null);
+      throw new Error(`unexpected rust command '${command}'`);
+    });
     await expect(
-      transport.invoke("run.cancel", { project_id: PROJECT_ID }),
+      createTauriTransport({ invoke: noRun }).invoke("run.cancel", {
+        project_id: PROJECT_ID,
+      }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(invoke).not.toHaveBeenCalled();
 
-    await transport.invoke("run.start", { project_id: PROJECT_ID });
     await expect(
       transport.invoke("run.cancel", { project_id: PROJECT_ID }),
     ).resolves.toBe(true);
@@ -468,13 +477,41 @@ describe("tauri transport command mapping", () => {
     expect("gaps" in report).toBe(false);
   });
 
-  it("bridges gap.list through coverage_get with pending proposals", async () => {
-    const invoke = vi.fn(async (): Promise<unknown> => okEnvelope(rustCoverageReport));
+  it("maps gap.list onto gap_report_get with the persisted decisions", async () => {
+    const pendingReport = {
+      project_id: PROJECT_ID,
+      gaps: [
+        {
+          id: `gap:${PROJECT_ID}:theory`,
+          project_id: PROJECT_ID,
+          dimension: "theory",
+          trigger: "coverage_below_threshold",
+          rule: "coverage < 0.6",
+          detail: "维度 theory 覆盖不足。",
+          quality_sources_found: 0,
+          coverage: 0.12,
+          proposed_task: {
+            title: "Follow-up research: theory",
+            description: "target coverage >= 0.6",
+            dimension: "theory",
+          },
+          proposal_status: "pending_approval",
+          created_task_id: null,
+        },
+      ],
+      computed_at: "2024-01-02T03:04:05.000Z",
+    };
+    const invoke = vi.fn(async (): Promise<unknown> => okEnvelope(pendingReport));
     const report = await createTauriTransport({ invoke }).invoke("gap.list", {
       project_id: PROJECT_ID,
     });
 
-    expect(invoke).toHaveBeenCalledWith("coverage_get", expect.anything());
+    expect(invoke).toHaveBeenCalledWith(
+      "gap_report_get",
+      expect.objectContaining({
+        request: expect.objectContaining({ data: { project_id: PROJECT_ID } }),
+      }),
+    );
     expect(report.gaps[0]).toMatchObject({
       id: `gap:${PROJECT_ID}:theory`,
       dimension: "theory",
@@ -850,45 +887,34 @@ describe("tauri transport batch-2 command mapping", () => {
     expect(plan).toMatchObject({ id: PLAN_ID, status: "rejected" });
   });
 
-  it("serves plan.get from the cached sectioned view, syncing the record status", async () => {
-    const draftEntry = { plan: { ...planWithTasks.plan, created_at: 1700000000000, updated_at: 1700000000500 } };
-    const supersededEntry = {
-      plan: {
-        ...planWithTasks.plan,
-        id: "7f000000-0000-7000-8000-000000000010",
-        created_at: 1600000000000,
-        updated_at: 1600000000500,
-      },
-      tasks: planWithTasks.tasks,
-    };
-    let plans = [supersededEntry, draftEntry];
+  it("serves plan.get from the persisted plan_latest_view projection", async () => {
+    let view: typeof planView & { status: string } = { ...planView, status: "draft" };
     const invoke = vi.fn(async (command: string): Promise<unknown> => {
-      if (command === "plan_list") return okEnvelope(plans);
-      if (command === "plan_regenerate") return okEnvelope(planView);
+      if (command === "plan_list") return okEnvelope([planWithTasks]);
+      if (command === "plan_latest_view") return okEnvelope(view);
       if (command === "plan_approve") {
-        plans = [
-          supersededEntry,
-          { plan: { ...draftEntry.plan, status: "approved", updated_at: 1700000000900 } },
-        ];
-        return okEnvelope({ ...draftEntry.plan, status: "approved", updated_at: 1700000000900 });
+        view = { ...view, status: "approved", updated_at: "2023-11-14T22:13:20.900Z" };
+        return okEnvelope({ ...planWithTasks.plan, status: "approved" });
       }
       throw new Error(`unexpected rust command '${command}'`);
     });
     const transport = createTauriTransport({ invoke });
 
-    // No cached projection yet → the plan_list bridge without sections.
-    const bridged = await transport.invoke("plan.get", { project_id: PROJECT_ID });
-    expect(bridged).toMatchObject({ id: PLAN_ID, status: "draft" });
-    expect(bridged?.sections).toEqual([]);
+    // The sectioned tree always comes from the persisted projection — no
+    // session cache, so a reload reads the same shape.
+    const first = await transport.invoke("plan.get", { project_id: PROJECT_ID });
+    expect(invoke).toHaveBeenCalledWith(
+      "plan_latest_view",
+      expect.objectContaining({
+        request: expect.objectContaining({ data: { project_id: PROJECT_ID } }),
+      }),
+    );
+    expect(first).toMatchObject({ id: PLAN_ID, status: "draft" });
+    expect(first?.sections).toHaveLength(1);
+    expect(first?.sections[0].tasks[0].id).toBe(TASK_ID);
 
-    // After regenerate the cached view serves the full section tree.
-    await transport.invoke("plan.regenerate", { project_id: PROJECT_ID });
-    const cached = await transport.invoke("plan.get", { project_id: PROJECT_ID });
-    expect(cached).toMatchObject({ id: PLAN_ID, status: "draft" });
-    expect(cached?.sections).toHaveLength(1);
-    expect(cached?.sections[0].tasks[0].id).toBe(TASK_ID);
-
-    // plan.approve patches the cached view's status from the record.
+    // plan.approve re-reads the projection, so the refreshed status and the
+    // full tree land together.
     const approved = await transport.invoke("plan.approve", { project_id: PROJECT_ID });
     expect(approved).toMatchObject({ id: PLAN_ID, status: "approved" });
     expect(approved.sections).toHaveLength(1);
@@ -976,12 +1002,39 @@ describe("tauri transport batch-2 command mapping", () => {
     });
   });
 
-  it("maps gap.approveProposal/dismissProposal and merges decisions into gap.list", async () => {
+  it("maps gap.approveProposal/dismissProposal onto the persisted-decision report", async () => {
+    let currentReport = {
+      project_id: PROJECT_ID,
+      gaps: [
+        {
+          id: `gap:${PROJECT_ID}:theory`,
+          project_id: PROJECT_ID,
+          dimension: "theory",
+          trigger: "coverage_below_threshold",
+          rule: "coverage < 0.6",
+          detail: "维度 theory 覆盖不足。",
+          quality_sources_found: 0,
+          coverage: 0.12,
+          proposed_task: {
+            title: "Follow-up research: theory",
+            description: "target coverage >= 0.6",
+            dimension: "theory",
+          },
+          proposal_status: "pending_approval" as string,
+          created_task_id: null as string | null,
+        },
+      ],
+      computed_at: "2024-01-02T03:04:05.000Z",
+    };
     const invoke = vi.fn(async (command: string): Promise<unknown> => {
-      if (command === "coverage_get") return okEnvelope(rustCoverageReport);
-      if (command === "gap_approve_proposal") return okEnvelope(approvedGapReport);
+      if (command === "gap_report_get") return okEnvelope(currentReport);
+      if (command === "gap_approve_proposal") {
+        currentReport = approvedGapReport;
+        return okEnvelope(currentReport);
+      }
       if (command === "gap_dismiss_proposal") {
-        return okEnvelope({ ...approvedGapReport, gaps: [] });
+        currentReport = { ...approvedGapReport, gaps: [] };
+        return okEnvelope(currentReport);
       }
       throw new Error(`unexpected rust command '${command}'`);
     });
@@ -1004,7 +1057,8 @@ describe("tauri transport batch-2 command mapping", () => {
       created_task_id: TASK_ID,
     });
 
-    // The decision sticks on the next gap.list read.
+    // The decision sticks on the next gap.list read — through the persisted
+    // report, not a session map.
     const afterApprove = await transport.invoke("gap.list", { project_id: PROJECT_ID });
     expect(afterApprove.gaps[0]).toMatchObject({
       id: `gap:${PROJECT_ID}:theory`,

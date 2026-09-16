@@ -178,3 +178,52 @@ def test_parse_env_defaults_and_errors():
         str,
     )
     assert isinstance(_parse_env({"MORPHO_WORKER_PORT": "8765"}), str)
+
+
+def test_provider_configuration_boundary_offline_default_no_silent_fallback():
+    """Audit F3: the serve path configures providers through the worker's
+    config boundary. An unconfigured environment stays OFFLINE (safe
+    install default); explicit configuration is honored verbatim and a
+    configured provider failure can never silently fall back to mocks (the
+    factory enforces that; here we pin the routing rule)."""
+
+    from morpho_worker.config import ProviderRole
+    from morpho_worker.providers.factory import ProviderFactory
+    from morpho_worker.providers.mock import MockLLMProvider
+    from morpho_worker.serve import build_worker_config
+
+    # Unconfigured → offline mock.
+    assert build_worker_config({}).offline_mock is True
+
+    # Explicit offline stays offline.
+    assert build_worker_config({"MORPHO_WORKER_OFFLINE": "1"}).offline_mock is True
+
+    # An explicit profile routes the documented real providers.
+    configured = build_worker_config({"MORPHO_PROFILE": "default"})
+    assert configured.offline_mock is False
+    assert configured.roles.planner == "glm"
+
+    # Provider/role variables are honored (local profile + model override).
+    local = build_worker_config(
+        {
+            "MORPHO_PROFILE": "local",
+            "MORPHO_PROVIDER_OLLAMA_LOCAL_MODEL": "qwen3:8b",
+        }
+    )
+    assert local.roles.planner == "ollama-local"
+    assert local.providers["ollama-local"].model == "qwen3:8b"
+
+    # The factory never mocks a configured role: a dangling role reference
+    # is rejected at validation time, before any provider is built.
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="ghost-provider"):
+        build_worker_config(
+            {"MORPHO_PROFILE": "default", "MORPHO_ROLE_PLANNER": "ghost-provider"}
+        )
+
+    # Offline mode's LLM is the deterministic mock (no network by design).
+    offline_factory = ProviderFactory(build_worker_config({}))
+    _provider, llm = offline_factory.llm_for(ProviderRole.EXTRACTION)
+    assert isinstance(llm, MockLLMProvider)

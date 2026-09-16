@@ -44,6 +44,11 @@ const tasks = {
     retry: "Retry",
     confirmContinue: "Confirm and continue",
     cancel: "Cancel",
+    unsupportedTitle: "Not available in V0.1",
+    unsupportedHint: "Per-task controls (pause/resume/retry/cancel) need per-task dispatch and arrive in a later version; for now you can stop the whole run with “Cancel run”.",
+  },
+  runStartFailedToast: {
+    title: "Could not start the research run",
   },
 };
 

@@ -44,6 +44,11 @@ const tasks = {
     retry: "重試",
     confirmContinue: "確認並繼續",
     cancel: "取消",
+    unsupportedTitle: "V0.1 尚不支援",
+    unsupportedHint: "單任務控制（暫停/恢復/重試/取消）需要按任務派發，將在後續版本提供；目前可透過「取消執行」停止整個執行。",
+  },
+  runStartFailedToast: {
+    title: "研究執行未能啟動",
   },
 };
 

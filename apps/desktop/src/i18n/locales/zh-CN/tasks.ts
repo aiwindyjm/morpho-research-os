@@ -46,6 +46,11 @@ const tasks = {
     retry: "重试",
     confirmContinue: "确认并继续",
     cancel: "取消",
+    unsupportedTitle: "V0.1 暂不支持",
+    unsupportedHint: "单任务控制（暂停/恢复/重试/取消）需要按任务派发，将在后续版本提供；目前可以通过「取消运行」停止整个运行。",
+  },
+  runStartFailedToast: {
+    title: "研究运行未能启动",
   },
 };
 

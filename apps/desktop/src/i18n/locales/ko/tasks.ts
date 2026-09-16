@@ -45,6 +45,11 @@ const tasks = {
     retry: "재시도",
     confirmContinue: "확인하고 계속",
     cancel: "취소",
+    unsupportedTitle: "V0.1에서는 지원되지 않음",
+    unsupportedHint: "작업별 제어(일시정지/재개/재시도/취소)는 작업별 디스패치가 필요하며 이후 버전에 제공됩니다. 지금은 '실행 취소'로 전체 실행을 중지할 수 있습니다.",
+  },
+  runStartFailedToast: {
+    title: "연구 실행을 시작하지 못했습니다",
   },
 };
 

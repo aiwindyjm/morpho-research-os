@@ -1,9 +1,21 @@
 """Worker serve entrypoint (``python -m morpho_worker.serve``).
 
-Boots the draft HTTP worker protocol on loopback with offline/mock
-providers (the serve path never holds credentials: routing to real
-providers is the Rust supervisor's configuration, delivered through the
-worker's config boundary elsewhere).
+Boots the draft HTTP worker protocol on loopback. Providers come from the
+worker's configuration boundary (``morpho_worker.config.from_env``):
+
+- An explicitly configured environment (``MORPHO_PROFILE``, provider/role
+  variables, or ``MORPHO_WORKER_OFFLINE``) is honored verbatim through the
+  :class:`~morpho_worker.providers.factory.ProviderFactory` — a configured
+  provider that fails raises a structured error and NEVER silently falls
+  back to mocks (audit F3).
+- A completely unconfigured environment stays OFFLINE (deterministic mock
+  providers, zero network, zero credentials): the safe default for a
+  freshly installed desktop that has not set up providers yet.
+
+Credentials are never read here: provider entries carry key *references*
+(``env:NAME``) that the adapters resolve at call time from this process's
+environment (the Rust core injects them at spawn time; values never travel
+in job payloads or config files).
 
 Environment (draft names, frozen with the W2-02 supervisor contract):
 
@@ -11,6 +23,8 @@ Environment (draft names, frozen with the W2-02 supervisor contract):
 - ``MORPHO_WORKER_PORT``       bind port (required)
 - ``MORPHO_WORKER_SESSION_TOKEN`` bearer token the Rust supervisor supplied
   (required; every endpoint requires ``Authorization: Bearer <token>``)
+- provider configuration per ``morpho_worker.config.from_env`` (profiles,
+  ``MORPHO_PROVIDER_*``, ``MORPHO_ROLE_*``, ``MORPHO_WORKER_OFFLINE``)
 
 Startup logs one line — ``morpho-worker listening on http://HOST:PORT
 protocol=1`` — so supervisors can wait on readiness instead of polling.
@@ -31,6 +45,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from morpho_worker.clock import SystemClock
+from morpho_worker.config import ProviderRole, WorkerConfig, default_worker_config, from_env
 from morpho_worker.jobs import JobService
 from morpho_worker.stages.claims_stage import ClaimBuilder, ValidationStage
 from morpho_worker.stages.extraction_stage import (
@@ -38,6 +53,7 @@ from morpho_worker.stages.extraction_stage import (
     SourceContentResolver,
     SourceEvaluator,
 )
+from morpho_worker.stages.planner import LLMPlanner
 from morpho_worker.stages.search_stage import SearchStage
 from morpho_worker.stores import PlanStore
 from morpho_worker.transport import WorkerService
@@ -105,55 +121,120 @@ def _offline_payloads() -> tuple[list, dict[str, list[str]]]:
             "key_points": concepts["key_points"] + history["key_points"],
         }
         scripted["extraction.source-extraction"] = [json.dumps(merged)]
+        # The offline branch plans through the LLM planner like the CLI, so
+        # its prompt needs the deterministic fixture too (self-planned jobs
+        # only; provided-plan jobs never call the planner).
+        scripted["planner.plan-draft"] = [
+            (fixtures / "planner_output_quantum.json").read_text(encoding="utf-8")
+        ]
     return results, scripted
 
 
+def build_worker_config(env: Mapping[str, str]) -> WorkerConfig:
+    """Serve-side configuration rule: an environment that configures
+    NOTHING stays offline (the safe install default); any explicit
+    configuration signal (``MORPHO_PROFILE``, provider/role variables, or
+    ``MORPHO_WORKER_OFFLINE``) routes through ``from_env`` verbatim."""
+
+    explicit = (
+        bool(env.get("MORPHO_PROFILE", "").strip())
+        or bool(env.get("MORPHO_WORKER_OFFLINE", "").strip())
+        or any(
+            name.startswith("MORPHO_PROVIDER_") or name.startswith("MORPHO_ROLE_")
+            for name in env
+        )
+    )
+    base = default_worker_config()
+    if not explicit:
+        base = base.model_copy(update={"offline_mock": True})
+    return from_env(env, base=base)
+
+
 def build_job_service(
-    *, heartbeat_seconds: float = 15.0, max_workers: int = 2
+    *,
+    heartbeat_seconds: float = 15.0,
+    max_workers: int = 2,
+    env: Mapping[str, str] | None = None,
 ) -> JobService:
-    """Offline/mock job service: deterministic providers, no network, no
-    credentials (same wiring as the offline pipeline tests)."""
+    """Job service over the configured providers: offline mocks when the
+    configuration says offline (or nothing was configured), real adapters
+    through the factory otherwise — a configured provider failure surfaces
+    structurally and never falls back to a mock."""
 
     from morpho_worker.events import EventLog
-    from morpho_worker.interfaces import InMemoryResultSink, MockPlanner
+    from morpho_worker.interfaces import InMemoryResultSink
     from morpho_worker.orchestrator import ResearchOrchestrator
     from morpho_worker.pipeline.prompts import PromptRegistry
     from morpho_worker.pipeline.structured import StructuredOutputPipeline
     from morpho_worker.providers.cache import InMemoryCache
+    from morpho_worker.providers.factory import ProviderFactory
     from morpho_worker.providers.mock import MockLLMProvider, MockSearchProvider
     from morpho_worker.providers.retry import RetryPolicy
     from morpho_worker.providers.usage import InMemoryUsageLedger
 
+    resolved_env = dict(env if env is not None else os.environ)
+    config = build_worker_config(resolved_env)
     results, scripted = _offline_payloads()
 
     def factory(event_log: EventLog):
         clock = SystemClock()
         cache = InMemoryCache()
         usage = InMemoryUsageLedger()
-        pipeline = StructuredOutputPipeline(
-            MockLLMProvider(scripted=scripted),
-            PromptRegistry(),
-            usage=usage,
-            cache=cache,
-            retry=RetryPolicy(max_attempts=3, backoff_seconds=0.0),
-            clock=clock,
-        )
+        prompts = PromptRegistry()
+        retry = RetryPolicy(max_attempts=3, backoff_seconds=0.0)
+        if config.offline_mock:
+            pipeline = StructuredOutputPipeline(
+                MockLLMProvider(scripted=scripted),
+                prompts,
+                usage=usage,
+                cache=cache,
+                retry=retry,
+                clock=clock,
+            )
+            search_provider = MockSearchProvider(results=results)
+            provider = None
+            planner = LLMPlanner(
+                pipeline, provider_id="mock", model="mock-model", clock=clock
+            )
+            model = "mock-model"
+        else:
+            worker_factory = ProviderFactory(config, env=resolved_env)
+            provider, llm = worker_factory.llm_for(ProviderRole.EXTRACTION)
+            pipeline = StructuredOutputPipeline(
+                llm, prompts, usage=usage, cache=cache, retry=retry, clock=clock
+            )
+            search_provider = worker_factory.search_for(
+                search_provider_id=_configured_search_provider(config)
+            )
+            planner_provider, planner_llm = worker_factory.llm_for(ProviderRole.PLANNER)
+            planner = LLMPlanner(
+                StructuredOutputPipeline(
+                    planner_llm, prompts, usage=usage, cache=cache, retry=retry,
+                    clock=clock,
+                ),
+                provider_id=(
+                    planner_provider.provider_id if planner_provider else "mock"
+                ),
+                model=planner_provider.model if planner_provider else "mock-model",
+                clock=clock,
+            )
+            model = provider.model if provider else "mock-model"
         search = SearchStage(
-            MockSearchProvider(results=results),
-            provider_id="mock",
+            search_provider,
+            provider_id=provider.provider_id if provider else "mock",
             cache=cache,
             usage=usage,
             clock=clock,
         )
         extraction = ExtractionStage(
             pipeline,
-            provider_id="mock",
-            model="mock-model",
+            provider_id=provider.provider_id if provider else "mock",
+            model=model,
             evaluator=SourceEvaluator(clock=clock),
             content_resolver=SourceContentResolver(cache=cache, clock=clock),
         )
         return ResearchOrchestrator(
-            planner=MockPlanner(clock=clock),
+            planner=planner,
             plan_store=PlanStore(clock=clock),
             search_stage=search,
             extraction_stage=extraction,
@@ -166,6 +247,18 @@ def build_job_service(
         )
 
     return JobService(orchestrator_factory=factory, heartbeat_seconds=heartbeat_seconds)
+
+
+def _configured_search_provider(config: WorkerConfig) -> str | None:
+    """First configured ``kind=search`` provider id, if any (V0.1 search
+    stays mocked unless one is explicitly configured)."""
+
+    from morpho_worker.config import ProviderKind
+
+    for provider in config.providers.values():
+        if provider.kind is ProviderKind.SEARCH:
+            return provider.provider_id
+    return None
 
 
 def _watch_stdin_eof(stop: threading.Event, stream) -> None:

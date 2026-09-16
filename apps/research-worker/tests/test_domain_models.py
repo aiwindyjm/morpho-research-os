@@ -158,7 +158,10 @@ def test_source_defaults_and_dedup_key_field():
 
 def test_runtime_task_types_cover_pipeline():
     assert {member.value for member in RuntimeTaskType} == {
+        # Worker-native pipeline (self-planned runs).
         "search", "extract", "normalize", "claims", "validate", "writer",
+        # Provided-plan split pipeline (ADR-024).
+        "source_evaluation", "normalization",
     }
 
 

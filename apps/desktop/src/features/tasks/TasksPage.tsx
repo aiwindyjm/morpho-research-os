@@ -5,7 +5,7 @@ import { Badge, Button, Card, Chip, Popover } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
 import type { ResearchTask, TaskState } from "@/types/domain";
-import { usePlan, useRunActions, useRun, useTaskActions, useTasks } from "@/services/queries";
+import { usePlan, useRunActions, useRun, useTasks } from "@/services/queries";
 import { useToast } from "@morpho/ui";
 
 /**
@@ -67,7 +67,6 @@ export function TasksPage({ projectId }: { projectId: string }) {
   const { data: tasks, isLoading, error, refetch } = useTasks(projectId);
   const { data: plan } = usePlan(projectId);
   const { data: run } = useRun(projectId);
-  const actions = useTaskActions(projectId);
   const startRun = useRunActions(projectId);
   const { showToast } = useToast();
   const [tab, setTab] = useState<TaskTab>("all");
@@ -102,43 +101,66 @@ export function TasksPage({ projectId }: { projectId: string }) {
   ];
 
   function taskActions(task: ResearchTask) {
-    const buttons: Array<{ label: string; run: () => void; variant: "secondary" | "ghost" | "danger" }> = [];
+    // Per-task controls need per-task dispatch (ADR-019 phase 2) and are
+    // honestly disabled in V0.1: they stay visible with their state-gated
+    // labels but explain themselves instead of pretending to work (audit
+    // F6). Run-level control (cancel the whole run) is the supported path.
+    const buttons: Array<{
+      label: string;
+      run: () => void;
+      variant: "secondary" | "ghost" | "danger";
+      disabled: boolean;
+    }> = [];
     if (task.state === "RUNNING" || task.state === "PLANNING" || task.state === "PENDING") {
       buttons.push({
         label: t("action.pause"),
         variant: "ghost",
-        run: () => void actions.pause.mutateAsync(task.id).catch(() => undefined),
+        run: () => undefined,
+        disabled: true,
       });
     }
     if (task.state === "PAUSED") {
       buttons.push({
         label: t("action.resume"),
         variant: "secondary",
-        run: () => void actions.resume.mutateAsync(task.id).catch(() => undefined),
+        run: () => undefined,
+        disabled: true,
       });
     }
     if (task.state === "FAILED") {
       buttons.push({
         label: t("action.retry"),
         variant: "secondary",
-        run: () => void actions.retry.mutateAsync(task.id).catch(() => undefined),
+        run: () => undefined,
+        disabled: true,
       });
     }
     if (task.state === "NEEDS_REVIEW") {
       buttons.push({
         label: t("action.confirmContinue"),
         variant: "secondary",
-        run: () => void actions.retry.mutateAsync(task.id).catch(() => undefined),
+        run: () => undefined,
+        disabled: true,
       });
     }
     if (!["COMPLETED", "CANCELLED", "NEEDS_REVIEW"].includes(task.state)) {
       buttons.push({
         label: t("action.cancel"),
         variant: "danger",
-        run: () => void actions.cancel.mutateAsync(task.id).catch(() => undefined),
+        run: () => undefined,
+        disabled: true,
       });
     }
     return buttons;
+  }
+
+  /** Failure feedback for run-level actions: the error's user message (for
+   * example the plan-approval gate, ADR-024) surfaces instead of being
+   * swallowed. */
+  function reportRunFailure(error: unknown) {
+    const detail =
+      error instanceof Error ? error.message : t("runStartFailedToast.title");
+    showToast({ title: t("runStartFailedToast.title"), detail, variant: "error" });
   }
 
   return (
@@ -160,7 +182,7 @@ export function TasksPage({ projectId }: { projectId: string }) {
                     variant: "success",
                   }),
                 )
-                .catch(() => undefined)
+                .catch(reportRunFailure)
             }
             loading={startRun.start.isPending}
           >
@@ -188,7 +210,12 @@ export function TasksPage({ projectId }: { projectId: string }) {
                 : t("empty.generic"),
           action:
             plan?.status === "approved" ? (
-              <Button variant="primary" onClick={() => void startRun.start.mutateAsync().catch(() => undefined)}>
+              <Button
+                variant="primary"
+                onClick={() =>
+                  void startRun.start.mutateAsync().catch(reportRunFailure)
+                }
+              >
                 {t("continueRun")}
               </Button>
             ) : undefined,
@@ -260,9 +287,22 @@ export function TasksPage({ projectId }: { projectId: string }) {
                         )}
                       >
                         <div className="flex flex-col gap-sm">
-                          {rowActions.map(({ label, run: fn, variant }) => (
-                            <Button key={label} size="sm" variant={variant} onClick={fn}>
+                          {rowActions.map(({ label, run: fn, variant, disabled }) => (
+                            <Button
+                              key={label}
+                              size="sm"
+                              variant={variant}
+                              disabled={disabled}
+                              title={disabled ? t("action.unsupportedHint") : undefined}
+                              aria-disabled={disabled}
+                              onClick={fn}
+                            >
                               {label}
+                              {disabled ? (
+                                <span className="text-caption text-text-muted">
+                                  {t("action.unsupportedTitle")}
+                                </span>
+                              ) : null}
                             </Button>
                           ))}
                         </div>

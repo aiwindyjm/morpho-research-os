@@ -46,12 +46,16 @@ pub struct RunRecord {
     pub finished_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
+    /// The worker-acknowledged job id executing this run (migration 004,
+    /// ADR-024). `None` for legacy runs and hermetic fakes.
+    #[serde(default)]
+    pub worker_job_id: Option<String>,
 }
 
 pub struct Runs;
 
-const COLS: &str =
-    "id, project_id, plan_id, status, started_at, finished_at, created_at, updated_at";
+const COLS: &str = "id, project_id, plan_id, status, started_at, finished_at, created_at, \
+                    updated_at, worker_job_id";
 
 impl Runs {
     pub fn insert(tx: &Transaction<'_>, new: &NewRun) -> Result<RunRecord, CoreError> {
@@ -65,6 +69,7 @@ impl Runs {
             finished_at: None,
             created_at: now,
             updated_at: now,
+            worker_job_id: None,
         };
         tx.execute(
             "INSERT INTO runs (id, project_id, plan_id, status, started_at, finished_at,
@@ -104,6 +109,31 @@ impl Runs {
             .collect::<Result<Vec<_>, _>>()
             .map_err(CoreError::from)?;
         Ok(rows)
+    }
+
+    /// The project's most recent run (latest `created_at`, id as tiebreak).
+    pub fn latest_for_project(
+        conn: &Connection,
+        project_id: &str,
+    ) -> Result<Option<RunRecord>, CoreError> {
+        Ok(Self::list_for_project(conn, project_id)?
+            .into_iter()
+            .next_back())
+    }
+
+    /// Persists the worker-acknowledged job id onto a run (migration 004).
+    /// Idempotent; unknown run ids are a structured error.
+    pub fn set_worker_job(tx: &Transaction<'_>, id: &str, job_id: &str) -> Result<(), CoreError> {
+        let changed = tx
+            .execute(
+                "UPDATE runs SET worker_job_id = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, job_id, now_unix_ms()],
+            )
+            .map_err(CoreError::from)?;
+        if changed == 0 {
+            return Err(CoreError::database(format!("run '{id}' not found")));
+        }
+        Ok(())
     }
 
     /// Updates a run status. Terminal statuses stamp `finished_at` with the
@@ -157,6 +187,7 @@ fn map_run(row: &Row<'_>) -> rusqlite::Result<RunRecord> {
         finished_at: row.get(5)?,
         created_at: row.get(6)?,
         updated_at: row.get(7)?,
+        worker_job_id: row.get(8)?,
     })
 }
 

@@ -98,6 +98,7 @@ fn scripted_plan_draft(
 
     let mut sections = Vec::with_capacity(dimension_count + 1);
     let mut tasks = Vec::new();
+    let mut normalization_keys: Vec<String> = Vec::with_capacity(dimension_count);
     for (index, dimension) in dimensions.iter().enumerate() {
         let section_index = index as i64;
         sections.push(NewSection {
@@ -111,21 +112,29 @@ fn scripted_plan_draft(
                 "为关键结论保留证据定位".into(),
             ],
         });
-        for (kind, title, description) in [
+        // Per-dimension chain: search → source_evaluation → normalization
+        // (depends_on lists idempotency keys of sibling draft tasks).
+        let search_key = format!("plan-{generation}-d{index}-search");
+        let evaluation_key = format!("plan-{generation}-d{index}-source_evaluation");
+        let normalization_key = format!("plan-{generation}-d{index}-normalization");
+        for (kind, title, description, depends_on) in [
             (
                 "search",
                 format!("检索 {dimension} 维度来源"),
                 "检索候选来源，记录 URL、类型与检索时间。",
+                vec![],
             ),
             (
                 "source_evaluation",
                 format!("提取并评估 {dimension} 维度内容"),
                 "提取正文与元数据，生成来源质量评估。",
+                vec![search_key.clone()],
             ),
             (
                 "normalization",
                 format!("归一化 {dimension} 维度知识"),
                 "生成实体、关系与候选论断，保留出处。",
+                vec![evaluation_key.clone()],
             ),
         ] {
             tasks.push(NewTask {
@@ -134,9 +143,10 @@ fn scripted_plan_draft(
                 task_type: kind.into(),
                 idempotency_key: format!("plan-{generation}-d{index}-{kind}"),
                 section_index: Some(section_index),
-                depends_on: vec![],
+                depends_on,
             });
         }
+        normalization_keys.push(normalization_key);
     }
 
     let synthesis_dimension = dimensions
@@ -154,16 +164,22 @@ fn scripted_plan_draft(
         ],
     });
     let synthesis_index = dimension_count as i64;
-    for (kind, title, description) in [
+    // Fan-in: validation waits for every dimension's normalization; the
+    // synthesis note waits for validation (PRD §7: search/extraction fan
+    // out, validation/synthesis fan in).
+    let validation_key = format!("plan-{generation}-validation");
+    for (kind, title, description, depends_on) in [
         (
             "validation",
             "验证论断与证据",
             "校验证据定位与置信度，标记冲突项进入审核。",
+            normalization_keys.clone(),
         ),
         (
             "synthesis",
             "综合研究简报",
             "汇总本轮研究结论、待审核项与下一步建议。",
+            vec![validation_key.clone()],
         ),
     ] {
         tasks.push(NewTask {
@@ -172,7 +188,7 @@ fn scripted_plan_draft(
             task_type: kind.into(),
             idempotency_key: format!("plan-{generation}-{kind}"),
             section_index: Some(synthesis_index),
-            depends_on: vec![],
+            depends_on,
         });
     }
 
@@ -846,6 +862,7 @@ mod tests {
                 KnowledgeNodes::upsert_by_slug(
                     tx,
                     &NewKnowledgeNode {
+                        id: None,
                         project_id: project_id.clone(),
                         node_type: node_type.into(),
                         title: slug.into(),
@@ -925,6 +942,7 @@ mod tests {
             KnowledgeNodes::upsert_by_slug(
                 tx,
                 &NewKnowledgeNode {
+                    id: None,
                     project_id: project_id.clone(),
                     node_type: "Concept".into(),
                     title: "Transformer".into(),
@@ -944,6 +962,7 @@ mod tests {
             KnowledgeNodes::upsert_by_slug(
                 tx,
                 &NewKnowledgeNode {
+                    id: None,
                     project_id: project_id.clone(),
                     node_type: "Concept".into(),
                     title: "Attention".into(),

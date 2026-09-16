@@ -112,7 +112,7 @@ describe("TasksPage prototype alignment", () => {
     );
   });
 
-  it("keeps per-task actions reachable through the row-action popover", async () => {
+  it("keeps per-task actions reachable but honestly disabled (V0.1)", async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -128,8 +128,17 @@ describe("TasksPage prototype alignment", () => {
       }),
     );
     const panel = await screen.findByTestId("popover-panel");
-    expect(
-      within(panel).getByRole("button", { name: "确认并继续" }),
-    ).toBeInTheDocument();
+    // The control stays visible with its label but is disabled and marked:
+    // per-task dispatch is ADR-019 phase 2, so V0.1 never pretends it works
+    // (audit F6).
+    const action = within(panel).getByRole("button", {
+      name: /确认并继续/,
+    });
+    expect(action).toBeDisabled();
+    expect(within(panel).getByText("V0.1 暂不支持")).toBeInTheDocument();
+    expect(action).toHaveAttribute(
+      "title",
+      expect.stringContaining("按任务派发"),
+    );
   });
 });

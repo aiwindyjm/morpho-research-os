@@ -218,6 +218,7 @@ mod tests {
             KnowledgeNodes::upsert_by_slug(
                 tx,
                 &NewKnowledgeNode {
+                    id: None,
                     project_id: project_id.clone(),
                     node_type: "Concept".into(),
                     title: "T".into(),

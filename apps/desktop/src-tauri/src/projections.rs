@@ -636,7 +636,7 @@ mod tests {
         })
         .unwrap();
 
-        let views = evidence_views(&claim_id, &[evidence.clone()]);
+        let views = evidence_views(&claim_id, std::slice::from_ref(&evidence));
         assert_eq!(views.len(), 1);
         let view = &views[0];
         assert_eq!(view.claim_id, claim_id);
@@ -671,6 +671,7 @@ mod tests {
                 KnowledgeNodes::upsert_by_slug(
                     tx,
                     &NewKnowledgeNode {
+                        id: None,
                         project_id: project_id.to_string(),
                         node_type: "Concept".into(),
                         title: slug.into(),
@@ -879,7 +880,7 @@ mod tests {
 
         // The wire shape matches the frontend contract's field names, and
         // time_range is always an object (never bare null) even unbounded.
-        let json = serde_json::to_value(&research_config_view(
+        let json = serde_json::to_value(research_config_view(
             &crate::repositories::configs::ResearchConfigRecord {
                 time_range_from: None,
                 time_range_to: None,

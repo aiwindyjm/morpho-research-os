@@ -99,6 +99,29 @@ impl Claims {
         Ok((record, true))
     }
 
+    /// Updates a claim's review lifecycle status and confidence state
+    /// (ADR-016: status is the review lifecycle, confidence the evidence
+    /// strength). Used by result ingestion when a later validated record
+    /// supersedes the inserted draft state.
+    pub fn update_review_state(
+        tx: &Transaction<'_>,
+        id: &str,
+        status: &str,
+        confidence: &str,
+    ) -> Result<(), CoreError> {
+        if !CONFIDENCE_STATES.contains(&confidence) {
+            return Err(CoreError::database(format!(
+                "unknown confidence '{confidence}'"
+            )));
+        }
+        tx.execute(
+            "UPDATE claims SET status = ?2, confidence = ?3, updated_at = ?4 WHERE id = ?1",
+            params![id, status, confidence, now_unix_ms()],
+        )
+        .map_err(CoreError::from)?;
+        Ok(())
+    }
+
     pub fn get(conn: &Connection, id: &str) -> Result<Option<ClaimRecord>, CoreError> {
         let sql = format!("SELECT {COLS} FROM claims WHERE id = ?1");
         match conn.query_row(&sql, params![id], map_claim) {

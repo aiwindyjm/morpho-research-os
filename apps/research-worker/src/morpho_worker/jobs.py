@@ -43,11 +43,18 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from morpho_worker.clock import Clock, SystemClock
 from morpho_worker.dag.states import RunStatus, TaskStatus
-from morpho_worker.domain.research import ResearchConfig
+from morpho_worker.domain.research import (
+    PlanStatus,
+    ResearchConfig,
+    ResearchPlan,
+    ResearchSection,
+    PlannerTaskDraft,
+    RuntimeTaskType,
+)
 from morpho_worker.errors import ErrorCode, MorphoError
 from morpho_worker.events import EventLog
 from morpho_worker.ids import new_id
@@ -60,7 +67,24 @@ JOB_KIND_RESEARCH_RUN = "research_run"
 #: Job kinds this worker can execute; they map onto orchestrator pipelines.
 JOB_KINDS = frozenset({JOB_KIND_RESEARCH_RUN})
 
-_REQUEST_FIELDS = frozenset({"schema_version", "kind", "config", "approve_plan"})
+_REQUEST_FIELDS = frozenset({"schema_version", "kind", "config", "approve_plan", "plan"})
+
+#: Result-sink vocabulary served by ``GET /jobs/{id}/results`` (ADR-024),
+#: in traceability order: sources and contents first, then knowledge,
+#: relations, claims, and evidence; reports and notes close the batch.
+RESULT_KINDS = (
+    "source",
+    "source-content",
+    "node",
+    "relation",
+    "claim",
+    "evidence",
+    "extraction",
+    "dropped",
+    "validation-report",
+    "note",
+    "incremental-report",
+)
 
 #: Mapped terminal job status -> final event appended to the per-job log.
 _TERMINAL_EVENTS = {
@@ -129,6 +153,18 @@ class _JobScopedEventLog(EventLog):
         return super().wait_for(self._job_key, after_sequence, timeout)
 
 
+class ProvidedPlan(BaseModel):
+    """Strict wire shape of the optional ``plan`` member (ADR-024): the
+    core-approved task tree. Sections/tasks reuse the worker's domain models
+    so unknown fields are rejected everywhere."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    plan_id: str
+    project_id: str = ""
+    sections: list[ResearchSection]
+
+
 @dataclass
 class JobRecord:
     """Worker-side job state; the HTTP envelope is a projection of this."""
@@ -147,14 +183,18 @@ class JobRecord:
     terminal_status: str | None = None
     cancel_requested: bool = False
     error: dict[str, Any] | None = None
+    #: Core-approved plan carried in the request envelope (ADR-024); when
+    #: present the worker executes this DAG verbatim instead of planning.
+    provided_plan: ProvidedPlan | None = None
 
 
-def _validate_job_request(request: dict[str, Any]) -> ResearchConfig:
+def _validate_job_request(request: dict[str, Any]) -> tuple[ResearchConfig, ProvidedPlan | None]:
     """Strict validation of the draft job request envelope.
 
     Raises ``MorphoError`` with a stable code (BAD_REQUEST /
     UNSUPPORTED_JOB_KIND / PLAN_NOT_APPROVED); the transport maps it to the
-    structured 400 error envelope.
+    structured 400 error envelope. Returns the research config plus, when
+    the envelope carries one, the core-approved plan (ADR-024).
     """
 
     unknown = sorted(set(request) - _REQUEST_FIELDS)
@@ -212,6 +252,31 @@ def _validate_job_request(request: dict[str, Any]) -> ResearchConfig:
             developer_detail=f"config validation failed: {exc}",
             retryable=False,
         ) from exc
+    provided: ProvidedPlan | None = None
+    if "plan" in request:
+        if request["plan"] is None:
+            raise MorphoError(
+                "BAD_REQUEST",
+                "The plan member must be a JSON object when present.",
+                developer_detail="plan=null",
+                retryable=False,
+            )
+        if not isinstance(request["plan"], dict):
+            raise MorphoError(
+                "BAD_REQUEST",
+                "The plan member must be a JSON object.",
+                developer_detail=f"plan={type(request['plan']).__name__}",
+                retryable=False,
+            )
+        try:
+            provided = ProvidedPlan.model_validate(request["plan"])
+        except ValidationError as exc:
+            raise MorphoError(
+                "BAD_REQUEST",
+                "The provided research plan is invalid.",
+                developer_detail=f"plan validation failed: {exc}",
+                retryable=False,
+            ) from exc
     if not approve:
         # Plan review gate (PRD: no DAG before approval): the caller must
         # carry the approval decision in the job request envelope.
@@ -221,7 +286,7 @@ def _validate_job_request(request: dict[str, Any]) -> ResearchConfig:
             "Set approve_plan=true after review; no DAG runs before approval.",
             retryable=False,
         )
-    return config
+    return config, provided
 
 
 def _requested_cursor(request: dict[str, Any]) -> int:
@@ -298,6 +363,7 @@ class JobService:
             ("GET", "/jobs/{job_id}", self._http_get),
             ("POST", "/jobs/{job_id}/cancel", self._http_cancel),
             ("GET", "/jobs/{job_id}/events", self._http_events),
+            ("GET", "/jobs/{job_id}/results", self._http_results),
         ]
 
     # HTTP adapters (thin: transport owns auth and error envelopes) ----------
@@ -336,6 +402,15 @@ class JobService:
             chunks=self._sse_chunks(job_id, after),
         )
 
+    def _http_results(
+        self, request: dict[str, Any], params: dict[str, str]
+    ) -> tuple[int, dict[str, Any]]:
+        job_id = params["job_id"]
+        envelope = self.results_envelope(job_id)
+        if envelope is None:
+            return 404, _job_not_found(job_id)
+        return 200, envelope
+
     # Job lifecycle -------------------------------------------------------------
 
     def create_job(self, request: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -345,7 +420,7 @@ class JobService:
         is created; the transport maps it to the structured 400 envelope.
         """
 
-        config = _validate_job_request(request)
+        config, provided = _validate_job_request(request)
         job_id = new_id()
         event_log = _JobScopedEventLog(
             job_id, self._clock, project_id=config.project_id
@@ -359,6 +434,7 @@ class JobService:
             updated_at=self._now(),
             orchestrator=orchestrator,
             event_log=event_log,
+            provided_plan=provided,
         )
         thread = threading.Thread(
             target=self._execute_job,
@@ -396,6 +472,26 @@ class JobService:
                 "protocol_version": WORKER_PROTOCOL_VERSION,
                 "counts": self._counts(job),
             },
+        }
+
+    def results_envelope(self, job_id: str) -> dict[str, Any] | None:
+        """Every validated record the job's result sink holds (ADR-024),
+        ordered by the sink's vocabulary. Records are the worker's validated
+        pydantic models — normalized domain records, never raw provider
+        output."""
+
+        job = self._get_job(job_id)
+        if job is None:
+            return None
+        sink = job.orchestrator.sink
+        records: list[dict[str, Any]] = []
+        for kind in RESULT_KINDS:
+            for record in sink.all(kind):
+                records.append({"kind": kind, "record": record.model_dump()})
+        return {
+            "schema_version": JOB_SCHEMA_VERSION,
+            "job_id": job_id,
+            "records": records,
         }
 
     def cancel_job(self, job_id: str) -> dict[str, Any] | None:
@@ -443,30 +539,67 @@ class JobService:
         orchestrator = job.orchestrator
         log = job.event_log
         try:
-            plan = orchestrator.create_plan(
-                job.config, project_id=job.config.project_id
-            )
-            with self._lock:
-                job.plan_id = plan.plan_id
-                job.updated_at = self._now()
-            if self._is_cancel_requested(job):
-                log.append(
-                    job.job_id,
-                    "job.cancelled",
-                    {"reason": "cancelled before the run started"},
+            if job.provided_plan is not None:
+                # ADR-024 plan-driven execution: the envelope carried the
+                # core-approved task tree. No re-planning, no worker-side
+                # approval — the DAG is the approved DAG, with the core's
+                # task ids verbatim.
+                provided = job.provided_plan
+                now = self._now()
+                plan = ResearchPlan(
+                    plan_id=provided.plan_id,
+                    project_id=provided.project_id or job.config.project_id,
+                    plan_version=1,
+                    status=PlanStatus.APPROVED,
+                    config=job.config,
+                    sections=provided.sections,
+                    reviewer_note="approved by the user in the core (ADR-024)",
+                    created_at=now,
+                    updated_at=now,
                 )
-                self._mark_terminal(job, "CANCELLED")
-                return
-            # The approval decision arrived in the job request envelope; the
-            # plan store still gates start_run on it (PLAN_NOT_APPROVED).
-            orchestrator.approve_plan(
-                plan.plan_id, note="approved via job request envelope"
-            )
-            # start_run blocks until the run ends; on_run_created publishes
-            # the run id immediately so cancel/status can reach the runner.
-            orchestrator.start_run(
-                plan.plan_id, on_run_created=lambda run_id: self._set_run_id(job, run_id)
-            )
+                with self._lock:
+                    job.plan_id = plan.plan_id
+                    job.updated_at = self._now()
+                if self._is_cancel_requested(job):
+                    log.append(
+                        job.job_id,
+                        "job.cancelled",
+                        {"reason": "cancelled before the run started"},
+                    )
+                    self._mark_terminal(job, "CANCELLED")
+                    return
+                orchestrator.start_provided_plan(
+                    plan,
+                    on_run_created=lambda run_id: self._set_run_id(job, run_id),
+                )
+            else:
+                plan = orchestrator.create_plan(
+                    job.config, project_id=job.config.project_id
+                )
+                with self._lock:
+                    job.plan_id = plan.plan_id
+                    job.updated_at = self._now()
+                if self._is_cancel_requested(job):
+                    log.append(
+                        job.job_id,
+                        "job.cancelled",
+                        {"reason": "cancelled before the run started"},
+                    )
+                    self._mark_terminal(job, "CANCELLED")
+                    return
+                # The approval decision arrived in the job request envelope;
+                # the plan store still gates start_run on it
+                # (PLAN_NOT_APPROVED).
+                orchestrator.approve_plan(
+                    plan.plan_id, note="approved via job request envelope"
+                )
+                # start_run blocks until the run ends; on_run_created
+                # publishes the run id immediately so cancel/status can
+                # reach the runner.
+                orchestrator.start_run(
+                    plan.plan_id,
+                    on_run_created=lambda run_id: self._set_run_id(job, run_id),
+                )
             status = self._mapped_status(job)
             log.append(
                 job.job_id, _TERMINAL_EVENTS.get(status, "job.completed"),

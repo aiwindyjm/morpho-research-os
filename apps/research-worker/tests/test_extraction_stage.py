@@ -99,6 +99,27 @@ def test_content_resolver_caches_by_source_key():
     assert first.fingerprint
 
 
+def test_content_resolver_marks_full_text_snippet_and_unavailable():
+    """Audit F3: a search summary is never presented as the source's full
+    text. The provenance marker distinguishes provider content, snippet
+    fallback, and nothing at all."""
+
+    resolver = SourceContentResolver(clock=FakeClock())
+
+    full = resolver.resolve(make_source())
+    assert full.locator_base == "full-text"
+
+    snippet_only = resolver.resolve(
+        make_source(metadata={}, snippet="a short search summary")
+    )
+    assert snippet_only.locator_base == "snippet"
+    assert snippet_only.content == "a short search summary"
+
+    nothing = resolver.resolve(make_source(metadata={}, snippet=""))
+    assert nothing.locator_base == "unavailable"
+    assert nothing.content == ""
+
+
 def test_content_level_dedup_same_content_one_extraction():
     cache = InMemoryCache()
     stage, llm = make_stage([fixture_text()], cache=cache)

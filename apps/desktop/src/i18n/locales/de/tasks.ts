@@ -44,6 +44,11 @@ const tasks = {
     retry: "Erneut versuchen",
     confirmContinue: "Bestätigen und fortsetzen",
     cancel: "Abbrechen",
+    unsupportedTitle: "In V0.1 nicht verfügbar",
+    unsupportedHint: "Steuerung einzelner Aufgaben (Pause/Fortsetzen/Wiederholen/Abbrechen) erfordert Dispatch pro Aufgabe und kommt in einer späteren Version; derzeit können Sie den gesamten Lauf über „Lauf abbrechen“ stoppen.",
+  },
+  runStartFailedToast: {
+    title: "Der Forschungslauf konnte nicht gestartet werden",
   },
 };
 

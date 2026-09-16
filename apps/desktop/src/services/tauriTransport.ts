@@ -152,41 +152,10 @@ function morphoErrorFromCore(error: WireCoreError, fallbackCorrelationId: string
  */
 interface AdapterContext {
   call(rustCommand: string, data: unknown): Promise<unknown>;
-  /**
-   * Per-transport session job registry (see `SessionJob`): records the
-   * worker job each run.start launched so the project-scoped run.get /
-   * run.cancel can bridge onto the job-keyed Rust commands.
-   */
-  sessionJobs: Map<string, SessionJob>;
-  /**
-   * Latest sectioned plan projection per project (see `PlanViewWire`).
-   * `plan_list` carries plan records and tasks but no section rows, so the
-   * full plan view returned by plan_regenerate / plan_update_task /
-   * plan_reject is remembered here and re-served by plan.get while the
-   * project's latest generation matches (ADR-020).
-   */
-  sessionPlans: Map<string, PlanViewWire>;
-  /**
-   * Gap proposal decisions taken this session (project → dimension →
-   * outcome). Rust persists them in `gap_decisions` and merges them into
-   * the gap_approve/dismiss responses, but no committed read command
-   * exposes them — so the outcomes are merged into gap.list here,
-   * mirroring the core's gap_report merge (src-tauri/src/projections.rs).
-   */
-  sessionGapDecisions: Map<string, Map<string, SessionGapDecision>>;
 }
 
-function makeContext(
-  invoke: TauriInvoke,
-  sessionJobs: Map<string, SessionJob>,
-  sessionPlans: Map<string, PlanViewWire>,
-  sessionGapDecisions: Map<string, Map<string, SessionGapDecision>>,
-  signal?: AbortSignal,
-): AdapterContext {
+function makeContext(invoke: TauriInvoke, signal?: AbortSignal): AdapterContext {
   return {
-    sessionJobs,
-    sessionPlans,
-    sessionGapDecisions,
     async call(rustCommand: string, data: unknown): Promise<unknown> {
       if (signal?.aborted) {
         throw new DOMException("The request was aborted", "AbortError");
@@ -434,27 +403,6 @@ interface CoreInfoWire {
   database_schema_version: number;
 }
 
-/**
- * `run_get` payload: the worker job-status envelope with the core-side
- * `task_rollup` attached when the envelope names a locally known run.
- * Free-form on purpose — the Rust side returns `serde_json::Value`.
- */
-interface RunGetEnvelopeWire {
-  job?: {
-    job_id?: string;
-    run_id?: string;
-    status?: string;
-    created_at?: string;
-    updated_at?: string;
-  };
-  task_rollup?: {
-    run_id: string;
-    run_status: string;
-    task_counts: Record<string, number>;
-    tasks: Array<{ task_id: string; status: string }>;
-  };
-}
-
 /* ------------------------------------------------------------------ */
 /* Batch-2 projection wire shapes (src-tauri/src/projections.rs)        */
 /* ------------------------------------------------------------------ */
@@ -563,10 +511,32 @@ interface GapReportViewWire {
   computed_at: string;
 }
 
-/** A gap proposal outcome taken this session (see AdapterContext). */
-interface SessionGapDecision {
-  status: "approved" | "dismissed";
-  createdTaskId: string | null;
+/**
+ * `run_latest_get` payload (commands.rs, ADR-024): the latest run read from
+ * SQLite with the persisted task rollup, the plan title, and the FROZEN
+ * config snapshot (the config generation the executed plan was generated
+ * from — never the current config).
+ */
+interface RunLatestViewWire {
+  run: {
+    id: string;
+    project_id: string;
+    plan_id: string;
+    status: string;
+    worker_job_id: string | null;
+    started_at: number | null;
+    finished_at: number | null;
+    created_at: number;
+    updated_at: number;
+  };
+  task_rollup: {
+    run_id: string;
+    run_status: string;
+    task_counts: Record<string, number>;
+    tasks: Array<{ task_id: string; status: string }>;
+  };
+  plan_title: string;
+  config_snapshot: ResearchConfigViewWire | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -614,22 +584,6 @@ function toProject(record: ProjectRecordWire): Project {
     description: record.description,
     created_at: epochMsToIso(record.created_at),
     updated_at: epochMsToIso(record.updated_at),
-  };
-}
-
-function toResearchPlan(entry: PlanWithTasksWire): ResearchPlan {
-  return {
-    id: entry.plan.id,
-    project_id: entry.plan.project_id,
-    title: entry.plan.title,
-    status: entry.plan.status as ResearchPlan["status"],
-    rationale: "",
-    // The committed plan_list payload carries no section records; tasks are
-    // exposed through the task.list bridge instead of a fabricated section
-    // structure.
-    sections: [],
-    created_at: epochMsToIso(entry.plan.created_at),
-    updated_at: epochMsToIso(entry.plan.updated_at),
   };
 }
 
@@ -745,26 +699,6 @@ function toCoverageReport(report: RustCoverageReportWire): CoverageReport {
       updated_at: epochMsToIso(report.computed_at),
     })),
     computed_at: epochMsToIso(report.computed_at),
-  };
-}
-
-function toResearchGap(gap: RustGapReportWire, projectId: string): ResearchGap {
-  return {
-    id: `gap:${projectId}:${gap.dimension}`,
-    project_id: projectId,
-    dimension: gap.dimension,
-    trigger: gap.trigger as ResearchGap["trigger"],
-    rule: gap.rule,
-    detail: gap.detail,
-    quality_sources_found: gap.quality_sources_found,
-    coverage: gap.coverage,
-    proposed_task: {
-      title: `补充研究：${gap.dimension}`,
-      description: gap.detail,
-      dimension: gap.dimension,
-    },
-    proposal_status: "pending_approval",
-    created_task_id: null,
   };
 }
 
@@ -963,54 +897,7 @@ async function latestPlanWire(ctx: AdapterContext, projectId: string): Promise<P
   return latest;
 }
 
-/**
- * Records one gap-proposal outcome in the session decision map. Gap ids are
- * namespaced `gap:{project_id}:{dimension}` (the core's stable identity), so
- * the dimension is recovered by stripping the prefix; the created task id
- * comes from the decision-merged report the core returned.
- */
-function rememberGapDecision(
-  ctx: AdapterContext,
-  projectId: string,
-  gapId: string,
-  report: GapReportViewWire,
-  status: "approved" | "dismissed",
-): void {
-  const prefix = `gap:${projectId}:`;
-  if (!gapId.startsWith(prefix)) return;
-  const dimension = gapId.slice(prefix.length);
-  const approved = report.gaps.find((gap) => gap.id === gapId);
-  const decisions =
-    ctx.sessionGapDecisions.get(projectId) ?? new Map<string, SessionGapDecision>();
-  decisions.set(dimension, {
-    status,
-    createdTaskId: status === "approved" ? (approved?.created_task_id ?? null) : null,
-  });
-  ctx.sessionGapDecisions.set(projectId, decisions);
-}
-
-/* ------------------------------------------------------------------ */
-/* Session job registry (run.get / run.cancel bridge)                  */
-/* ------------------------------------------------------------------ */
-
-/**
- * The committed Rust `run_get`/`run_cancel` commands key on the worker
- * `job_id` returned by `run_start`, and no IPC command enumerates a
- * project's jobs — so the frontend contract (project-scoped run.get /
- * run.cancel) is bridged through a session-scoped map owned by the
- * transport instance. It records the last run started from this window per
- * project; runs started before app launch are invisible until the core
- * exposes a job listing (Wave-2 candidate). Frontend-only transport state,
- * never persisted.
- */
-interface SessionJob {
-  job_id: string;
-  run_id: string;
-  plan_id: string;
-  plan_title: string;
-}
-
-/** Worker job statuses and DB run statuses (lowercased) → TaskState. */
+/** DB run statuses (lowercased) → the frontend run state. */
 const RUN_STATE_BY_STATUS: Record<string, ResearchRun["state"]> = {
   queued: "PENDING",
   running: "RUNNING",
@@ -1026,11 +913,40 @@ function runStateFrom(status: string | undefined): ResearchRun["state"] {
   return RUN_STATE_BY_STATUS[(status ?? "").toLowerCase()] ?? "RUNNING";
 }
 
-function isoOr(value: string | undefined, fallback: string): string;
-function isoOr(value: string | undefined, fallback: null): string | null;
-function isoOr(value: string | undefined, fallback: string | null): string | null {
-  if (typeof value === "string" && !Number.isNaN(Date.parse(value))) return value;
-  return fallback;
+/** Assembles the frontend run view from `run_latest_get` (ADR-024). */
+function runFromLatestView(view: RunLatestViewWire): ResearchRun {
+  const { run, task_rollup: rollup, plan_title: planTitle, config_snapshot: config } = view;
+  return {
+    id: run.id,
+    project_id: run.project_id,
+    plan_id: run.plan_id,
+    // The persisted rollup is the authority (PRD §7: SQLite is
+    // authoritative).
+    state: runStateFrom(rollup?.run_status ?? run.status),
+    config_snapshot: config ? toResearchConfig(config) : emptyConfigSnapshot(),
+    plan_snapshot_title: planTitle,
+    started_at: run.started_at ? epochMsToIso(run.started_at) : epochMsToIso(run.created_at),
+    updated_at: epochMsToIso(run.updated_at),
+  } satisfies ResearchRun;
+}
+
+/** Minimal shape while a run exists but its config snapshot is unreadable. */
+function emptyConfigSnapshot(): ResearchConfig {
+  return {
+    schema_version: "1.0",
+    domain: "",
+    topic: "",
+    purpose: "learning",
+    audience: "",
+    depth: 1,
+    dimensions: [],
+    time_range: { from: null, to: null },
+    geographic_scope: "",
+    languages: [],
+    source_types: [],
+    source_domains: [],
+    update_frequency: "manual",
+  };
 }
 
 type CommandAdapter<K extends CommandName> = (
@@ -1094,22 +1010,15 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
   },
 
   "plan.get": async (ctx, payload) => {
+    // The full sectioned view comes from the core's persisted projection
+    // (plan_latest_view, ADR-020 batch 3): no session cache, so a reload or
+    // restart reads the same tree.
     const plans = await planListWire(ctx, payload.project_id);
     if (plans.length === 0) return null;
-    const latest = plans[plans.length - 1];
-    // plan_list carries no section rows; when the cached sectioned view (from
-    // a batch-2 plan command) describes the same generation, serve it with
-    // the record's status/timestamps staying authoritative.
-    const cached = ctx.sessionPlans.get(payload.project_id);
-    if (cached && cached.id === latest.plan.id) {
-      return toResearchPlanFromView({
-        ...cached,
-        status: latest.plan.status,
-        created_at: epochMsToIso(latest.plan.created_at),
-        updated_at: epochMsToIso(latest.plan.updated_at),
-      });
-    }
-    return toResearchPlan(latest);
+    const view = (await ctx.call("plan_latest_view", {
+      project_id: payload.project_id,
+    })) as PlanViewWire;
+    return toResearchPlanFromView(view);
   },
   "plan.regenerate": async (ctx, payload) => {
     // Scripted V0.1 planner: supersedes earlier generations and returns the
@@ -1117,7 +1026,6 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     const view = (await ctx.call("plan_regenerate", {
       project_id: payload.project_id,
     })) as PlanViewWire;
-    ctx.sessionPlans.set(payload.project_id, view);
     return toResearchPlanFromView(view);
   },
   "plan.updateTask": async (ctx, payload) => {
@@ -1129,7 +1037,6 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
       title: payload.title,
       description: payload.description,
     })) as PlanViewWire;
-    ctx.sessionPlans.set(payload.project_id, view);
     return toResearchPlanFromView(view);
   },
   "plan.approve": async (ctx, payload) => {
@@ -1138,55 +1045,30 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     if (approved === null || approved === undefined) {
       throw notFound("未找到该项目的研究计划。", `plan_approve returned no plan '${entry.plan.id}'`);
     }
-    // Re-list so the response carries the refreshed status plus tasks.
-    const refreshed = await planListWire(ctx, payload.project_id);
-    const latest = refreshed[refreshed.length - 1] ?? entry;
-    // plan_approve returns only the record; patch the cached sectioned view
-    // so follow-up plan.get reads keep serving the full tree.
-    const cached = ctx.sessionPlans.get(payload.project_id);
-    if (cached && cached.id === latest.plan.id) {
-      const patched: PlanViewWire = {
-        ...cached,
-        status: latest.plan.status,
-        updated_at: epochMsToIso(latest.plan.updated_at),
-      };
-      ctx.sessionPlans.set(payload.project_id, patched);
-      return toResearchPlanFromView(patched);
-    }
-    return toResearchPlan(latest);
+    // Re-read the persisted sectioned view so the response carries the
+    // refreshed status plus the full tree.
+    const view = (await ctx.call("plan_latest_view", {
+      project_id: payload.project_id,
+    })) as PlanViewWire;
+    return toResearchPlanFromView(view);
   },
   "plan.reject": async (ctx, payload) => {
     // Marks the latest generation rejected and returns its full view.
     const view = (await ctx.call("plan_reject", {
       project_id: payload.project_id,
     })) as PlanViewWire;
-    ctx.sessionPlans.set(payload.project_id, view);
     return toResearchPlanFromView(view);
   },
 
   "run.get": async (ctx, payload) => {
-    // Bridged through the session job registry: no committed Rust command
-    // maps a project onto its worker job, so a run that was not started
-    // from this window reads as "no run" rather than fabricated state.
-    const job = ctx.sessionJobs.get(payload.project_id);
-    if (!job) return null;
-    const envelope = (await ctx.call("run_get", {
-      job_id: job.job_id,
-    })) as RunGetEnvelopeWire;
-    const now = new Date().toISOString();
-    return {
-      id: envelope.task_rollup?.run_id ?? envelope.job?.run_id ?? job.run_id,
+    // Restart-safe read (ADR-024): the latest run comes from SQLite with the
+    // persisted rollup, the plan title, and the frozen config snapshot — no
+    // session state involved.
+    const view = (await ctx.call("run_latest_get", {
       project_id: payload.project_id,
-      plan_id: job.plan_id,
-      // The orchestrator-projected rollup is the authority (PRD §7: SQLite
-      // is authoritative); the worker envelope stands in when the run is
-      // not yet resolvable locally.
-      state: runStateFrom(envelope.task_rollup?.run_status ?? envelope.job?.status),
-      config_snapshot: await researchConfigSnapshot(ctx, payload.project_id),
-      plan_snapshot_title: job.plan_title,
-      started_at: isoOr(envelope.job?.created_at, null),
-      updated_at: isoOr(envelope.job?.updated_at, now),
-    } satisfies ResearchRun;
+    })) as RunLatestViewWire | null;
+    if (!view) return null;
+    return runFromLatestView(view);
   },
   "run.start": async (ctx, payload) => {
     const entry = await latestPlanWire(ctx, payload.project_id);
@@ -1196,12 +1078,12 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
       // worker rejects the job without it (PLAN_NOT_APPROVED).
       approve_plan: true,
     })) as RunStartedWire;
-    ctx.sessionJobs.set(payload.project_id, {
-      job_id: started.job_id,
-      run_id: started.run_id,
-      plan_id: entry.plan.id,
-      plan_title: entry.plan.title,
-    });
+    // Serve the honest persisted view (the run row, rollup, and frozen
+    // config) rather than an optimistic snapshot.
+    const view = (await ctx.call("run_latest_get", {
+      project_id: payload.project_id,
+    })) as RunLatestViewWire | null;
+    if (view) return runFromLatestView(view);
     const now = new Date().toISOString();
     return {
       id: started.run_id,
@@ -1215,15 +1097,24 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     } satisfies ResearchRun;
   },
   "run.cancel": async (ctx, payload) => {
-    // Same session job registry as run.get — see its comment.
-    const job = ctx.sessionJobs.get(payload.project_id);
-    if (!job) {
+    // The job id resolves through the run's persisted worker_job_id
+    // (migration 004), so cancellation survives restarts.
+    const view = (await ctx.call("run_latest_get", {
+      project_id: payload.project_id,
+    })) as RunLatestViewWire | null;
+    if (!view) {
       throw notFound(
         "该项目当前没有可取消的研究运行。",
-        `no worker job recorded for project '${payload.project_id}' in this session`,
+        `no run recorded for project '${payload.project_id}'`,
       );
     }
-    return (await ctx.call("run_cancel", { job_id: job.job_id })) === true;
+    if (!view.run.worker_job_id) {
+      throw notFound(
+        "该项目当前没有可取消的研究运行。",
+        `run '${view.run.id}' has no bound worker job`,
+      );
+    }
+    return (await ctx.call("run_cancel", { job_id: view.run.worker_job_id })) === true;
   },
 
   "task.list": async (ctx, payload) => {
@@ -1297,37 +1188,21 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
     return toCoverageReport(report);
   },
   "gap.list": async (ctx, payload) => {
-    // The Rust coverage report already computes the gap rows; this
-    // session's approve/dismiss outcomes are merged on top because no
-    // committed read command exposes the persisted gap_decisions (the merge
-    // mirrors the core's gap_report, src-tauri/src/projections.rs).
-    const report = (await ctx.call("coverage_get", {
+    // The decision-merged report is a persisted read (gap_report_get,
+    // ADR-020 batch 3): approve/dismiss outcomes survive restarts with no
+    // session bridge.
+    const view = (await ctx.call("gap_report_get", {
       project_id: payload.project_id,
-    })) as RustCoverageReportWire;
-    const decisions = ctx.sessionGapDecisions.get(payload.project_id);
-    const gaps = report.gaps
-      .filter((gap) => decisions?.get(gap.dimension)?.status !== "dismissed")
-      .map((gap) => {
-        const decision = decisions?.get(gap.dimension);
-        const base = toResearchGap(gap, report.project_id);
-        return decision?.status === "approved"
-          ? { ...base, proposal_status: "approved" as const, created_task_id: decision.createdTaskId }
-          : base;
-      });
-    return {
-      project_id: report.project_id,
-      gaps,
-      computed_at: epochMsToIso(report.computed_at),
-    } satisfies GapReport;
+    })) as GapReportViewWire;
+    return toGapReport(view);
   },
   "gap.approveProposal": async (ctx, payload) => {
     // Creates the PENDING follow-up task (idempotent) and returns the
-    // decision-merged report; the outcome is remembered for gap.list.
+    // decision-merged report.
     const view = (await ctx.call("gap_approve_proposal", {
       project_id: payload.project_id,
       gap_id: payload.gap_id,
     })) as GapReportViewWire;
-    rememberGapDecision(ctx, payload.project_id, payload.gap_id, view, "approved");
     return toGapReport(view);
   },
   "gap.dismissProposal": async (ctx, payload) => {
@@ -1336,7 +1211,6 @@ const adapters: { [K in CommandName]: CommandAdapter<K> } = {
       project_id: payload.project_id,
       gap_id: payload.gap_id,
     })) as GapReportViewWire;
-    rememberGapDecision(ctx, payload.project_id, payload.gap_id, view, "dismissed");
     return toGapReport(view);
   },
   "timeline.get": async (ctx, payload) => {
@@ -1441,12 +1315,8 @@ export function createTauriTransport(options: TauriTransportOptions = {}): Trans
       "createTauriTransport: window.__TAURI__.core.invoke is unavailable; outside the desktop window the mock transport is the fallback.",
     );
   }
-  // One registry per transport instance: the app uses a single transport
-  // singleton (transportProvider), so run.start → run.get/run.cancel and the
-  // batch-2 plan-view/gap-decision bridges share it for the whole session.
-  const sessionJobs = new Map<string, SessionJob>();
-  const sessionPlans = new Map<string, PlanViewWire>();
-  const sessionGapDecisions = new Map<string, Map<string, SessionGapDecision>>();
+  // One registry per transport instance: every project-scoped read now goes
+  // through persisted Rust reads (ADR-024), so no session maps remain.
   return {
     async invoke<K extends CommandName>(
       command: K,
@@ -1456,7 +1326,7 @@ export function createTauriTransport(options: TauriTransportOptions = {}): Trans
       if (invokeOptions?.signal?.aborted) {
         throw new DOMException("The request was aborted", "AbortError");
       }
-      const ctx = makeContext(invoke, sessionJobs, sessionPlans, sessionGapDecisions, invokeOptions?.signal);
+      const ctx = makeContext(invoke, invokeOptions?.signal);
       let candidate: unknown;
       try {
         candidate = await adapters[command](ctx, payload);

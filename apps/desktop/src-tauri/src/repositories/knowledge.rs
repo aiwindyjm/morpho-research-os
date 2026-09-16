@@ -37,6 +37,9 @@ pub const CONFIDENCE_STATES: [&str; 6] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewKnowledgeNode {
+    /// Supply an explicit id to keep an external identity stable across
+    /// ingests (worker node ids, ADR-024); `None` generates a fresh UUIDv7.
+    pub id: Option<String>,
     pub project_id: String,
     pub node_type: String,
     pub title: String,
@@ -126,7 +129,7 @@ impl KnowledgeNodes {
 
         let now = now_unix_ms();
         let record = KnowledgeNodeRecord {
-            id: new_id(),
+            id: new.id.clone().unwrap_or_else(new_id),
             project_id: new.project_id.clone(),
             node_type: new.node_type.clone(),
             title: new.title.clone(),
@@ -306,6 +309,7 @@ mod tests {
 
     fn node(project_id: &str, slug: &str) -> NewKnowledgeNode {
         NewKnowledgeNode {
+            id: None,
             project_id: project_id.into(),
             node_type: "Concept".into(),
             title: "Transformer".into(),

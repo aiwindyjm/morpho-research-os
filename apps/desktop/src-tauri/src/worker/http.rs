@@ -778,13 +778,18 @@ impl WorkerTransport for HttpWorkerTransport {
 
     fn submit_job(&mut self, request: &JobRequest) -> Result<JobAck, CoreError> {
         // Exact wire envelope the Python worker validates (unknown fields
-        // are rejected): params travel as the job `config`.
-        let body = json!({
+        // are rejected): params travel as the job `config`; the approved
+        // plan member (ADR-024) is included only when present so older
+        // workers keep accepting self-planned jobs.
+        let mut body = json!({
             "schema_version": WIRE_SCHEMA_VERSION,
             "kind": request.kind,
             "config": request.params,
             "approve_plan": request.approve_plan,
         });
+        if let Some(plan) = &request.plan {
+            body["plan"] = plan.clone();
+        }
         let value = self.request_json("POST", "/jobs", Some(&body))?;
         let wire: JobResponseWire =
             serde_json::from_value(value).map_err(|err| malformed_json("POST /jobs", 200, err))?;
@@ -805,6 +810,10 @@ impl WorkerTransport for HttpWorkerTransport {
 
     fn poll_events(&mut self, job_id: &str, cursor: u64) -> Result<Vec<WorkerEvent>, CoreError> {
         self.request_event_stream(job_id, cursor)
+    }
+
+    fn fetch_job_results(&mut self, job_id: &str) -> Result<Value, CoreError> {
+        self.request_json("GET", &format!("/jobs/{job_id}/results"), None)
     }
 
     fn shutdown(&mut self) -> Result<(), CoreError> {
@@ -1313,6 +1322,7 @@ mod tests {
             kind: "research_run".into(),
             params: json!({"domain": "AI", "topic": "LLM scaling", "depth": 3}),
             approve_plan: true,
+            plan: None,
         };
         let ack = transport.submit_job(&request).unwrap();
         assert!(ack.accepted);
@@ -1550,6 +1560,7 @@ mod tests {
             kind: "research_run".into(),
             params: json!({"domain": "AI", "topic": "scaling"}),
             approve_plan: true,
+            plan: None,
         };
         supervisor.submit_job(&request).unwrap();
         // Tracking follows the worker-acknowledged id, not the core-side one.
@@ -1560,11 +1571,22 @@ mod tests {
         assert_eq!(forwarded[0].run_id, "run-9");
         assert_eq!(forwarded[0].task_id.as_deref(), Some("task-9"));
         assert_eq!(forwarded[0].sequence, 1);
-        // The same frames replayed on the next poll are dropped by cursor.
+        // Acknowledgment gates consumption (audit F5): an unacknowledged
+        // poll re-fetches; after acknowledging, the replay is dropped.
+        let replayed = supervisor.poll_events("wire-job-1").unwrap();
+        assert_eq!(replayed.len(), 4, "unacknowledged events re-deliver");
+        supervisor.acknowledge_events("wire-job-1", 4);
         let second = supervisor.poll_events("wire-job-1").unwrap();
         assert!(second.is_empty(), "duplicate sequences must not forward");
 
+        // Cancel keeps the job pollable until the pump retires it.
         supervisor.cancel_job("wire-job-1").unwrap();
+        assert_eq!(
+            supervisor.active_job_ids(),
+            vec!["wire-job-1".to_string()],
+            "cancelling jobs stay pollable for their terminal event"
+        );
+        supervisor.retire_job("wire-job-1");
         assert!(supervisor.active_job_ids().is_empty());
         server.drop_server();
     }
@@ -1594,6 +1616,7 @@ mod tests {
                 kind: "research_run".into(),
                 params: json!({}),
                 approve_plan: true,
+                plan: None,
             })
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::WorkerNotAvailable);

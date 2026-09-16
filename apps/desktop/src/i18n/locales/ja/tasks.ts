@@ -44,6 +44,11 @@ const tasks = {
     retry: "再試行",
     confirmContinue: "確認して続行",
     cancel: "キャンセル",
+    unsupportedTitle: "V0.1 では未対応",
+    unsupportedHint: "タスク単位の制御（一時停止／再開／再試行／キャンセル）はタスク単位のディスパッチが必要で、今後のバージョンで提供されます。現時点では「実行をキャンセル」で実行全体を停止できます。",
+  },
+  runStartFailedToast: {
+    title: "研究実行を開始できませんでした",
   },
 };
 

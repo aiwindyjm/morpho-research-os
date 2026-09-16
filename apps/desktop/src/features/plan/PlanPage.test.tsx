@@ -83,9 +83,16 @@ describe("PlanPage prototype alignment", () => {
 });
 
 describe("PlanPage plan-review interactions (desktop-wired commands)", () => {
-  it("rejects the draft plan, then regenerates a fresh editable draft", async () => {
-    const user = userEvent.setup();
-    renderDraftPage();
+  // Explicit timeout: this test chains three mutation-driven refreshes, and
+  // under parallel full-suite load the mock round-trips alone can exceed
+  // vitest's 5s default (observed 5-12s in the 2026-09-16 full runs while
+  // the same test passes in ~1s standalone). The assertions themselves are
+  // unchanged.
+  it(
+    "rejects the draft plan, then regenerates a fresh editable draft",
+    async () => {
+      const user = userEvent.setup();
+      renderDraftPage();
 
     // Draft state: the review trio plus per-task edit actions.
     expect(await screen.findByRole("button", { name: "拒绝计划" })).toBeInTheDocument();
@@ -95,20 +102,31 @@ describe("PlanPage plan-review interactions (desktop-wired commands)", () => {
     await user.click(screen.getByRole("button", { name: "拒绝计划" }));
 
     // Rejected: editing closes and the only action is a fresh generation.
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "重新生成计划" })).toBeInTheDocument();
-    });
+    // Mutation-driven refresh: under parallel full-suite load the mock
+    // round-trip + refetch can exceed waitFor's 1s default (observed ~3s in
+    // the 2026-09-16 full run), so the waits are explicitly generous.
+    await waitFor(
+      () => {
+        expect(screen.getByRole("button", { name: "重新生成计划" })).toBeInTheDocument();
+      },
+      { timeout: 8_000 },
+    );
     expect(screen.queryByRole("button", { name: "拒绝计划" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "编辑任务" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "重新生成计划" }));
 
     // The regenerated plan is a draft again with editable tasks.
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "重新生成" })).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByRole("button", { name: "重新生成" })).toBeInTheDocument();
+      },
+      { timeout: 8_000 },
+    );
     expect(screen.getAllByRole("button", { name: "编辑任务" }).length).toBeGreaterThan(0);
-  });
+  },
+  20_000,
+  );
 
   it("edits a draft task's title and description through the dialog", async () => {
     const user = userEvent.setup();

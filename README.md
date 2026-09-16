@@ -14,7 +14,7 @@ Morpho is a local-first, AI-driven research workspace that turns a research ques
 
 ## Status
 
-🚧 Early development — Architecture Phase. Current: public contracts and governance. Next: repository foundation and research planner.
+🚧 Early development — engineering alpha. The offline V0.1 research loop works end to end (plan approval → execution → persisted knowledge → Vault export → restart readback, verified by an offline real-process smoke); real providers, per-task dispatch, and packaging remain open — see CHANGELOG and docs/testing/REAL_WORKER_SMOKE.md.
 
 ## Highlights
 
