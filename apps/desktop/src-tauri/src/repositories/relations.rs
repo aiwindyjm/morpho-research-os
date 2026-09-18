@@ -63,6 +63,13 @@ impl Relations {
         }
         if let Some(id) = &new.id {
             if let Some(existing) = Self::get(tx, id)? {
+                if existing.project_id != new.project_id {
+                    return Err(CoreError::database(format!(
+                        "relation '{id}' belongs to project '{}' and cannot be reused by project \
+                         '{}'",
+                        existing.project_id, new.project_id
+                    )));
+                }
                 return Ok((existing, false));
             }
         }

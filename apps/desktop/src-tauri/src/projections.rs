@@ -187,6 +187,10 @@ pub struct EvidenceView {
     pub source_id: String,
     pub quote: String,
     pub locator: LocatorView,
+    /// Lossless structured locator JSON (migration 006; additive IPC field,
+    /// empty on rows written before it existed).
+    #[serde(default)]
+    pub locator_detail: String,
     pub retrieved_at: String,
     pub direction: String,
     pub extraction_method: String,
@@ -212,6 +216,7 @@ pub fn evidence_views(claim_id: &str, records: &[EvidenceRecord]) -> Vec<Evidenc
             source_id: record.source_id.clone(),
             quote: record.quote.clone(),
             locator: locator_view(record),
+            locator_detail: record.locator_detail.clone(),
             retrieved_at: crate::vault::format_rfc3339_utc(record.retrieved_at),
             direction: record.direction.clone(),
             extraction_method: "llm_extraction".into(),
@@ -614,6 +619,7 @@ mod tests {
                     scope: String::new(),
                     confidence: "medium".into(),
                     provenance: "run-1".into(),
+                    status: "draft".into(),
                 },
             )
             .map(|(record, _)| record.id)
@@ -629,6 +635,8 @@ mod tests {
                     quote: "uses attention".into(),
                     value: String::new(),
                     locator: "p. 2".into(),
+                    locator_detail: String::new(),
+                    retrieved_at: 1,
                     direction: "support".into(),
                 },
             )

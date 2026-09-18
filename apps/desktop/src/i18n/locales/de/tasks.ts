@@ -13,6 +13,8 @@ const tasks = {
     detail: "Aufgaben werden in Abhängigkeitsreihenfolge ausgeführt.",
   },
   runBadge: "Laufstatus: {{state}}",
+  runDeliveryPending: "Abgeschlossen; Ergebnisse werden übertragen",
+  runDeliveryFailed: "Abgeschlossen; Ergebnisse nicht übertragen",
   empty: {
     title: "Noch keine Aufgaben",
     approved: "Der Plan ist genehmigt — oben rechts auf „Lauf fortsetzen“ klicken, um Aufgaben zu erstellen.",

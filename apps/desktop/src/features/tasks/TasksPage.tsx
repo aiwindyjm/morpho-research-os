@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Badge, Button, Card, Chip, Popover } from "@morpho/ui";
 import { PageShell } from "@/components/PageShell";
 import { PageStates } from "@/components/PageStates";
-import type { ResearchTask, TaskState } from "@/types/domain";
+import type { ResearchRun, ResearchTask, TaskState } from "@/types/domain";
 import { usePlan, useRunActions, useRun, useTasks } from "@/services/queries";
 import { useToast } from "@morpho/ui";
 
@@ -189,9 +189,7 @@ export function TasksPage({ projectId }: { projectId: string }) {
             {t("continueRun")}
           </Button>
         ) : run ? (
-          <Badge variant={run.state === "COMPLETED" ? "success" : "accent"}>
-            {t("runBadge", { state: run.state })}
-          </Badge>
+          <RunStateBadge run={run} />
         ) : null
       }
     >
@@ -318,5 +316,25 @@ export function TasksPage({ projectId }: { projectId: string }) {
         </Card>
       </PageStates>
     </PageShell>
+  );
+}/** The run badge never claims full completion before the results are
+ * committed (migration 006): a COMPLETED execution with pending or failed
+ * result delivery renders as delivering/undelivered instead. */
+function RunStateBadge({ run }: { run: ResearchRun }) {
+  const { t } = useTranslation("tasks");
+  const undelivered =
+    run.state === "COMPLETED" &&
+    (run.delivery_status === "pending" || run.delivery_status === "failed");
+  if (!undelivered) {
+    return (
+      <Badge variant={run.state === "COMPLETED" ? "success" : "accent"}>
+        {t("runBadge", { state: run.state })}
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="accent">
+      {t(run.delivery_status === "failed" ? "runDeliveryFailed" : "runDeliveryPending")}
+    </Badge>
   );
 }

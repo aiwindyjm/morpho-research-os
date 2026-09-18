@@ -523,6 +523,7 @@ interface RunLatestViewWire {
     project_id: string;
     plan_id: string;
     status: string;
+    delivery_status?: "pending" | "delivered" | "failed" | "unknown";
     worker_job_id: string | null;
     started_at: number | null;
     finished_at: number | null;
@@ -532,6 +533,7 @@ interface RunLatestViewWire {
   task_rollup: {
     run_id: string;
     run_status: string;
+    delivery_status?: "pending" | "delivered" | "failed" | "unknown";
     task_counts: Record<string, number>;
     tasks: Array<{ task_id: string; status: string }>;
   };
@@ -923,6 +925,7 @@ function runFromLatestView(view: RunLatestViewWire): ResearchRun {
     // The persisted rollup is the authority (PRD §7: SQLite is
     // authoritative).
     state: runStateFrom(rollup?.run_status ?? run.status),
+    delivery_status: rollup?.delivery_status ?? run.delivery_status,
     config_snapshot: config ? toResearchConfig(config) : emptyConfigSnapshot(),
     plan_snapshot_title: planTitle,
     started_at: run.started_at ? epochMsToIso(run.started_at) : epochMsToIso(run.created_at),

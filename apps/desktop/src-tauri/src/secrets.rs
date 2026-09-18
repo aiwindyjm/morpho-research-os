@@ -484,6 +484,100 @@ impl AppConfig {
     }
 }
 
+/// Builds the worker process's provider-configuration environment (review F)
+/// from the desktop's provider list: the documented draft env contract
+/// (`MORPHO_PROVIDER_<NAME>_{KIND,BASE_URL,MODEL,KEY_REF,PROTOCOL,TIMEOUT,
+/// RETRIES}`, `MORPHO_ROLE_<ROLE>`) that `morpho_worker.config.from_env`
+/// parses on the worker side.
+///
+/// API-key VALUES resolve from the secret store here, at spawn time, and
+/// travel ONLY through the child process's environment variables — never
+/// config files, job payloads, logs, or IPC. A configured provider whose key
+/// is missing is a structured non-retryable auth error: the worker must
+/// never silently fall back to offline mocks (audit F3).
+///
+/// An empty provider list yields an empty environment: the worker's own
+/// safe default (fully unconfigured ⇒ offline mock) applies, which is the
+/// correct behavior for a fresh install with no providers set up.
+pub fn worker_provider_env(
+    config: &AppConfig,
+    store: &dyn SecretStore,
+) -> Result<Vec<(String, String)>, CoreError> {
+    // Role routing (round-2 review P1): with EXACTLY ONE provider the
+    // routing is unambiguous — every worker LLM role (planner, validation,
+    // extraction, summarization, classification) routes to it explicitly,
+    // so the worker never silently falls back to its built-in defaults.
+    // With more than one provider the desktop config cannot yet express
+    // intent (the role/kind/protocol model is pending ADR-025), and
+    // silently picking the first provider is forbidden — the handoff
+    // refuses loudly instead.
+    if config.providers.len() > 1 {
+        let names = config
+            .providers
+            .iter()
+            .map(|provider| provider.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(CoreError::new(
+            ErrorCode::ProviderAuthFailed,
+            "配置了多个 Provider，但桌面端尚未支持按角色路由（ADR-025 待批）。请只保留一个              Provider，或等待角色路由配置获批。",
+            format!(
+                "multiple providers configured ({names}) without role routing — the desktop                  provider model has no kind/protocol/role fields yet (ADR-025, Proposed);                  refusing to guess. Configure exactly one provider or ratify ADR-025"
+            ),
+            false,
+        ));
+    }
+    let mut env = Vec::new();
+    for provider in &config.providers {
+        let segment = provider.name.replace('-', "_").to_uppercase();
+        let value_var = format!("MORPHO_KEY_{segment}");
+        let key_ref = format!("env:{value_var}");
+        env.push((format!("MORPHO_PROVIDER_{segment}_KIND"), "llm".to_string()));
+        env.push((
+            format!("MORPHO_PROVIDER_{segment}_BASE_URL"),
+            provider.base_url.clone(),
+        ));
+        env.push((
+            format!("MORPHO_PROVIDER_{segment}_MODEL"),
+            provider.model.clone(),
+        ));
+        env.push((format!("MORPHO_PROVIDER_{segment}_KEY_REF"), key_ref));
+        env.push((
+            format!("MORPHO_PROVIDER_{segment}_PROTOCOL"),
+            "openai".to_string(),
+        ));
+        env.push((
+            format!("MORPHO_PROVIDER_{segment}_TIMEOUT"),
+            (provider.timeout_ms / 1000).max(1).to_string(),
+        ));
+        env.push((
+            format!("MORPHO_PROVIDER_{segment}_RETRIES"),
+            provider.max_retries.to_string(),
+        ));
+        // Resolve the key value for the child process environment. Failure
+        // surfaces as the structured auth error from the store — never a
+        // silent mock fallback.
+        let value = provider.resolve_api_key(store)?;
+        env.push((value_var, value));
+    }
+    if let Some(only) = config.providers.first() {
+        for role in [
+            "PLANNER",
+            "VALIDATION",
+            "EXTRACTION",
+            "SUMMARIZATION",
+            "CLASSIFICATION",
+        ] {
+            env.push((format!("MORPHO_ROLE_{role}"), only.name.clone()));
+        }
+        // The EMBEDDING role deliberately stays on the worker's own default
+        // (the reserved mock id): the desktop provider model is LLM-only in
+        // V0.1, and routing an embedding role onto a chat endpoint would
+        // misexecute. ADR-025 proposes the explicit kind model.
+    }
+    Ok(env)
+}
+
 /// Loads and saves [`AppConfig`] as a single file using atomic replace.
 pub struct FileConfigStore {
     path: PathBuf,
@@ -843,7 +937,184 @@ mod tests {
             store.get(&reference).unwrap().as_deref(),
             Some(value.as_str())
         );
-        store.delete(&reference).unwrap();
+        let _ = store.delete(&reference);
         assert_eq!(store.get(&reference).unwrap(), None);
+    }
+
+    // ------------------------------------------------------------------
+    // Worker provider-environment handoff (review F)
+    // ------------------------------------------------------------------
+
+    fn provider(name: &str, key_name: &str) -> ProviderConfig {
+        ProviderConfig {
+            name: name.into(),
+            base_url: "https://api.example.test/v1".into(),
+            model: "model-test".into(),
+            api_key_ref: SecretRef::new(name, key_name),
+            timeout_ms: 45_000,
+            max_retries: 2,
+        }
+    }
+
+    /// The desktop Settings/keychain path: provider configuration AND the
+    /// resolved key value reach the worker through its documented env
+    /// contract; a configured worker is never flagged offline.
+    #[test]
+    fn worker_env_carries_provider_config_and_resolved_keys() {
+        let store = FakeKeychain::new();
+        store
+            .set(&SecretRef::new("glm", "api_key"), &test_value())
+            .unwrap();
+        let config = AppConfig {
+            providers: vec![provider("glm", "api_key")],
+            ..Default::default()
+        };
+        let env = worker_provider_env(&config, &store).unwrap();
+        let get = |name: &str| {
+            env.iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.clone())
+                .unwrap_or_else(|| panic!("missing env var {name}"))
+        };
+        assert_eq!(get("MORPHO_PROVIDER_GLM_KIND"), "llm");
+        assert_eq!(
+            get("MORPHO_PROVIDER_GLM_BASE_URL"),
+            "https://api.example.test/v1"
+        );
+        assert_eq!(get("MORPHO_PROVIDER_GLM_MODEL"), "model-test");
+        assert_eq!(get("MORPHO_PROVIDER_GLM_KEY_REF"), "env:MORPHO_KEY_GLM");
+        assert_eq!(get("MORPHO_PROVIDER_GLM_PROTOCOL"), "openai");
+        assert_eq!(get("MORPHO_PROVIDER_GLM_TIMEOUT"), "45");
+        assert_eq!(get("MORPHO_PROVIDER_GLM_RETRIES"), "2");
+        assert_eq!(get("MORPHO_KEY_GLM"), test_value());
+        assert!(
+            !env.iter().any(|(key, _)| key == "MORPHO_WORKER_OFFLINE"),
+            "a configured provider must never steer the worker into mock mode"
+        );
+        // Hyphenated ids map onto the underscore env spelling the worker
+        // parses back into the hyphenated provider id.
+        let store2 = FakeKeychain::new();
+        store2
+            .set(&SecretRef::new("my-openai", "api_key"), &test_value())
+            .unwrap();
+        let config2 = AppConfig {
+            providers: vec![provider("my-openai", "api_key")],
+            ..Default::default()
+        };
+        let env2 = worker_provider_env(&config2, &store2).unwrap();
+        assert!(env2
+            .iter()
+            .any(|(key, _)| key == "MORPHO_PROVIDER_MY_OPENAI_BASE_URL"));
+    }
+
+    /// No providers configured ⇒ empty handoff: the worker's own safe
+    /// offline default applies (fresh install behavior).
+    #[test]
+    fn worker_env_without_providers_stays_minimal() {
+        let env = worker_provider_env(&AppConfig::default(), &FakeKeychain::new()).unwrap();
+        assert!(env.is_empty());
+    }
+
+    /// A configured provider with a missing key is a structured auth error,
+    /// not a silent mock fallback.
+    #[test]
+    fn worker_env_with_a_missing_key_is_a_structured_auth_error() {
+        let store = FakeKeychain::new();
+        let config = AppConfig {
+            providers: vec![provider("glm", "api_key")],
+            ..Default::default()
+        };
+        let err = worker_provider_env(&config, &store).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ProviderAuthFailed);
+        assert!(!err.retryable);
+        assert!(err.developer_detail.contains("secret not found"));
+    }
+
+    /// A failing keychain (access denied) surfaces as the auth error — the
+    /// handoff never swallows backend failures.
+    #[test]
+    fn worker_env_surfaces_keychain_failures() {
+        let store = FakeKeychain::new();
+        store
+            .set(&SecretRef::new("glm", "api_key"), &test_value())
+            .unwrap();
+        store.set_failure(Some(FakeKeychainFailure::AccessDenied));
+        let config = AppConfig {
+            providers: vec![provider("glm", "api_key")],
+            ..Default::default()
+        };
+        let err = worker_provider_env(&config, &store).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ProviderAuthFailed);
+    }
+
+    /// Round-2 probe: with exactly ONE provider configured, the handoff
+    /// routes every worker LLM role to it EXPLICITLY — the worker never
+    /// silently falls back to its built-in defaults (glm/ollama-local).
+    #[test]
+    fn single_provider_handoff_routes_every_llm_role() {
+        let store = FakeKeychain::new();
+        store
+            .set(&SecretRef::new("custom", "api_key"), &test_value())
+            .unwrap();
+        let config = AppConfig {
+            providers: vec![ProviderConfig {
+                name: "custom".into(),
+                base_url: "https://provider.test/v1".into(),
+                model: "model-x".into(),
+                api_key_ref: SecretRef::new("custom", "api_key"),
+                timeout_ms: 30_000,
+                max_retries: 1,
+            }],
+            ..Default::default()
+        };
+        let env = worker_provider_env(&config, &store).unwrap();
+        for role in [
+            "PLANNER",
+            "VALIDATION",
+            "EXTRACTION",
+            "SUMMARIZATION",
+            "CLASSIFICATION",
+        ] {
+            assert!(
+                env.iter().any(
+                    |(name, value)| name == &format!("MORPHO_ROLE_{role}") && value == "custom"
+                ),
+                "desktop handoff does not route {role} to the configured provider"
+            );
+        }
+        // The embedding role is NOT routed: the desktop provider model is
+        // LLM-only in V0.1, and routing an embedding role onto a chat
+        // endpoint would misexecute (ADR-025 proposes the kind model).
+        assert!(
+            !env.iter().any(|(name, _)| name == "MORPHO_ROLE_EMBEDDING"),
+            "the embedding role stays on the worker's own default"
+        );
+    }
+
+    /// Multiple providers without role routing refuse loudly (round-2
+    /// review P1): silently picking the first provider is forbidden; the
+    /// role/kind/protocol model is pending ADR-025.
+    #[test]
+    fn multiple_providers_without_role_routing_refuse_loudly() {
+        let store = FakeKeychain::new();
+        for name in ["alpha", "beta"] {
+            store
+                .set(&SecretRef::new(name, "api_key"), &test_value())
+                .unwrap();
+        }
+        let config = AppConfig {
+            providers: vec![provider("alpha", "api_key"), provider("beta", "api_key")],
+            ..Default::default()
+        };
+        let err = worker_provider_env(&config, &store).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ProviderAuthFailed);
+        assert!(
+            err.developer_detail.contains("without role routing"),
+            "{err:?}"
+        );
+        assert!(
+            err.developer_detail.contains("ADR-025"),
+            "the refusal names the pending decision: {err:?}"
+        );
     }
 }

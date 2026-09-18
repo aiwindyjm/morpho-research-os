@@ -348,6 +348,45 @@ impl OrchestratorService {
     ) -> Result<ApplyOutcome, CoreError> {
         with_write_tx(conn, |tx| apply_in_tx(tx, event))
     }
+
+    /// The same projection inside a CALLER-OWNED transaction: the event pump
+    /// composes event persistence and projection into one atomic unit
+    /// (review R5) — a failed projection rolls the event back with it, so
+    /// the persisted log never claims a projection that did not land.
+    pub fn apply_event_tx(
+        tx: &Transaction<'_>,
+        event: &CanonicalEvent,
+    ) -> Result<ApplyOutcome, CoreError> {
+        apply_in_tx(tx, event)
+    }
+
+    /// Commits one CORE-originated event atomically (round-2 review P1):
+    /// the log row and its projection land in ONE write transaction or not
+    /// at all. This is the single path every core-originated state event
+    /// must take (`run_cancel`'s worker-gone convergence, startup recovery)
+    /// — the pump's worker-event path enforces the same atomicity inline.
+    /// Errors propagate: callers must never acknowledge or report success
+    /// on top of a failed projection.
+    pub fn commit_local_event(
+        conn: &mut Connection,
+        event: &ResearchEvent,
+    ) -> Result<(), CoreError> {
+        with_write_tx(conn, |tx| {
+            crate::repositories::events::Events::append(
+                tx,
+                &crate::repositories::events::NewEvent {
+                    run_id: event.run_id.clone(),
+                    task_id: event.task_id.clone(),
+                    event_type: event.event_type.clone(),
+                    payload: serde_json::to_string(&event.payload).map_err(|err| {
+                        CoreError::database(format!("serialize event payload failed: {err}"))
+                    })?,
+                },
+            )?;
+            apply_in_tx(tx, &CanonicalEvent::from(event))?;
+            Ok(())
+        })
+    }
 }
 
 fn apply_in_tx(tx: &Transaction<'_>, event: &CanonicalEvent) -> Result<ApplyOutcome, CoreError> {

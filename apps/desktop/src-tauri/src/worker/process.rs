@@ -73,10 +73,25 @@ impl std::fmt::Debug for WorkerProcess {
 
 impl WorkerProcess {
     /// Launches the worker with the env-var contract above and waits until
-    /// it accepts loopback TCP connections. On any failure the child is
+    /// it accepts loopback TCP connections. `extra_env` carries additional
+    /// `MORPHO_*` variables (review F: the desktop's provider configuration
+    /// and resolved key values, resolved fresh at spawn time); names outside
+    /// the `MORPHO_` namespace are rejected so the transport can never
+    /// smuggle arbitrary process environment. On any failure the child is
     /// killed and a retryable `WORKER_NOT_AVAILABLE` error is returned (the
     /// supervisor's restart policy decides what happens next).
-    pub fn start(config: &WorkerConfig, token: &str) -> Result<Self, CoreError> {
+    pub fn start(
+        config: &WorkerConfig,
+        token: &str,
+        extra_env: &[(String, String)],
+    ) -> Result<Self, CoreError> {
+        for (name, _) in extra_env {
+            if !name.starts_with("MORPHO_") {
+                return Err(spawn_error(format!(
+                    "refusing to pass non-morpho environment variable '{name}' to the worker"
+                )));
+            }
+        }
         let port = pick_free_port()?;
         let mut command = Command::new(&config.python_executable);
         command
@@ -84,6 +99,7 @@ impl WorkerProcess {
             .env(WORKER_HOST_ENV, "127.0.0.1")
             .env(WORKER_PORT_ENV, port.to_string())
             .env(WORKER_TOKEN_ENV, token)
+            .envs(extra_env.iter().cloned())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
         // Never flash a console window next to the app window on Windows.
@@ -205,10 +221,26 @@ mod tests {
         // Hermetic failure path: no real python is ever spawned in tests.
         let mut config = WorkerConfig::default();
         config.python_executable = "morpho-definitely-missing-binary-42".into();
-        let err = WorkerProcess::start(&config, "token-not-a-secret").unwrap_err();
+        let err = WorkerProcess::start(&config, "token-not-a-secret", &[]).unwrap_err();
         assert_eq!(err.code, ErrorCode::WorkerNotAvailable);
         assert!(err.retryable, "launch failures are transient");
         assert!(err.developer_detail.contains("spawning the worker failed"));
+    }
+
+    #[test]
+    fn non_morpho_extra_env_is_rejected_before_spawning() {
+        let mut config = WorkerConfig::default();
+        config.python_executable = "morpho-definitely-missing-binary-42".into();
+        let err = WorkerProcess::start(
+            &config,
+            "token-not-a-secret",
+            &[("PATH_OVERRIDE".to_string(), "x".to_string())],
+        )
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::WorkerNotAvailable);
+        assert!(err
+            .developer_detail
+            .contains("non-morpho environment variable"));
     }
 
     #[test]

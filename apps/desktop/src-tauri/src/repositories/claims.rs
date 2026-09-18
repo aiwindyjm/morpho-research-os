@@ -12,6 +12,10 @@ use crate::repositories::knowledge::CONFIDENCE_STATES;
 use rusqlite::{params, Connection, Row, Transaction};
 use serde::{Deserialize, Serialize};
 
+/// Claim review-lifecycle statuses (ADR-016 / claim.v1.1): the worker's
+/// `ClaimStatus` vocabulary, which the core persists verbatim.
+pub const CLAIM_STATUS_STATES: [&str; 4] = ["draft", "needs_review", "confirmed", "superseded"];
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewClaim {
     /// Supply an explicit id to make replays idempotent by primary key;
@@ -22,6 +26,10 @@ pub struct NewClaim {
     pub predicate: String,
     pub object_value: String,
     pub scope: String,
+    /// Review lifecycle on insert (ADR-016): the worker may already have
+    /// validated a claim to `needs_review` in its FIRST record — the core
+    /// must not flatten that back to `draft`.
+    pub status: String,
     pub confidence: String,
     pub provenance: String,
 }
@@ -48,11 +56,27 @@ const COLS: &str =
      created_at, updated_at";
 
 impl Claims {
+    /// Validates a claim status against the review-lifecycle vocabulary.
+    pub fn validate_status(status: &str) -> Result<(), CoreError> {
+        if CLAIM_STATUS_STATES.contains(&status) {
+            Ok(())
+        } else {
+            Err(CoreError::database(format!(
+                "unknown claim status '{status}'"
+            )))
+        }
+    }
+
     /// Inserts a claim, idempotent by primary key: when `NewClaim::id` names
-    /// an existing row the existing record is returned unchanged (`false`)
-    /// instead of failing or duplicating. Returns `true` for a newly created
-    /// row. Confidence is validated against the schema's CHECK list first.
+    /// an existing row **of the same project** the existing record is
+    /// returned unchanged (`false`) instead of failing or duplicating. An id
+    /// that exists under a different project is a structured error — a
+    /// worker id is only unique inside its project (review R1), so ingestion
+    /// mints project-scoped ids and this check is the repository-side guard.
+    /// Returns `true` for a newly created row. Status and confidence are
+    /// validated against their vocabularies before any write.
     pub fn insert(tx: &Transaction<'_>, new: &NewClaim) -> Result<(ClaimRecord, bool), CoreError> {
+        Self::validate_status(&new.status)?;
         if !CONFIDENCE_STATES.contains(&new.confidence.as_str()) {
             return Err(CoreError::database(format!(
                 "unknown confidence '{}'",
@@ -61,6 +85,12 @@ impl Claims {
         }
         if let Some(id) = &new.id {
             if let Some(existing) = Self::get(tx, id)? {
+                if existing.project_id != new.project_id {
+                    return Err(CoreError::database(format!(
+                        "claim '{id}' belongs to project '{}' and cannot be reused by project '{}'",
+                        existing.project_id, new.project_id
+                    )));
+                }
                 return Ok((existing, false));
             }
         }
@@ -72,7 +102,7 @@ impl Claims {
             predicate: new.predicate.clone(),
             object_value: new.object_value.clone(),
             scope: new.scope.clone(),
-            status: "draft".into(),
+            status: new.status.clone(),
             confidence: new.confidence.clone(),
             provenance: new.provenance.clone(),
             created_at: now,
@@ -101,18 +131,44 @@ impl Claims {
 
     /// Updates a claim's review lifecycle status and confidence state
     /// (ADR-016: status is the review lifecycle, confidence the evidence
-    /// strength). Used by result ingestion when a later validated record
-    /// supersedes the inserted draft state.
+    /// strength) after verifying the claim belongs to `project_id` — a
+    /// cross-project batch must never move another project's claim (review
+    /// R1). Used by result ingestion when a later validated record supersedes
+    /// the stored state.
     pub fn update_review_state(
         tx: &Transaction<'_>,
         id: &str,
+        project_id: &str,
         status: &str,
         confidence: &str,
     ) -> Result<(), CoreError> {
+        Self::validate_status(status)?;
         if !CONFIDENCE_STATES.contains(&confidence) {
             return Err(CoreError::database(format!(
                 "unknown confidence '{confidence}'"
             )));
+        }
+        let stored_project: Option<String> = tx
+            .query_row(
+                "SELECT project_id FROM claims WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .map(Some)
+            .or_else(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })
+            .map_err(CoreError::from)?;
+        match stored_project {
+            Some(owner) if owner == project_id => {}
+            Some(owner) => {
+                return Err(CoreError::database(format!(
+                    "claim '{id}' belongs to project '{owner}' and cannot be updated by project \
+                     '{project_id}'"
+                )))
+            }
+            None => return Err(CoreError::database(format!("claim '{id}' not found"))),
         }
         tx.execute(
             "UPDATE claims SET status = ?2, confidence = ?3, updated_at = ?4 WHERE id = ?1",
@@ -219,6 +275,7 @@ mod tests {
             predicate: "uses".into(),
             object_value: "attention".into(),
             scope: String::new(),
+            status: "draft".into(),
             confidence: "medium".into(),
             provenance: "run-1/task-2".into(),
         }
@@ -247,6 +304,8 @@ mod tests {
                     quote: "transformers use attention".into(),
                     value: String::new(),
                     locator: "p. 2".into(),
+                    locator_detail: String::new(),
+                    retrieved_at: 1,
                     direction: "support".into(),
                 },
             )
@@ -337,6 +396,89 @@ mod tests {
             err.developer_detail.contains("unknown confidence"),
             "{err:?}"
         );
+    }
+
+    #[test]
+    fn first_insert_keeps_a_validated_review_status() {
+        let mut conn = migrated_memory_db().unwrap();
+        let project_id = project(&mut conn);
+        let mut reviewed = claim(&project_id, "S");
+        reviewed.id = Some("claim-reviewed".into());
+        reviewed.status = "needs_review".into();
+        reviewed.confidence = "conflicting".into();
+
+        let (created, is_new) =
+            with_write_tx(&mut conn, |tx| Claims::insert(tx, &reviewed)).unwrap();
+        assert!(is_new);
+        assert_eq!(created.status, "needs_review");
+        assert_eq!(created.confidence, "conflicting");
+        assert_eq!(
+            Claims::get(&conn, "claim-reviewed")
+                .unwrap()
+                .unwrap()
+                .status,
+            "needs_review",
+            "the FIRST ingestion must not flatten a validated review state to draft (review R7)"
+        );
+    }
+
+    #[test]
+    fn an_id_owned_by_another_project_is_a_structured_error() {
+        let mut conn = migrated_memory_db().unwrap();
+        let p1 = project(&mut conn);
+        let p2 = project(&mut conn);
+        let mut shared = claim(&p1, "S");
+        shared.id = Some("claim-shared".into());
+        with_write_tx(&mut conn, |tx| Claims::insert(tx, &shared)).unwrap();
+
+        let mut foreign = claim(&p2, "S");
+        foreign.id = Some("claim-shared".into());
+        let err =
+            with_write_tx(&mut conn, |tx| Claims::insert(tx, &foreign).map(|_| ())).unwrap_err();
+        assert!(
+            err.developer_detail.contains("cannot be reused by project"),
+            "{err:?}"
+        );
+        // The stored row is untouched.
+        assert_eq!(
+            Claims::get(&conn, "claim-shared")
+                .unwrap()
+                .unwrap()
+                .project_id,
+            p1
+        );
+    }
+
+    #[test]
+    fn review_state_updates_verify_project_ownership() {
+        let mut conn = migrated_memory_db().unwrap();
+        let p1 = project(&mut conn);
+        let p2 = project(&mut conn);
+        let mut owned = claim(&p1, "S");
+        owned.id = Some("claim-owned".into());
+        with_write_tx(&mut conn, |tx| Claims::insert(tx, &owned)).unwrap();
+
+        let err = with_write_tx(&mut conn, |tx| {
+            Claims::update_review_state(tx, "claim-owned", &p2, "confirmed", "high").map(|_| ())
+        })
+        .unwrap_err();
+        assert!(
+            err.developer_detail
+                .contains("cannot be updated by project"),
+            "{err:?}"
+        );
+        assert_eq!(
+            Claims::get(&conn, "claim-owned").unwrap().unwrap().status,
+            "draft",
+            "a foreign project's update changed nothing"
+        );
+
+        // Unknown statuses never reach the UPDATE.
+        let err = with_write_tx(&mut conn, |tx| {
+            Claims::update_review_state(tx, "claim-owned", &p1, "final", "high").map(|_| ())
+        })
+        .unwrap_err();
+        assert!(err.developer_detail.contains("unknown claim status"));
     }
 
     #[test]

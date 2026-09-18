@@ -616,6 +616,7 @@ mod tests {
                     scope: String::new(),
                     confidence: "medium".into(),
                     provenance: "run-1".into(),
+                    status: "draft".into(),
                 },
             )
             .map(|(record, _)| record.id)
@@ -631,6 +632,8 @@ mod tests {
                     quote: "scaling follows a power law".into(),
                     value: String::new(),
                     locator: "p.1".into(),
+                    locator_detail: String::new(),
+                    retrieved_at: 1,
                     direction: "support".into(),
                 },
             )

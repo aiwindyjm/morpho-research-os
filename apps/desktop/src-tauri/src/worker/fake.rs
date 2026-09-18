@@ -32,6 +32,16 @@ pub struct FakeWorkerScript {
     /// Envelope returned by `fetch_job_results` (ADR-024); `None` serves an
     /// empty records list.
     pub job_results: Option<Value>,
+    /// How many `fetch_job_results` calls fail with a retryable transport
+    /// error before results are served (delivery-retry tests).
+    pub fetch_results_failures: u32,
+    /// Cancelling a job this instance never received fails like the real
+    /// worker's 404 (the supervisor's worker-gone convergence path).
+    pub cancel_unknown_jobs_fails: bool,
+    /// A restarted instance forgets the previous instance's jobs, like a
+    /// real worker process would (the supervisor's worker-gone convergence
+    /// path after a core restart).
+    pub forget_jobs_on_restart: bool,
 }
 
 impl Default for FakeWorkerScript {
@@ -45,6 +55,9 @@ impl Default for FakeWorkerScript {
             redeliver_last_event: false,
             events: Vec::new(),
             job_results: None,
+            fetch_results_failures: 0,
+            cancel_unknown_jobs_fails: true,
+            forget_jobs_on_restart: false,
         }
     }
 }
@@ -97,9 +110,12 @@ struct FakeInner {
     alive_instance: Option<u64>,
     received_tokens: Vec<String>,
     submitted_jobs: Vec<String>,
+    /// (job id, instance) pairs: which instance received which job.
+    instance_jobs: Vec<(String, u64)>,
     submitted_requests: Vec<JobRequest>,
     cancelled_jobs: Vec<String>,
     shut_down: bool,
+    fetch_results_failures_served: u32,
 }
 
 /// Test handle to observe and disrupt the fake worker.
@@ -189,6 +205,18 @@ impl FakeWorker {
         }
     }
 
+    /// Whether THIS instance knows a job (a forgetful restarted instance
+    /// only knows its own submissions).
+    fn knows_job(&self, state: &FakeInner, job_id: &str) -> bool {
+        if !self.script.forget_jobs_on_restart {
+            return state.submitted_jobs.iter().any(|id| id == job_id);
+        }
+        state
+            .instance_jobs
+            .iter()
+            .any(|(id, instance)| id == job_id && *instance == self.instance_id)
+    }
+
     fn kill_self(&self, state: &mut FakeInner) {
         if state.alive_instance == Some(self.instance_id) {
             state.alive_instance = None;
@@ -236,6 +264,9 @@ impl WorkerTransport for FakeWorker {
         self.ensure_alive()?;
         let mut state = self.state.lock().expect("fake worker state poisoned");
         state.submitted_jobs.push(request.job_id.clone());
+        state
+            .instance_jobs
+            .push((request.job_id.clone(), self.instance_id));
         state.submitted_requests.push(request.clone());
         if self.script.crash_after_job_submit {
             self.kill_self(&mut state);
@@ -249,7 +280,7 @@ impl WorkerTransport for FakeWorker {
     fn job_status(&mut self, job_id: &str) -> Result<Value, CoreError> {
         self.ensure_alive()?;
         let state = self.state.lock().expect("fake worker state poisoned");
-        if state.submitted_jobs.iter().any(|id| id == job_id) {
+        if self.knows_job(&state, job_id) {
             Ok(serde_json::json!({
                 "schema_version": "1",
                 "job": {
@@ -276,11 +307,16 @@ impl WorkerTransport for FakeWorker {
 
     fn cancel_job(&mut self, job_id: &str) -> Result<(), CoreError> {
         self.ensure_alive()?;
-        self.state
-            .lock()
-            .expect("fake worker state poisoned")
-            .cancelled_jobs
-            .push(job_id.to_string());
+        let mut state = self.state.lock().expect("fake worker state poisoned");
+        if self.script.cancel_unknown_jobs_fails && !self.knows_job(&state, job_id) {
+            return Err(CoreError::new(
+                ErrorCode::WorkerNotAvailable,
+                "The research worker reported an error.",
+                format!("fake worker has no job '{job_id}'"),
+                false,
+            ));
+        }
+        state.cancelled_jobs.push(job_id.to_string());
         Ok(())
     }
 
@@ -307,23 +343,31 @@ impl WorkerTransport for FakeWorker {
 
     fn fetch_job_results(&mut self, job_id: &str) -> Result<Value, CoreError> {
         self.ensure_alive()?;
-        let state = self.state.lock().expect("fake worker state poisoned");
-        if state.submitted_jobs.iter().any(|id| id == job_id) {
-            Ok(self.script.job_results.clone().unwrap_or_else(|| {
-                serde_json::json!({
-                    "schema_version": "1",
-                    "job_id": job_id,
-                    "records": [],
-                })
-            }))
-        } else {
-            Err(CoreError::new(
+        let mut state = self.state.lock().expect("fake worker state poisoned");
+        if !self.knows_job(&state, job_id) {
+            return Err(CoreError::new(
                 ErrorCode::WorkerNotAvailable,
                 "The research worker reported an error.",
                 format!("fake worker has no job '{job_id}'"),
                 false,
-            ))
+            ));
         }
+        if state.fetch_results_failures_served < self.script.fetch_results_failures {
+            state.fetch_results_failures_served += 1;
+            return Err(CoreError::new(
+                ErrorCode::WorkerNotAvailable,
+                "The research worker is not available.",
+                format!("fake worker results fetch for '{job_id}' failed (scripted)"),
+                true,
+            ));
+        }
+        Ok(self.script.job_results.clone().unwrap_or_else(|| {
+            serde_json::json!({
+                "schema_version": "1",
+                "job_id": job_id,
+                "records": [],
+            })
+        }))
     }
 
     fn shutdown(&mut self) -> Result<(), CoreError> {

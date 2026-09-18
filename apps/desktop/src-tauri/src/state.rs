@@ -1,19 +1,39 @@
 //! Managed application state and the worker event pump.
 //!
 //! Contract role (docs/PRD.md §8): [`AppState`] is the single owner of the
-//! SQLite connection, the worker supervisor, the secret store, and the vault
-//! root. Tauri manages one instance; typed commands and the event pump share
-//! it. The pump polls the supervisor's active jobs, persists every forwarded
-//! event through the events repository (monotonic per-run sequence), projects
-//! it through [`crate::orchestrator::OrchestratorService`] (task status,
-//! checkpoints, dependency gating, run rollup), and re-emits it to every
-//! window as `morpho://events` — payloads are already redacted by
-//! [`crate::redaction`] when the [`ResearchEvent`] is built.
+//! SQLite connection, the worker supervisor, the secret store, the vault
+//! root, and the core-owned source-content cache. Tauri manages one
+//! instance; typed commands and the event pump share it.
+//!
+//! Lock discipline (review R3): the pump and the commands NEVER hold the
+//! supervisor and database mutexes at the same time. Every pump phase —
+//! fetch, persist+project, acknowledge, deliver — takes exactly one lock,
+//! releases it, then takes the next. Commands follow the same rule.
+//!
+//! The pump polls the supervisor's active jobs and, per event, persists the
+//! canonical event AND projects it through
+//! [`crate::orchestrator::OrchestratorService`] inside ONE write transaction
+//! (review R5): a failed projection rolls the event back with it, so the
+//! acknowledged cursor never advances past a projection that did not land
+//! and the next cycle replays from the worker. Repeated failures are
+//! retried a bounded number of times, then the job parks as stalled — the
+//! error is logged (stderr → app log), never swallowed.
+//!
+//! Terminal jobs (review R2) retire only after their validated result
+//! records were fetched AND ingested into the project's domain tables. A
+//! failed fetch or ingestion leaves the job active with `results_pending`
+//! set; delivery retries on the pump's own schedule — it never depends on
+//! the terminal event arriving again. Delivery retries are bounded; a job
+//! that exhausts them parks as delivery-failed (tracked, observable, not
+//! retired).
+//!
+//! Persisted events are re-emitted to every window as `morpho://events` —
+//! payloads are already redacted by [`crate::redaction`] when the
+//! [`ResearchEvent`] is built.
 
 use crate::error::CoreError;
 use crate::ipc::ResearchEvent;
-use crate::repositories::events::{EventRecord, NewEvent};
-use crate::repositories::services::EventService;
+use crate::repositories::events::NewEvent;
 use crate::secrets::SecretStore;
 use crate::worker::tracing_note;
 use crate::worker::Supervisor;
@@ -30,6 +50,16 @@ const PUMP_IDLE_SLEEP: std::time::Duration = std::time::Duration::from_millis(50
 /// How long the pump sleeps after a cycle that forwarded events (hot).
 const PUMP_ACTIVE_SLEEP: std::time::Duration = std::time::Duration::from_millis(120);
 
+/// Worker job event types that close a job's execution phase: after one of
+/// these is persisted, the job's result records must be delivered before it
+/// may retire.
+fn is_terminal_job_event(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "job.completed" | "job.needs_review" | "job.failed" | "job.cancelled"
+    )
+}
+
 pub struct AppState {
     /// The migrated SQLite database (WAL, foreign keys on).
     pub conn: Mutex<Connection>,
@@ -39,7 +69,12 @@ pub struct AppState {
     /// [`crate::secrets::FileConfigStore`]); commands load/save through it.
     pub config_path: PathBuf,
     /// Vault root; per-project vaults live under `<vault_root>/<project_id>`.
+    /// User-owned Markdown only — the core never writes cache files here.
     pub vault_root: PathBuf,
+    /// Core-owned directory for cached source-content payloads (review R8):
+    /// `<cache_root>/source-contents/<file>`. Distinct from the vault so
+    /// cache writes can never touch user Markdown.
+    pub cache_root: PathBuf,
 }
 
 impl AppState {
@@ -49,25 +84,36 @@ impl AppState {
         keychain: Arc<dyn SecretStore>,
         config_path: impl Into<PathBuf>,
         vault_root: impl Into<PathBuf>,
+        cache_root: impl Into<PathBuf>,
     ) -> Self {
+        let cache_root = cache_root.into();
+        let contents = cache_root.join("source-contents");
+        let _ = std::fs::create_dir_all(&contents);
         Self {
             conn: Mutex::new(conn),
             supervisor: Mutex::new(supervisor),
             keychain,
             config_path: config_path.into(),
             vault_root: vault_root.into(),
+            cache_root,
         }
     }
 
-    /// Persists one forwarded event through the events repository; sequence
-    /// allocation is atomic per run (`Events::append`).
-    fn persist_event(
-        conn: &mut Connection,
+    /// The directory ingestion writes source-content payloads into.
+    pub fn content_cache_dir(&self) -> PathBuf {
+        self.cache_root.join("source-contents")
+    }
+
+    /// Persists one forwarded event AND projects it inside the caller-owned
+    /// single write transaction: the event log and the domain projection
+    /// land together or not at all (review R5).
+    fn persist_and_project(
+        tx: &rusqlite::Transaction<'_>,
         event: &ResearchEvent,
-    ) -> Result<EventRecord, CoreError> {
-        EventService::append_event(
-            conn,
-            NewEvent {
+    ) -> Result<(), CoreError> {
+        crate::repositories::events::Events::append(
+            tx,
+            &NewEvent {
                 run_id: event.run_id.clone(),
                 task_id: event.task_id.clone(),
                 event_type: event.event_type.clone(),
@@ -75,137 +121,133 @@ impl AppState {
                     CoreError::database(format!("serialize event payload failed: {err}"))
                 })?,
             },
-        )
+        )?;
+        crate::orchestrator::OrchestratorService::apply_event_tx(
+            tx,
+            &crate::orchestrator::CanonicalEvent::from(event),
+        )?;
+        Ok(())
     }
 
     /// One pump cycle: fetch new worker events for every active job,
-    /// persist each one, project it, acknowledge it, and re-emit the
-    /// PERSISTED events to all windows. Consumption is acknowledged only
-    /// after the events repository commits (audit F5): a transient database
-    /// failure leaves the cursor untouched, so the next cycle re-fetches
-    /// from the worker's replay instead of silently skipping events, and
-    /// unpersisted events are never emitted (SQLite is authoritative,
-    /// PRD §7). Projection failures are ignored per ADR-019 (the log, not
-    /// the projection, is the source of truth).
-    ///
-    /// When a terminal job event (`job.completed` / `job.needs_review` /
-    /// `job.failed` / `job.cancelled`) has been persisted, the job's
-    /// validated result records are drained once (`GET /jobs/{id}/results`,
-    /// ADR-024), ingested into the project's domain tables, and the job is
-    /// retired from the active set. Cancellation keeps a job pollable until
-    /// exactly this point.
+    /// persist+project each one atomically, acknowledge it, re-emit the
+    /// PERSISTED events to all windows, then deliver (drain + ingest) the
+    /// results of terminal jobs and retire them only on success. Locks are
+    /// taken strictly one at a time (review R3).
     pub fn pump_once(app: &tauri::AppHandle) -> usize {
         use tauri::{Emitter, Manager};
 
         let state = app.state::<AppState>();
-        Self::pump_cycle(&state.supervisor, &state.conn, &|event: &ResearchEvent| {
-            let _ = app.emit(EVENTS_EMIT_EVENT, event);
-        })
+        let content_dir = state.content_cache_dir();
+        Self::pump_cycle(
+            &state.supervisor,
+            &state.conn,
+            &content_dir,
+            &|event: &ResearchEvent| {
+                let _ = app.emit(EVENTS_EMIT_EVENT, event);
+            },
+        )
     }
 
-    /// The pump's testable core: one persist→project→acknowledge cycle over
-    /// the supervised jobs, plus the terminal drain/ingest/retire step.
-    /// `emit` receives exactly the persisted events.
+    /// The pump's testable core: one fetch → persist+project → acknowledge →
+    /// emit → deliver cycle over the supervised jobs. `emit` receives exactly
+    /// the persisted events.
     pub fn pump_cycle(
         supervisor_lock: &Mutex<Supervisor>,
         conn_lock: &Mutex<Connection>,
+        content_dir: &std::path::Path,
         emit: &dyn Fn(&ResearchEvent),
     ) -> usize {
-        let mut fetched: Vec<(String, Vec<ResearchEvent>)> = Vec::new();
+        // Phase A — fetch (supervisor lock only): stalled jobs are skipped;
+        // their cursor stays at the last acknowledged sequence. Delivery
+        // cool-downs advance here so a paused (delivery-failed) job re-arms
+        // automatically with backoff (round-2 review P1).
+        let mut fetched: Vec<(String, String, Vec<ResearchEvent>)> = Vec::new();
         {
             let mut supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
+            supervisor.tick_delivery_cooldowns();
             for job_id in supervisor.active_job_ids() {
-                if let Ok(events) = supervisor.poll_events(&job_id) {
-                    fetched.push((job_id, events));
+                if supervisor.projection_stalled(&job_id) {
+                    continue;
                 }
+                let Ok(events) = supervisor.poll_events(&job_id) else {
+                    continue;
+                };
+                let Some(run_id) = supervisor.run_of_job(&job_id) else {
+                    continue;
+                };
+                fetched.push((job_id, run_id, events));
             }
         }
-        if fetched.is_empty() {
-            return 0;
-        }
 
-        let mut emitted = 0_usize;
+        // Phase B — persist + project (database lock only): each event lands
+        // its log row and its projection in ONE transaction. A failure stops
+        // consuming that job's batch; the cursor stays at the last
+        // acknowledged sequence and the next cycle replays.
+        let mut acknowledgements: Vec<(String, u64)> = Vec::new();
+        let mut projection_failures: Vec<(String, CoreError)> = Vec::new();
         let mut terminal_jobs: Vec<String> = Vec::new();
-        if let Ok(mut conn) = conn_lock.lock() {
-            for (job_id, events) in &fetched {
-                let mut acknowledged: u64 = 0;
-                for event in events {
-                    // Persist the canonical event first; only a committed
-                    // event is acknowledged, projected, and emitted.
-                    match Self::persist_event(&mut conn, event) {
-                        Ok(_) => {
-                            let _ = crate::orchestrator::OrchestratorService::apply_event(
-                                &mut conn,
-                                &crate::orchestrator::CanonicalEvent::from(event),
-                            );
-                            acknowledged = acknowledged.max(event.sequence);
-                            if matches!(
-                                event.event_type.as_str(),
-                                "job.completed"
-                                    | "job.needs_review"
-                                    | "job.failed"
-                                    | "job.cancelled"
-                            ) {
-                                terminal_jobs.push(job_id.clone());
+        if !fetched.is_empty() {
+            if let Ok(mut conn) = conn_lock.lock() {
+                for (job_id, _run_id, events) in &fetched {
+                    let mut acknowledged: u64 = 0;
+                    let mut failed: Option<CoreError> = None;
+                    for event in events {
+                        let outcome = crate::repositories::with_write_tx(&mut conn, |tx| {
+                            Self::persist_and_project(tx, event)
+                        });
+                        match outcome {
+                            Ok(()) => {
+                                acknowledged = acknowledged.max(event.sequence);
+                                if is_terminal_job_event(&event.event_type) {
+                                    terminal_jobs.push(job_id.clone());
+                                }
+                            }
+                            Err(err) => {
+                                failed = Some(err);
+                                break;
                             }
                         }
-                        Err(err) => {
-                            // Stop consuming this batch at the failure: the
-                            // cursor stays at the last acknowledged sequence
-                            // and the next cycle replays from the worker.
-                            tracing_note(format!(
-                                "event persistence failed for job {job_id} at sequence {}: \
-                                 {err} (will replay)",
-                                event.sequence
-                            ));
-                            break;
-                        }
                     }
-                }
-                if acknowledged > 0 {
-                    supervisor_lock
-                        .lock()
-                        .expect("supervisor mutex poisoned")
-                        .acknowledge_events(job_id, acknowledged);
+                    if let Some(err) = failed {
+                        projection_failures.push((job_id.clone(), err));
+                    }
+                    acknowledgements.push((job_id.clone(), acknowledged));
                 }
             }
         }
 
-        // Drain + ingest results for terminal jobs, then retire them.
-        let mut drained: Vec<(String, serde_json::Value)> = Vec::new();
-        for job_id in &terminal_jobs {
+        // Phase C — acknowledge, account projection failures, and mark
+        // terminal jobs for delivery (supervisor lock only).
+        {
             let mut supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
-            let Some(run_id) = supervisor.run_of_job(job_id) else {
-                continue;
-            };
-            let results = supervisor.fetch_job_results(job_id);
-            supervisor.retire_job(job_id);
-            match results {
-                Ok(results) => drained.push((run_id, results)),
-                Err(err) => tracing_note(format!(
-                    "result drain failed for job {job_id}: {err} (events remain persisted)"
-                )),
-            }
-        }
-        for (run_id, results) in drained {
-            if let Ok(mut conn) = conn_lock.lock() {
-                let project_id = crate::repositories::runs::Runs::get(&conn, &run_id)
-                    .ok()
-                    .flatten()
-                    .map(|run| run.project_id);
-                if let Some(project_id) = project_id {
-                    if let Err(err) =
-                        crate::ingestion::ResultIngestion::ingest(&mut conn, &project_id, &results)
-                    {
-                        tracing_note(format!("result ingestion failed for run {run_id}: {err}"));
-                    }
+            for (job_id, through) in &acknowledgements {
+                if *through > 0 {
+                    supervisor.acknowledge_events(job_id, *through);
+                    supervisor.note_projection_success(job_id);
                 }
+            }
+            for (job_id, err) in &projection_failures {
+                tracing_note(format!(
+                    "persist+project failed for job {job_id}: {err} (cursor unchanged; will \
+                     replay)"
+                ));
+                if !supervisor.note_projection_failure(job_id) {
+                    tracing_note(format!(
+                        "job {job_id} parked after repeated projection failures — the event \
+                         stays unacknowledged; investigate the run's event log"
+                    ));
+                }
+            }
+            for job_id in &terminal_jobs {
+                supervisor.mark_results_pending(job_id);
             }
         }
 
         // Emission follows persistence: only acknowledged events reach
         // windows (audit F5).
-        for (job_id, events) in &fetched {
+        let mut emitted = 0_usize;
+        for (job_id, _run_id, events) in &fetched {
             let acknowledged = {
                 let supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
                 supervisor.acknowledged_cursor(job_id)
@@ -217,7 +259,124 @@ impl AppState {
                 }
             }
         }
+
+        // Phase D — deliver results (review R2): fetch (supervisor lock),
+        // ingest (database lock), retire (supervisor lock) — one lock at a
+        // time, and ONLY after a successful fetch AND ingestion. Failures
+        // keep the job active with results_pending; the next cycle retries
+        // delivery without needing a new terminal event.
+        let mut delivery_jobs: Vec<(String, String)> = Vec::new();
+        {
+            let supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
+            for job_id in supervisor.jobs_with_pending_results() {
+                if let Some(run_id) = supervisor.run_of_job(&job_id) {
+                    delivery_jobs.push((job_id, run_id));
+                }
+            }
+        }
+        for (job_id, run_id) in delivery_jobs {
+            let results = {
+                let mut supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
+                supervisor.fetch_job_results(&job_id)
+            };
+            let results = match results {
+                Ok(results) => results,
+                Err(err) => {
+                    tracing_note(format!(
+                        "result fetch failed for job {job_id} (attempt recorded): {err}"
+                    ));
+                    let mut supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
+                    if !supervisor.note_delivery_failure(&job_id) {
+                        Self::persist_delivery_failure(conn_lock, &job_id, &run_id);
+                        tracing_note(format!(
+                            "job {job_id} paused: result delivery failed past the automatic \
+                             budget; the run's delivery_status is now persistently 'failed' and \
+                             delivery re-arms with backoff"
+                        ));
+                    }
+                    continue;
+                }
+            };
+            let ingested = {
+                let mut conn = conn_lock.lock().expect("database mutex poisoned");
+                Self::ingest_job_results(&mut conn, &job_id, &run_id, &results, content_dir)
+            };
+            match ingested {
+                Ok(stats) => {
+                    tracing_note(format!(
+                        "ingested worker results for job {job_id}: {} source(s), {} node(s), {} \
+                         claim(s), {} evidence",
+                        stats.sources, stats.nodes, stats.claims, stats.evidence
+                    ));
+                    let mut supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
+                    supervisor.retire_job(&job_id);
+                }
+                Err(err) => {
+                    tracing_note(format!(
+                        "result ingestion failed for job {job_id} (attempt recorded): {err}"
+                    ));
+                    let mut supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
+                    if !supervisor.note_delivery_failure(&job_id) {
+                        Self::persist_delivery_failure(conn_lock, &job_id, &run_id);
+                        tracing_note(format!(
+                            "job {job_id} paused: result ingestion failed past the automatic \
+                             budget; the run's delivery_status is now persistently 'failed' and \
+                             delivery re-arms with backoff"
+                        ));
+                    }
+                }
+            }
+        }
+
         emitted
+    }
+
+    /// Persists the durable delivery-failure fact (round-2 review P1): the
+    /// run's `delivery_status` flips to `failed` — observable in every read
+    /// model, and converged explicitly (never silently completed) if the
+    /// process exits before a re-armed delivery succeeds. Locks the database
+    /// alone.
+    fn persist_delivery_failure(conn_lock: &Mutex<Connection>, job_id: &str, run_id: &str) {
+        let result = {
+            let mut conn = match conn_lock.lock() {
+                Ok(conn) => conn,
+                Err(_) => return,
+            };
+            crate::repositories::with_write_tx(&mut conn, |tx| {
+                crate::repositories::runs::Runs::set_delivery_status(tx, run_id, "failed")
+            })
+        };
+        if let Err(err) = result {
+            tracing_note(format!(
+                "persisting delivery_status=failed for run {run_id} (job {job_id}) failed: {err}"
+            ));
+        }
+    }
+
+    /// Resolves the run's project and ingests one drained results envelope
+    /// under the run/job/project binding rules (review R6).
+    fn ingest_job_results(
+        conn: &mut Connection,
+        job_id: &str,
+        run_id: &str,
+        results: &serde_json::Value,
+        content_dir: &std::path::Path,
+    ) -> Result<crate::ingestion::IngestStats, CoreError> {
+        let project_id = crate::repositories::runs::Runs::get(conn, run_id)?
+            .map(|run| run.project_id)
+            .ok_or_else(|| {
+                CoreError::database(format!("run '{run_id}' not found for result ingestion"))
+            })?;
+        crate::ingestion::ResultIngestion::ingest(
+            conn,
+            &crate::ingestion::IngestTarget {
+                project_id: &project_id,
+                job_id,
+                run_id,
+            },
+            results,
+            content_dir,
+        )
     }
 
     /// Runs the pump until the process exits. The thread is intentionally
@@ -267,6 +426,7 @@ mod tests {
             Arc::new(FakeKeychain::new()),
             root.join("config").join("app.json"),
             root.join("vault"),
+            root.join("cache"),
         )
     }
 
@@ -328,6 +488,31 @@ mod tests {
         .unwrap()
     }
 
+    /// The pump's atomic persist+project unit, callable directly.
+    fn persist(
+        conn: &mut Connection,
+        event: &ResearchEvent,
+    ) -> Result<crate::repositories::events::EventRecord, CoreError> {
+        crate::repositories::with_write_tx(conn, |tx| {
+            let record = crate::repositories::events::Events::append(
+                tx,
+                &crate::repositories::events::NewEvent {
+                    run_id: event.run_id.clone(),
+                    task_id: event.task_id.clone(),
+                    event_type: event.event_type.clone(),
+                    payload: serde_json::to_string(&event.payload).map_err(|err| {
+                        CoreError::database(format!("serialize event payload failed: {err}"))
+                    })?,
+                },
+            )?;
+            crate::orchestrator::OrchestratorService::apply_event_tx(
+                tx,
+                &crate::orchestrator::CanonicalEvent::from(event),
+            )?;
+            Ok(record)
+        })
+    }
+
     #[test]
     fn forwarded_events_persist_with_monotonic_sequences() {
         let mut conn = migrated_memory_db().unwrap();
@@ -340,7 +525,7 @@ mod tests {
             None,
             1,
             1_700_000_000_000,
-            "task.started",
+            "source.fetched",
             json!({"api_key": String::from("k").repeat(12), "step": 1}),
         );
         let second = ResearchEvent::new(
@@ -352,8 +537,10 @@ mod tests {
             json!({"status": "ok"}),
         );
 
-        let stored_first = AppState::persist_event(&mut conn, &first).unwrap();
-        let stored_second = AppState::persist_event(&mut conn, &second).unwrap();
+        // Persist + project is one atomic unit (review R5); non-projecting
+        // event types exercise the log path on their own.
+        let stored_first = persist(&mut conn, &first).unwrap();
+        let stored_second = persist(&mut conn, &second).unwrap();
         assert_eq!(stored_first.sequence, 1, "per-run sequence starts at 1");
         assert_eq!(stored_second.sequence, 2);
         // The persisted payload is the redacted one.
@@ -369,7 +556,7 @@ mod tests {
     fn events_without_a_run_are_rejected_by_the_foreign_key() {
         let mut conn = migrated_memory_db().unwrap();
         let ghost = ResearchEvent::new("no-such-run", None, 1, 1, "task.started", json!({}));
-        let err = AppState::persist_event(&mut conn, &ghost).unwrap_err();
+        let err = persist(&mut conn, &ghost).unwrap_err();
         assert_eq!(err.code, crate::error::ErrorCode::DatabaseError);
         assert!(err.developer_detail.contains("FOREIGN KEY"), "{err:?}");
     }
@@ -399,12 +586,7 @@ mod tests {
         .unwrap();
 
         let pipeline = |conn: &mut Connection, event: &ResearchEvent| {
-            AppState::persist_event(conn, event).unwrap();
-            crate::orchestrator::OrchestratorService::apply_event(
-                conn,
-                &crate::orchestrator::CanonicalEvent::from(event),
-            )
-            .unwrap();
+            persist(conn, event).unwrap();
         };
 
         pipeline(
@@ -477,6 +659,10 @@ mod tests {
 
         let mut conn = migrated_memory_db().unwrap();
         let run_id = seed_run(&mut conn);
+        with_write_tx(&mut conn, |tx| {
+            crate::repositories::runs::Runs::set_worker_job(tx, &run_id, "job-1").map(|_| ())
+        })
+        .unwrap();
         let project_id: String = conn
             .query_row(
                 "SELECT project_id FROM runs WHERE id = ?1",
@@ -541,9 +727,11 @@ mod tests {
         }
 
         let emitted = std::cell::RefCell::new(Vec::<String>::new());
-        let emitted_count = AppState::pump_cycle(&supervisor_lock, &conn_lock, &|event| {
-            emitted.borrow_mut().push(event.event_type.clone());
-        });
+        let cache = tempfile::tempdir().unwrap();
+        let emitted_count =
+            AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|event| {
+                emitted.borrow_mut().push(event.event_type.clone());
+            });
 
         // Both events persisted (and emitted); the job retired after the
         // terminal drain.
@@ -623,7 +811,8 @@ mod tests {
                 .unwrap();
         }
 
-        let count = AppState::pump_cycle(&supervisor_lock, &conn_lock, &|_| {});
+        let cache = tempfile::tempdir().unwrap();
+        let count = AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
         // Nothing persisted → nothing acknowledged, nothing emitted.
         assert_eq!(count, 0);
         assert_eq!(
@@ -634,7 +823,7 @@ mod tests {
 
         // The next cycle re-fetches both events (replay from the worker);
         // they fail again the same way — never skipped, never dropped.
-        let replay = AppState::pump_cycle(&supervisor_lock, &conn_lock, &|_| {});
+        let replay = AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
         assert_eq!(replay, 0, "the failed events are still not emitted");
         {
             let conn = conn_lock.lock().unwrap();
@@ -644,5 +833,593 @@ mod tests {
                 "no partial rows appeared"
             );
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Delivery, projection failure, and race semantics (review R2/R5)
+    // ------------------------------------------------------------------
+
+    /// Adds one PENDING task to the run's plan so `run.started` can claim
+    /// it; returns the task id.
+    fn add_pending_task(conn: &mut Connection, run_id: &str) -> String {
+        let plan_id = plan_of_run(conn, run_id);
+        let task_id = format!("task-{run_id}");
+        with_write_tx(conn, |tx| {
+            tx.execute(
+                "INSERT INTO tasks (id, plan_id, run_id, title, task_type, status,
+                                    idempotency_key, retry_count, max_retries,
+                                    created_at, updated_at)
+                 VALUES (?2, ?1, NULL, 'search', 'search', 'PENDING',
+                         ?3, 0, 3, 1, 1)",
+                rusqlite::params![plan_id, task_id, format!("key-{run_id}")],
+            )
+            .map_err(CoreError::from)
+        })
+        .unwrap();
+        task_id
+    }
+
+    /// Builds a pump fixture: seeded run + one claimable task + a supervisor
+    /// over `script`, with the run already bound to `job-1`. Returns
+    /// `(conn, supervisor, run_id, task_id)`.
+    fn pump_fixture(
+        script: crate::worker::fake::FakeWorkerScript,
+    ) -> (Mutex<Connection>, Mutex<Supervisor>, String, String) {
+        let mut conn = migrated_memory_db().unwrap();
+        let run_id = seed_run(&mut conn);
+        let task_id = add_pending_task(&mut conn, &run_id);
+        with_write_tx(&mut conn, |tx| {
+            crate::repositories::runs::Runs::set_worker_job(tx, &run_id, "job-1").map(|_| ())
+        })
+        .unwrap();
+        let (factory, _handle) = script.factory();
+        let mut supervisor = Supervisor::new(
+            factory,
+            crate::worker::RestartPolicy::default(),
+            Box::new(crate::worker::fake::FakeClock::default()),
+            Box::new(crate::worker::fake::FakeSleeper::default()),
+        );
+        supervisor
+            .submit_job(&crate::worker::JobRequest {
+                job_id: "job-1".into(),
+                run_id: run_id.clone(),
+                task_id: None,
+                kind: "research_run".into(),
+                params: json!({}),
+                approve_plan: true,
+                plan: None,
+            })
+            .unwrap();
+        (Mutex::new(conn), Mutex::new(supervisor), run_id, task_id)
+    }
+
+    fn terminal_script() -> crate::worker::fake::FakeWorkerScript {
+        let mut script = crate::worker::fake::FakeWorkerScript::healthy();
+        script.events = vec![
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 1,
+                event_type: "run.started".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 2,
+                event_type: "job.completed".into(),
+                payload: json!({"status": "COMPLETED"}),
+            },
+        ];
+        script
+    }
+
+    /// One source record for the delivery tests.
+    fn source_results(job: &str) -> serde_json::Value {
+        json!({
+            "schema_version": "1",
+            "job_id": job,
+            "records": [
+                {"kind": "source", "record": {
+                    "source_id": "ws-1", "url": "https://a.test/x",
+                    "canonical_url": "a.test/x", "url_dedup_key": "a.test/x",
+                    "title": "A", "source_type": "paper", "found_via": "mock",
+                    "published_at": null, "retrieved_at": "", "snippet": "",
+                    "quality": null, "metadata": {}
+                }},
+            ],
+        })
+    }
+
+    /// Review R2 regression: when the domain ingestion fails (here: an
+    /// injected SQL write failure on sources), the terminal job must STAY
+    /// recoverable — it is not retired — and the next pump cycle retries
+    /// the delivery (no new terminal event required) without duplicating
+    /// facts once it succeeds.
+    #[test]
+    fn a_terminal_job_stays_recoverable_when_domain_ingestion_fails() {
+        let mut script = terminal_script();
+        script.job_results = Some(source_results("job-1"));
+        let (conn_lock, supervisor_lock, run_id, _task_id) = pump_fixture(script);
+        {
+            let conn = conn_lock.lock().unwrap();
+            conn.execute_batch(
+                "CREATE TRIGGER review_fail_source BEFORE INSERT ON sources BEGIN SELECT \
+                 RAISE(ABORT, 'review injected write failure'); END;",
+            )
+            .unwrap();
+        }
+        let cache = tempfile::tempdir().unwrap();
+        // First cycle: events persist, the terminal lands, the delivery
+        // fails on the trigger — the job must NOT retire.
+        AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert!(
+                supervisor.active_job_ids().contains(&"job-1".to_string()),
+                "ingestion failed but the only retryable job was retired"
+            );
+            assert!(supervisor.delivery_attempts("job-1") >= 1);
+            assert!(!supervisor.delivery_failed("job-1"));
+        }
+        let project_id = {
+            let conn = conn_lock.lock().unwrap();
+            let project_id: String = conn
+                .query_row(
+                    "SELECT project_id FROM runs WHERE id = ?1",
+                    rusqlite::params![run_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(
+                crate::repositories::sources::Sources::list_for_project(&conn, &project_id)
+                    .unwrap()
+                    .is_empty(),
+                "the failed delivery wrote nothing"
+            );
+            project_id
+        };
+
+        // The failure heals; the next cycle redelivers on its own schedule.
+        {
+            let conn = conn_lock.lock().unwrap();
+            conn.execute_batch("DROP TRIGGER review_fail_source;")
+                .unwrap();
+        }
+        AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert!(
+                !supervisor.active_job_ids().contains(&"job-1".to_string()),
+                "the healed delivery retired the job"
+            );
+        }
+        {
+            let conn = conn_lock.lock().unwrap();
+            let sources =
+                crate::repositories::sources::Sources::list_for_project(&conn, &project_id)
+                    .unwrap();
+            assert_eq!(sources.len(), 1, "the retried delivery landed the source");
+            assert_eq!(
+                crate::repositories::events::Events::latest_sequence(&conn, &run_id).unwrap(),
+                2
+            );
+        }
+        // A further cycle is a no-op (no double delivery, no new facts).
+        AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        {
+            let conn = conn_lock.lock().unwrap();
+            assert_eq!(
+                crate::repositories::sources::Sources::list_for_project(&conn, &project_id)
+                    .unwrap()
+                    .len(),
+                1
+            );
+        }
+    }
+
+    /// Review R2: delivery retries never depend on the terminal event
+    /// arriving again — a fetch failure on the first attempt is retried by
+    /// the pump's own schedule.
+    #[test]
+    fn delivery_retries_do_not_wait_for_a_new_terminal_event() {
+        let mut script = terminal_script();
+        script.job_results = Some(source_results("job-1"));
+        script.fetch_results_failures = 1;
+        let (conn_lock, supervisor_lock, run_id, _task_id) = pump_fixture(script);
+        let cache = tempfile::tempdir().unwrap();
+
+        // Cycle 1: terminal persisted, fetch fails once.
+        AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert!(supervisor.active_job_ids().contains(&"job-1".to_string()));
+            assert_eq!(supervisor.delivery_attempts("job-1"), 1);
+        }
+
+        // Cycle 2: no new events exist — the delivery retry is what runs.
+        AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert!(
+                !supervisor.active_job_ids().contains(&"job-1".to_string()),
+                "the retried fetch + ingestion retired the job"
+            );
+        }
+        let conn = conn_lock.lock().unwrap();
+        let project_id: String = conn
+            .query_row(
+                "SELECT project_id FROM runs WHERE id = ?1",
+                rusqlite::params![run_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            crate::repositories::sources::Sources::list_for_project(&conn, &project_id)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    /// Review R5 regression: a projection failure (task.started for a task
+    /// that does not exist) is NEVER acknowledged — the cursor stays at the
+    /// last good sequence — and after the bounded attempts the job parks
+    /// instead of hot-looping.
+    #[test]
+    fn failed_task_projection_never_advances_the_cursor() {
+        let mut script = crate::worker::fake::FakeWorkerScript::healthy();
+        script.events = vec![
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 1,
+                event_type: "run.started".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 2,
+                event_type: "task.started".into(),
+                payload: json!({"task_id": "unresolvable-task"}),
+            },
+        ];
+        let (conn_lock, supervisor_lock, run_id, _task_id) = pump_fixture(script);
+        let cache = tempfile::tempdir().unwrap();
+
+        AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert_eq!(
+                supervisor.acknowledged_cursor("job-1"),
+                1,
+                "the failed projection rolled its event back with it; only run.started \
+                 committed"
+            );
+        }
+        {
+            let conn = conn_lock.lock().unwrap();
+            let events =
+                crate::repositories::events::Events::list_after(&conn, &run_id, 0, 10).unwrap();
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].event_type, "run.started");
+        }
+
+        // Bounded retries: the job parks after MAX_PROJECTION_ATTEMPTS
+        // failed cycles without advancing.
+        for _ in 0..crate::worker::MAX_PROJECTION_ATTEMPTS {
+            AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        }
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert!(
+                supervisor.projection_stalled("job-1"),
+                "the job parked after the bounded projection attempts"
+            );
+            assert_eq!(supervisor.acknowledged_cursor("job-1"), 1);
+            assert!(
+                supervisor.active_job_ids().contains(&"job-1".to_string()),
+                "a parked job stays tracked and observable, never retired"
+            );
+        }
+    }
+
+    /// Duplicate terminal events deliver exactly once (idempotent
+    /// ingestion; the delivery loop is per-job, not per-event).
+    #[test]
+    fn duplicate_terminal_events_deliver_once() {
+        let mut script = crate::worker::fake::FakeWorkerScript::healthy();
+        script.events = vec![
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 1,
+                event_type: "run.started".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 2,
+                event_type: "job.completed".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 3,
+                event_type: "job.completed".into(),
+                payload: json!({}),
+            },
+        ];
+        script.job_results = Some(source_results("job-1"));
+        let (conn_lock, supervisor_lock, run_id, _task_id) = pump_fixture(script);
+        let cache = tempfile::tempdir().unwrap();
+
+        AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert!(
+                supervisor.active_job_ids().is_empty(),
+                "delivered + retired once"
+            );
+        }
+        let conn = conn_lock.lock().unwrap();
+        let project_id: String = conn
+            .query_row(
+                "SELECT project_id FROM runs WHERE id = ?1",
+                rusqlite::params![run_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            crate::repositories::sources::Sources::list_for_project(&conn, &project_id)
+                .unwrap()
+                .len(),
+            1,
+            "duplicate terminal events must not duplicate facts"
+        );
+    }
+
+    /// The cancel/completion race: a task completing AFTER the run-level
+    /// cancellation closed it is an illegal projection — it never corrupts
+    /// the cancelled state, never advances past the failure, and the job
+    /// stays recoverable (its terminal job event has not been consumed).
+    #[test]
+    fn cancel_and_complete_race_converges_without_corruption() {
+        let mut script = crate::worker::fake::FakeWorkerScript::healthy();
+        script.events = vec![
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 1,
+                event_type: "run.started".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 2,
+                event_type: "run.cancelled".into(),
+                payload: json!({}),
+            },
+            // The late completion of the already-CANCELLED task.
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 3,
+                event_type: "task.completed".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 4,
+                event_type: "job.cancelled".into(),
+                payload: json!({}),
+            },
+        ];
+        script.job_results = Some(json!({
+            "schema_version": "1", "job_id": "job-1", "records": []
+        }));
+        let (conn_lock, supervisor_lock, run_id, task_id) = pump_fixture(script);
+        let cache = tempfile::tempdir().unwrap();
+
+        AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        {
+            let conn = conn_lock.lock().unwrap();
+            let run = crate::repositories::runs::Runs::get(&conn, &run_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(run.status, "cancelled");
+            let task = crate::repositories::tasks::Tasks::get(&conn, &task_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                task.status, "CANCELLED",
+                "the late completion never overwrote the cancellation"
+            );
+        }
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert_eq!(
+                supervisor.acknowledged_cursor("job-1"),
+                2,
+                "the illegal post-cancellation event is not acknowledged"
+            );
+            // The job stays recoverable: its terminal job event (sequence 4)
+            // has not been consumed, so the delivery has not run.
+            assert!(supervisor.active_job_ids().contains(&"job-1".to_string()));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Durable delivery state (round-2 review P1)
+    // ------------------------------------------------------------------
+
+    /// The REAL worker order — run.completed lands before job.completed, so
+    /// the execution projection closes the run first; the read model must
+    /// still expose the undelivered fact, and exhausting the automatic
+    /// budget must leave a durable, recoverable state that heals once the
+    /// failure cause does (cool-down re-arm).
+    #[test]
+    fn exhausted_delivery_recovers_and_never_claims_full_completion() {
+        let mut script = crate::worker::fake::FakeWorkerScript::healthy();
+        script.events = vec![
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 1,
+                event_type: "run.started".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 2,
+                event_type: "run.completed".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 3,
+                event_type: "job.completed".into(),
+                payload: json!({}),
+            },
+        ];
+        script.job_results = Some(source_results("job-1"));
+        let (conn_lock, supervisor_lock, run_id, _task_id) = pump_fixture(script);
+        let project_id: String = {
+            let conn = conn_lock.lock().unwrap();
+            conn.query_row(
+                "SELECT project_id FROM runs WHERE id = ?1",
+                rusqlite::params![run_id],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        {
+            let conn = conn_lock.lock().unwrap();
+            conn.execute_batch(
+                "CREATE TRIGGER review_fail_source BEFORE INSERT ON sources BEGIN SELECT \
+                 RAISE(ABORT, 'injected'); END;",
+            )
+            .unwrap();
+        }
+        let cache = tempfile::tempdir().unwrap();
+
+        // Exhaust the automatic budget.
+        for _ in 0..crate::worker::MAX_DELIVERY_ATTEMPTS {
+            AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        }
+        {
+            let conn = conn_lock.lock().unwrap();
+            let run = crate::repositories::runs::Runs::get(&conn, &run_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                run.status, "completed",
+                "execution truth: the worker finished"
+            );
+            assert_eq!(
+                run.delivery_status, "failed",
+                "the read model exposes the durable delivery failure — never full completion"
+            );
+            assert!(
+                crate::repositories::sources::Sources::list_for_project(&conn, &project_id)
+                    .unwrap()
+                    .is_empty()
+            );
+            conn.execute_batch("DROP TRIGGER review_fail_source;")
+                .unwrap();
+        }
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert!(supervisor.delivery_failed("job-1"));
+        }
+
+        // The failure healed: the cool-down re-arm picks the delivery back
+        // up automatically — recovery is not gated on a new terminal event
+        // or a restart.
+        let mut delivered = false;
+        for _ in 0..(crate::worker::DELIVERY_REARM_CYCLES + 4) {
+            AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+            let conn = conn_lock.lock().unwrap();
+            if !crate::repositories::sources::Sources::list_for_project(&conn, &project_id)
+                .unwrap()
+                .is_empty()
+            {
+                delivered = true;
+                break;
+            }
+        }
+        assert!(
+            delivered,
+            "a healed delivery must recover after the cool-down re-arm"
+        );
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert!(
+                !supervisor.active_job_ids().contains(&"job-1".to_string()),
+                "the recovered delivery retired the job"
+            );
+        }
+        let conn = conn_lock.lock().unwrap();
+        let run = crate::repositories::runs::Runs::get(&conn, &run_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.delivery_status, "delivered");
+    }
+
+    /// A permanently invalid results envelope (validation failure) parks the
+    /// delivery durably: the run keeps its durable `failed` delivery state
+    /// across re-arm cycles instead of pretending completion.
+    #[test]
+    fn an_invalid_results_envelope_parks_delivery_durably() {
+        let mut script = crate::worker::fake::FakeWorkerScript::healthy();
+        script.events = vec![
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 1,
+                event_type: "run.started".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 2,
+                event_type: "run.completed".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-1".into(),
+                sequence: 3,
+                event_type: "job.completed".into(),
+                payload: json!({}),
+            },
+        ];
+        script.job_results = Some(json!({
+            "schema_version": "999", "job_id": "job-1", "records": []
+        }));
+        let (conn_lock, supervisor_lock, run_id, _project_id) = pump_fixture(script);
+        let cache = tempfile::tempdir().unwrap();
+
+        for _ in 0..(crate::worker::MAX_DELIVERY_ATTEMPTS + 1) {
+            AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        }
+        {
+            let supervisor = supervisor_lock.lock().unwrap();
+            assert!(supervisor.delivery_failed("job-1"));
+        }
+        let conn = conn_lock.lock().unwrap();
+        let run = crate::repositories::runs::Runs::get(&conn, &run_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.status, "completed");
+        assert_eq!(
+            run.delivery_status, "failed",
+            "the durable state records the validation failure"
+        );
+        // Even after a re-arm window the envelope is still invalid: the
+        // state stays failed (bounded retry cadence, honest status).
+        drop(conn);
+        for _ in
+            0..(crate::worker::DELIVERY_REARM_CYCLES + crate::worker::MAX_DELIVERY_ATTEMPTS + 2)
+        {
+            AppState::pump_cycle(&supervisor_lock, &conn_lock, cache.path(), &|_| {});
+        }
+        let conn = conn_lock.lock().unwrap();
+        let run = crate::repositories::runs::Runs::get(&conn, &run_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.delivery_status, "failed");
     }
 }

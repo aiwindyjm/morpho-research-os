@@ -44,6 +44,21 @@ V0.1 research loop (ADR-024).
    walks the tree.
 7. Re-opens the same SQLite file in a fresh `AppState` (simulated restart)
    and reads the run, rollup, frozen config snapshot, and graph back.
+8. (2026-09-17, second review round) The run record's `delivery_status`
+   (migration 006) is asserted too: `delivered` on the completed first run
+   (committed with the ingested domain rows) and `failed` on the crashed
+   run (its undelivered results are a durable, observable fact).
+9. (2026-09-17) Real-process interruption + recovery + plan-reuse phase: a
+   second plan is started and the core "crashes" immediately (the state is
+   dropped — the worker child dies on stdin EOF before any event is
+   forwarded); the database is re-opened, `recovery::converge_interrupted_runs`
+   closes the interrupted run with an auditable `run.cancelled` event and no
+   fabricated results; re-running the EXECUTED first plan is refused with the
+   regenerate path (review R4); and a regenerated third plan runs to
+   completion without rewriting the interrupted run's history. (The
+   mid-flight claimed-tasks crash state — run.started landed, completion not
+   — cannot be raced deterministically against a sub-second offline worker
+   and is covered by the recovery unit tests instead.)
 
 ## What it asserts
 

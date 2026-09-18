@@ -197,6 +197,14 @@ export interface ResearchRun {
   project_id: string;
   plan_id: string;
   state: TaskState;
+  /**
+   * Result-delivery state (ADR-024 increment, migration 006): `status`
+   * above is the execution projection; this records whether the run's
+   * validated result records were committed to the domain tables. A
+   * COMPLETED run with `pending`/`failed` delivery is NOT fully done —
+   * the UI must not present it as such.
+   */
+  delivery_status?: "pending" | "delivered" | "failed" | "unknown";
   config_snapshot: ResearchConfig;
   plan_snapshot_title: string;
   started_at: string | null;

@@ -11,7 +11,7 @@ use rusqlite::{Connection, Transaction};
 use std::path::Path;
 
 /// Highest schema version shipped in `migrations/`.
-pub const LATEST_SCHEMA_VERSION: i64 = 4;
+pub const LATEST_SCHEMA_VERSION: i64 = 6;
 
 /// A numbered SQL migration. `sql` may contain multiple statements.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +44,16 @@ pub fn embedded_migrations() -> Vec<Migration> {
             version: 4,
             name: "run_worker_job_id",
             sql: include_str!("../migrations/004_run_worker_job_id.sql"),
+        },
+        Migration {
+            version: 5,
+            name: "source_content_class",
+            sql: include_str!("../migrations/005_source_content_class.sql"),
+        },
+        Migration {
+            version: 6,
+            name: "delivery_status_and_evidence_locator",
+            sql: include_str!("../migrations/006_delivery_status_and_evidence_locator.sql"),
         },
     ]
 }
@@ -205,7 +215,7 @@ mod tests {
         let versions: Vec<i64> = migrations.iter().map(|m| m.version).collect();
         assert_eq!(
             versions,
-            vec![1, 2, 3, 4],
+            vec![1, 2, 3, 4, 5, 6],
             "migrations must be gapless and ordered"
         );
         assert_eq!(LATEST_SCHEMA_VERSION, migrations.last().unwrap().version);
@@ -221,7 +231,9 @@ mod tests {
                 (1, "initial"),
                 (2, "task_skip_and_orchestrator"),
                 (3, "plan_metadata_and_gap_decisions"),
-                (4, "run_worker_job_id")
+                (4, "run_worker_job_id"),
+                (5, "source_content_class"),
+                (6, "delivery_status_and_evidence_locator")
             ]
         );
         assert_eq!(outcome.current, LATEST_SCHEMA_VERSION);
@@ -447,17 +459,19 @@ mod tests {
             .is_err();
         assert!(skipped_rejected, "v1 CHECK must not know SKIPPED");
 
-        // Upgrade applies exactly migrations 2, 3, and 4.
+        // Upgrade applies exactly migrations 2 through 5.
         let outcome = migrate(&mut conn, &embedded_migrations()).unwrap();
         assert_eq!(
             outcome.applied,
             vec![
                 (2, "task_skip_and_orchestrator"),
                 (3, "plan_metadata_and_gap_decisions"),
-                (4, "run_worker_job_id")
+                (4, "run_worker_job_id"),
+                (5, "source_content_class"),
+                (6, "delivery_status_and_evidence_locator")
             ]
         );
-        assert_eq!(current_schema_version(&conn).unwrap(), 4);
+        assert_eq!(current_schema_version(&conn).unwrap(), 6);
 
         // Every rebuild table kept its rows and values.
         let (tasks, deps, events, usage): (i64, i64, i64, i64) = conn
@@ -540,5 +554,107 @@ mod tests {
         migrate(&mut fresh, &embedded_migrations()).unwrap();
 
         assert_eq!(schema_objects(&fresh), schema_objects(&upgraded));
+    }
+    /// Round-2 review P2: a v4 database's content rows (whose writer always
+    /// left `cache_path` empty — no body was ever persisted) must backfill to
+    /// `unavailable` at v5, never `full-text`; the v6 corrective UPDATE heals
+    /// databases that applied the earlier draft default; and v4 runs backfill
+    /// their delivery status by verifiable facts only (`unknown`, never
+    /// `delivered`).
+    #[test]
+    fn v4_upgrade_backfills_content_class_and_delivery_status_by_facts() {
+        let all = embedded_migrations();
+        let up_to = |version: i64| -> Vec<Migration> {
+            all.iter()
+                .take_while(|m| m.version <= version)
+                .cloned()
+                .collect()
+        };
+
+        let mut conn = open_in_memory().unwrap();
+        migrate(&mut conn, &up_to(4)).unwrap();
+        assert_eq!(current_schema_version(&conn).unwrap(), 4);
+
+        // Legacy v4 shape: one project/source/content row (cache_path always
+        // empty back then) and one completed run.
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, description, status, created_at, updated_at)
+             VALUES ('p1', 'P', '', 'active', 1, 1);
+             INSERT INTO research_configs (id, project_id, schema_version, domain, topic,
+                purpose, depth, created_at, updated_at)
+             VALUES ('c1', 'p1', '1.0', 'd', 't', '', 3, 1, 1);
+             INSERT INTO sources (id, project_id, url, canonical_url, title, source_type,
+                status, retrieved_at, created_at, updated_at)
+             VALUES ('s1', 'p1', 'u', 'c', 't', 'web', 'discovered', 1, 1, 1);
+             INSERT INTO source_contents (id, source_id, content_hash, format, cache_path,
+                byte_size, extracted_at, created_at)
+             VALUES ('sc1', 's1', 'h1', 'text/plain', '', 10, 1, 1);
+             INSERT INTO plans (id, project_id, research_config_id, title, status,
+                created_at, updated_at)
+             VALUES ('pl1', 'p1', 'c1', 'T', 'approved', 1, 1);
+             INSERT INTO runs (id, project_id, plan_id, status, started_at, created_at,
+                updated_at)
+             VALUES ('r1', 'p1', 'pl1', 'completed', 1, 1, 1);",
+        )
+        .unwrap();
+
+        // v5 alone: the amended default backfills by the verifiable fact.
+        migrate(&mut conn, &up_to(5)).unwrap();
+        let class: String = conn
+            .query_row(
+                "SELECT content_class FROM source_contents WHERE id = 'sc1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            class, "unavailable",
+            "a v4 row without a persisted body must never claim full-text"
+        );
+
+        // A database stuck on the earlier draft default ('full-text' with an
+        // empty cache path) is healed by the v6 corrective UPDATE.
+        conn.execute(
+            "UPDATE source_contents SET content_class = 'full-text' WHERE id = 'sc1'",
+            [],
+        )
+        .unwrap();
+        migrate(&mut conn, &all).unwrap();
+        assert_eq!(current_schema_version(&conn).unwrap(), 6);
+        let class: String = conn
+            .query_row(
+                "SELECT content_class FROM source_contents WHERE id = 'sc1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(class, "unavailable");
+
+        // Runs: the pre-migration completed run is 'unknown' (delivery can
+        // never be proven), never 'delivered'; runs created after the
+        // migration default to 'pending'.
+        let delivery: String = conn
+            .query_row(
+                "SELECT delivery_status FROM runs WHERE id = 'r1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(delivery, "unknown");
+        conn.execute(
+            "INSERT INTO runs (id, project_id, plan_id, status, started_at, created_at,
+                updated_at)
+             VALUES ('r2', 'p1', 'pl1', 'running', 2, 2, 2)",
+            [],
+        )
+        .unwrap();
+        let fresh: String = conn
+            .query_row(
+                "SELECT delivery_status FROM runs WHERE id = 'r2'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(fresh, "pending");
     }
 }

@@ -173,33 +173,104 @@ impl Sources {
 
 /// Cached source-content rows (`source_contents`): one fetchable payload per
 /// source, idempotent by primary key so re-ingesting a run's results never
-/// duplicates content.
+/// duplicates content. `content_class` (migration 005, review R8) persists
+/// the worker's availability classification — `full-text`, `snippet`, or
+/// `unavailable` — and `cache_path` names the core-owned file holding the
+/// payload (empty when nothing was retrievable).
 pub struct SourceContents;
+
+/// Availability classes the schema CHECK allows (the worker's
+/// `SourceContent.locator_base` vocabulary).
+pub const CONTENT_CLASSES: [&str; 3] = ["full-text", "snippet", "unavailable"];
+
+/// One content row to upsert (the parameters
+/// [`SourceContents::upsert`](SourceContents::upsert) persists).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewSourceContent<'a> {
+    pub source_id: &'a str,
+    pub content_hash: &'a str,
+    pub format: &'a str,
+    pub cache_path: &'a str,
+    pub byte_size: i64,
+    pub extracted_at: i64,
+    pub content_class: &'a str,
+}
 
 impl SourceContents {
     pub fn upsert(
         tx: &Transaction<'_>,
         id: &str,
-        source_id: &str,
-        content_hash: &str,
-        format: &str,
-        byte_size: i64,
-        extracted_at: i64,
+        new: &NewSourceContent<'_>,
     ) -> Result<(), CoreError> {
+        if !CONTENT_CLASSES.contains(&new.content_class) {
+            return Err(CoreError::database(format!(
+                "unknown content class '{}'",
+                new.content_class
+            )));
+        }
         tx.execute(
             "INSERT INTO source_contents (id, source_id, content_hash, format, cache_path,
-                                           byte_size, extracted_at, created_at)
-             VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?6)
+                                           byte_size, extracted_at, content_class, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?7)
              ON CONFLICT (id) DO UPDATE SET
                  content_hash = excluded.content_hash,
                  format = excluded.format,
+                 cache_path = excluded.cache_path,
                  byte_size = excluded.byte_size,
-                 extracted_at = excluded.extracted_at",
-            params![id, source_id, content_hash, format, byte_size, extracted_at],
+                 extracted_at = excluded.extracted_at,
+                 content_class = excluded.content_class",
+            params![
+                id,
+                new.source_id,
+                new.content_hash,
+                new.format,
+                new.cache_path,
+                new.byte_size,
+                new.extracted_at,
+                new.content_class
+            ],
         )
         .map_err(CoreError::from)?;
         Ok(())
     }
+
+    /// One content row by id (cache read-back and recovery tests).
+    pub fn get(conn: &Connection, id: &str) -> Result<Option<SourceContentRecord>, CoreError> {
+        let sql = "SELECT id, source_id, content_hash, format, cache_path, byte_size,
+                          extracted_at, content_class
+                   FROM source_contents WHERE id = ?1";
+        match conn.query_row(sql, params![id], map_content) {
+            Ok(record) => Ok(Some(record)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(CoreError::from(err)),
+        }
+    }
+}
+
+/// One `source_contents` row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourceContentRecord {
+    pub id: String,
+    pub source_id: String,
+    pub content_hash: String,
+    pub format: String,
+    pub cache_path: String,
+    pub byte_size: i64,
+    pub extracted_at: i64,
+    pub content_class: String,
+}
+
+fn map_content(row: &Row<'_>) -> rusqlite::Result<SourceContentRecord> {
+    Ok(SourceContentRecord {
+        id: row.get(0)?,
+        source_id: row.get(1)?,
+        content_hash: row.get(2)?,
+        format: row.get(3)?,
+        cache_path: row.get(4)?,
+        byte_size: row.get(5)?,
+        extracted_at: row.get(6)?,
+        content_class: row.get(7)?,
+    })
 }
 
 fn select_one(

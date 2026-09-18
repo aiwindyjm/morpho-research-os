@@ -32,6 +32,10 @@ keyring = { version = "3", features = [
     "linux-native-sync-persistent",
     "crypto-rust",
 ] }
+# SHA-256 for the source-content cache's provable file↔fingerprint
+# consistency check (round-2 review P1); already in the workspace's offline
+# dependency cache.
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

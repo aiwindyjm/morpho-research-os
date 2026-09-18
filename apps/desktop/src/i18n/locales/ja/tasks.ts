@@ -13,6 +13,8 @@ const tasks = {
     detail: "タスクは依存順に実行されます。",
   },
   runBadge: "ランの状態: {{state}}",
+  runDeliveryPending: "実行完了、結果を配信中",
+  runDeliveryFailed: "実行完了、結果は未配信",
   empty: {
     title: "まだタスクがありません",
     approved: "プランは承認済みです。右上の「ランを続行」をクリックしてタスクを作成しましょう。",

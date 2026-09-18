@@ -90,10 +90,15 @@ fn prepare_worker_environment(worker_src: &Path) {
 }
 
 /// The production pump semantics without the window emission: fetch,
-/// persist (persist-before-acknowledge), project, drain+ingest on terminal,
-/// retire.
+/// persist+project atomically, acknowledge, deliver (drain + ingest) on
+/// terminal, retire only after delivery.
 fn pump(state: &AppState) -> usize {
-    AppState::pump_cycle(&state.supervisor, &state.conn, &|_| {})
+    AppState::pump_cycle(
+        &state.supervisor,
+        &state.conn,
+        &state.content_cache_dir(),
+        &|_| {},
+    )
 }
 
 fn job_status_envelope(state: &AppState, job_id: &str) -> Value {
@@ -148,19 +153,28 @@ fn real_python_worker_offline_smoke() {
     // App config: the HTTP transport launches the real worker process. The
     // session bearer token is minted by the supervisor at spawn time; no
     // credential literal exists anywhere in this test.
-    let worker = WorkerConfig {
-        transport: "http".into(),
-        python_executable: worker_python(),
-        module_args: vec!["-m".into(), "morpho_worker.serve".into()],
+    let app_config = morpho_desktop_lib::secrets::AppConfig {
+        worker: WorkerConfig {
+            transport: "http".into(),
+            python_executable: worker_python(),
+            module_args: vec!["-m".into(), "morpho_worker.serve".into()],
+        },
+        ..Default::default()
     };
-    worker.validate().expect("worker config validates");
+    app_config
+        .worker
+        .validate()
+        .expect("worker config validates");
 
-    // A FILE-backed database so the restart phase can re-open the same facts.
+    // A FILE-backed database so the restart phases can re-open the same facts.
     let home = tempfile::tempdir().expect("temp home");
     let db_path = home.path().join("smoke.sqlite3");
     let build_state = |db: rusqlite::Connection| -> AppState {
         let supervisor = Supervisor::new(
-            morpho_desktop_lib::commands::transport_factory_from_config(&worker),
+            morpho_desktop_lib::commands::transport_factory_from_config(
+                &app_config,
+                Arc::new(FakeKeychain::new()),
+            ),
             RestartPolicy::default(),
             Box::new(morpho_desktop_lib::worker::SystemClock),
             Box::new(morpho_desktop_lib::worker::SystemSleeper),
@@ -171,6 +185,7 @@ fn real_python_worker_offline_smoke() {
             Arc::new(FakeKeychain::new()),
             home.path().join("config").join("app.json"),
             home.path().join("vault"),
+            home.path().join("cache"),
         )
     };
 
@@ -361,6 +376,10 @@ fn real_python_worker_offline_smoke() {
     assert_eq!(
         run_record.status, "completed",
         "the core run closed through the projected rollup"
+    );
+    assert_eq!(
+        run_record.delivery_status, "delivered",
+        "the delivery fact committed with the ingested domain rows (migration 006)"
     );
     assert!(run_record.finished_at.is_some());
     assert_eq!(run_tasks.len(), plan_task_count);
@@ -581,6 +600,192 @@ fn real_python_worker_offline_smoke() {
         );
     }
     println!("[smoke] restart readback: run, rollup, config snapshot, graph all consistent");
+
+    // --- Real-process interruption + recovery + plan-reuse (E + R4) -------
+    // The offline worker finishes a whole run in well under a second, so a
+    // "crash once RUNNING" race cannot be made deterministic here (the
+    // mid-flight claimed-tasks convergence is covered deterministically by
+    // the recovery unit tests). What the REAL processes prove here:
+    //
+    // 1. the completed plan is spent: re-running it is refused with the
+    //    regenerate path (never a zero-task "success") — checked BEFORE any
+    //    regeneration, which would supersede the plan;
+    // 2. a crash between run creation and any event (the worker child dies
+    //    with the dropped state — stdin EOF) leaves a `running` run that
+    //    startup recovery converges explicitly;
+    // 3. the regenerated plan runs to completion, and the interrupted run's
+    //    history is never rewritten.
+    let refused_first = run_start_impl(
+        &state,
+        RunStartRequest {
+            plan_id: plan.id.clone(),
+            approve_plan: true,
+        },
+    )
+    .unwrap_err();
+    assert!(
+        refused_first
+            .developer_detail
+            .contains("regenerate the plan"),
+        "the refusal names the legal follow-up path: {refused_first:?}"
+    );
+    println!("[smoke] executed-plan reuse refused with the regenerate path");
+
+    let plan2 = {
+        let mut conn = state.conn.lock().expect("database mutex poisoned");
+        let plan = PlanService::regenerate_plan(&mut conn, &project.id)
+            .expect("regenerate the second plan draft");
+        morpho_desktop_lib::repositories::with_write_tx(&mut conn, |tx| {
+            Plans::update_status(tx, &plan.id, "approved")
+        })
+        .expect("approve the second plan");
+        plan
+    };
+    let interrupted = run_start_impl(
+        &state,
+        RunStartRequest {
+            plan_id: plan2.id.clone(),
+            approve_plan: true,
+        },
+    )
+    .expect("start the second run");
+    // Crash immediately: no events have been forwarded or ingested.
+    println!(
+        "[smoke] crashing the core right after run start (run {} bound to job {}, no events yet)",
+        interrupted.run_id, interrupted.job_id
+    );
+    drop(state);
+
+    // Reopen + recover exactly like build_app_state does on startup.
+    let mut reopened_conn = db::open_connection(&db_path).expect("re-open after the crash");
+    let report = morpho_desktop_lib::recovery::converge_interrupted_runs(&mut reopened_conn)
+        .expect("startup recovery");
+    assert_eq!(
+        report.interrupted_runs_cancelled,
+        vec![interrupted.run_id.clone()],
+        "the interrupted run converged explicitly"
+    );
+    let recovered_state = build_state(reopened_conn);
+    {
+        let conn = recovered_state
+            .conn
+            .lock()
+            .expect("database mutex poisoned");
+        let run = morpho_desktop_lib::repositories::runs::Runs::get(&conn, &interrupted.run_id)
+            .expect("run")
+            .unwrap();
+        assert_eq!(run.status, "cancelled");
+        assert!(run.finished_at.is_some());
+        assert_eq!(
+            run.delivery_status, "failed",
+            "the crashed run's undelivered results are a durable, observable fact"
+        );
+        assert_eq!(
+            run.worker_job_id.as_deref(),
+            Some(interrupted.job_id.as_str())
+        );
+        // The recovery closure is auditable in the event log.
+        let recovery_events =
+            Events::list_after(&conn, &interrupted.run_id, 0, 10).expect("recovery events");
+        assert_eq!(recovery_events.len(), 1);
+        assert_eq!(recovery_events[0].event_type, "run.cancelled");
+        assert!(recovery_events[0].payload.contains("core restarted"));
+        // No fabricated results: nothing was delivered for this run.
+        assert!(
+            morpho_desktop_lib::repositories::sources::Sources::list_for_project(
+                &conn,
+                &project.id
+            )
+            .expect("sources")
+            .len()
+                == 2,
+            "the crashed run delivered no domain rows (the first run's 2 sources remain)"
+        );
+    }
+    println!("[smoke] recovery converged the interrupted run to cancelled");
+
+    // The legal path: regenerate → approve → run → completes for real.
+    let plan3 = {
+        let mut conn = recovered_state
+            .conn
+            .lock()
+            .expect("database mutex poisoned");
+        let plan = PlanService::regenerate_plan(&mut conn, &project.id)
+            .expect("regenerate the third plan draft");
+        morpho_desktop_lib::repositories::with_write_tx(&mut conn, |tx| {
+            Plans::update_status(tx, &plan.id, "approved")
+        })
+        .expect("approve the third plan");
+        plan
+    };
+    let resumed = run_start_impl(
+        &recovered_state,
+        RunStartRequest {
+            plan_id: plan3.id.clone(),
+            approve_plan: true,
+        },
+    )
+    .expect("start the third run on the regenerated plan");
+    let deadline3 = Instant::now() + RUN_DEADLINE;
+    loop {
+        assert!(
+            Instant::now() < deadline3,
+            "the third run did not finish within {}s",
+            RUN_DEADLINE.as_secs()
+        );
+        pump(&recovered_state);
+        let (terminal, retired) = {
+            let envelope = job_status_envelope(&recovered_state, &resumed.job_id);
+            let retired = {
+                let supervisor = recovered_state
+                    .supervisor
+                    .lock()
+                    .expect("supervisor poisoned");
+                !supervisor.active_job_ids().contains(&resumed.job_id)
+            };
+            (is_terminal(&envelope["job"]), retired)
+        };
+        if terminal && retired {
+            break;
+        }
+        std::thread::sleep(POLL_SLEEP);
+    }
+    {
+        let conn = recovered_state
+            .conn
+            .lock()
+            .expect("database mutex poisoned");
+        let run = morpho_desktop_lib::repositories::runs::Runs::get(&conn, &resumed.run_id)
+            .expect("run")
+            .unwrap();
+        assert_eq!(
+            run.status, "completed",
+            "the regenerated-plan run completed"
+        );
+        let tasks =
+            morpho_desktop_lib::repositories::tasks::Tasks::list_for_run(&conn, &resumed.run_id)
+                .expect("tasks");
+        assert_eq!(tasks.len(), 8);
+        assert!(
+            tasks.iter().all(|task| task.status == "COMPLETED"),
+            "every task of the fresh run completed"
+        );
+        // The interrupted run's history was not rewritten.
+        let old_run = morpho_desktop_lib::repositories::runs::Runs::get(&conn, &interrupted.run_id)
+            .expect("old run")
+            .unwrap();
+        assert_eq!(old_run.status, "cancelled");
+        let old_tasks = morpho_desktop_lib::repositories::tasks::Tasks::list_for_run(
+            &conn,
+            &interrupted.run_id,
+        )
+        .expect("old tasks");
+        assert!(
+            old_tasks.iter().all(|task| task.status == "CANCELLED"),
+            "the interrupted run's history stays cancelled"
+        );
+    }
+    println!("[smoke] regenerated-plan run completed; interrupted history intact");
 
     println!("[smoke] PASS");
 }

@@ -22,7 +22,7 @@ use crate::repositories::services::{
     GapService, PlanService, ProjectService, VaultExportResult, VaultService,
 };
 use crate::repositories::sources::SourceRecord;
-use crate::secrets::{AppConfig, FileConfigStore, SecretRef, WorkerConfig};
+use crate::secrets::{AppConfig, FileConfigStore, SecretRef};
 use crate::state::AppState;
 use crate::versions::{
     APP_NAME, APP_VERSION, EVENT_ENVELOPE, IPC_SCHEMA_VERSION, WORKER_PROTOCOL_VERSION,
@@ -746,9 +746,14 @@ pub fn run_start(
 
 /// Public for the real-process smoke test (`tests/real_worker_smoke.rs`),
 /// which drives the genuine command path against a real worker process.
+///
+/// Lock discipline (review R3): the database and supervisor mutexes are
+/// never held together — phase 1 takes only the database, phase 2 only the
+/// supervisor, phase 3 only the database again, and every error path
+/// releases one lock before taking the other.
 pub fn run_start_impl(state: &AppState, request: RunStartRequest) -> Result<RunStarted, CoreError> {
-    // Phase 1 (database): gate on the plan's persisted status, resolve its
-    // config, build the approved task-tree payload, and create the run.
+    // Phase 1 (database only): gate on the plan's persisted status, resolve
+    // its config, build the approved task-tree payload, and create the run.
     let (run, config_value, plan_value) = {
         let mut conn = state.conn.lock().expect("database mutex poisoned");
         let plan = crate::repositories::plans::Plans::get(&conn, &request.plan_id)?
@@ -765,8 +770,12 @@ pub fn run_start_impl(state: &AppState, request: RunStartRequest) -> Result<RunS
             ));
         }
         // Idempotency rule (ADR-024): one non-terminal run per plan. A
-        // completed/failed/cancelled run may be followed by a fresh run;
-        // while a run is in flight, starting again is a structured error.
+        // completed/failed/cancelled run may NOT be followed by a fresh run
+        // of the SAME plan in V0.1: the plan's task rows are the single
+        // execution identity (there are no per-execution instances yet —
+        // that schema change is a pending maintainer decision), and
+        // re-claiming terminal tasks would rewrite the old run's history
+        // (review R4). The legal path is regenerating the plan.
         for existing in crate::repositories::runs::Runs::list_for_project(&conn, &plan.project_id)?
         {
             if existing.plan_id == plan.id
@@ -785,6 +794,35 @@ pub fn run_start_impl(state: &AppState, request: RunStartRequest) -> Result<RunS
                     false,
                 ));
             }
+        }
+        // A plan whose tasks were already executed (claimed by a run or no
+        // longer PENDING) is spent: refuse instead of returning a run that
+        // claims zero tasks (review R4).
+        let tasks = crate::repositories::plans::Plans::tasks_for_plan(&conn, &plan.id)?;
+        if let Some(executed) = tasks
+            .iter()
+            .find(|task| task.run_id.is_some() || task.status != "PENDING")
+        {
+            return Err(CoreError::new(
+                CoreErrorCode::DatabaseError,
+                "该计划已经执行过：V0.1 的计划任务即执行身份，不能重复运行。请重新生成研究计划，\
+                 审批后再次启动。",
+                format!(
+                    "plan '{}' was already executed (task '{}' is {}{}, bound to run {:?}); \
+                     V0.1 has no per-execution task instances — regenerate the plan \
+                     (plan_regenerate → approve → run_start) for a fresh execution",
+                    plan.id,
+                    executed.id,
+                    executed.status,
+                    if executed.run_id.is_some() {
+                        ""
+                    } else {
+                        " and unclaimed"
+                    },
+                    executed.run_id
+                ),
+                false,
+            ));
         }
         let config =
             crate::repositories::configs::ResearchConfigs::get(&conn, &plan.research_config_id)?
@@ -809,12 +847,12 @@ pub fn run_start_impl(state: &AppState, request: RunStartRequest) -> Result<RunS
         (run, research_config_wire(&config), plan_value)
     };
 
-    // Phase 2 (worker): submit the research_run job carrying the APPROVED
-    // task tree (core task ids travel verbatim; the worker neither re-plans
-    // nor re-approves). Locks are taken sequentially, never nested.
-    let mut supervisor = state.supervisor.lock().expect("supervisor mutex poisoned");
-    let ack = {
-        let ack = supervisor.submit_job(&crate::worker::JobRequest {
+    // Phase 2 (supervisor only): submit the research_run job carrying the
+    // APPROVED task tree (core task ids travel verbatim; the worker neither
+    // re-plans nor re-approves).
+    let submitted = {
+        let mut supervisor = state.supervisor.lock().expect("supervisor mutex poisoned");
+        supervisor.submit_job(&crate::worker::JobRequest {
             job_id: crate::ids::new_id(),
             run_id: run.id.clone(),
             task_id: None,
@@ -822,53 +860,73 @@ pub fn run_start_impl(state: &AppState, request: RunStartRequest) -> Result<RunS
             params: config_value,
             approve_plan: request.approve_plan,
             plan: Some(plan_value),
-        });
-        match ack {
-            Ok(ack) => ack,
-            // A failed submission must not leave a converged-looking RUNNING run
-            // behind (audit F1): the run has no events, tasks, or job binding
-            // yet, so removing it restores the pre-start state. If even that
-            // fails, the run is closed as failed so the state stays honest.
-            Err(err) => {
+        })
+    };
+    let ack = match submitted {
+        Ok(ack) => ack,
+        // A failed submission must not leave a converged-looking RUNNING run
+        // behind (audit F1): the run has no events, tasks, or job binding
+        // yet, so removing it restores the pre-start state. If even that
+        // fails, the run is closed as failed so the state stays honest. The
+        // database lock is taken only after the supervisor lock was
+        // released (review R3).
+        Err(err) => {
+            let cleanup = {
                 let mut conn = state.conn.lock().expect("database mutex poisoned");
-                let cleanup = crate::repositories::with_write_tx(&mut conn, |tx| {
+                crate::repositories::with_write_tx(&mut conn, |tx| {
                     tx.execute("DELETE FROM runs WHERE id = ?1", rusqlite::params![run.id])
                         .map(|_| ())
                         .map_err(CoreError::from)
+                })
+            };
+            if cleanup.is_err() {
+                let mut conn = state.conn.lock().expect("database mutex poisoned");
+                let _ = crate::repositories::with_write_tx(&mut conn, |tx| {
+                    crate::repositories::runs::Runs::update_status(tx, &run.id, "failed")
+                        .map(|_| ())
                 });
-                if cleanup.is_err() {
-                    let _ = crate::repositories::with_write_tx(&mut conn, |tx| {
-                        crate::repositories::runs::Runs::update_status(tx, &run.id, "failed")
-                            .map(|_| ())
-                    });
-                }
-                return Err(err);
             }
-        }
-    };
-    // Persist the job binding (migration 004) so run.get / run.cancel
-    // survive a restart. A failure here must not strand an executing job
-    // with no bound run: the run row is removed and the job cancelled.
-    {
-        let mut conn = state.conn.lock().expect("database mutex poisoned");
-        let bound = crate::repositories::with_write_tx(&mut conn, |tx| {
-            crate::repositories::runs::Runs::set_worker_job(tx, &run.id, &ack.job_id)
-        });
-        if let Err(err) = bound {
-            let _ = supervisor.cancel_job(&ack.job_id);
-            let _ = crate::repositories::with_write_tx(&mut conn, |tx| {
-                tx.execute("DELETE FROM runs WHERE id = ?1", rusqlite::params![run.id])
-                    .map(|_| ())
-                    .map_err(CoreError::from)
-            });
             return Err(err);
         }
+    };
+
+    // Phase 3 (database only): persist the job binding (migration 004) so
+    // run.get / run.cancel survive a restart.
+    let bound = {
+        let mut conn = state.conn.lock().expect("database mutex poisoned");
+        crate::repositories::with_write_tx(&mut conn, |tx| {
+            crate::repositories::runs::Runs::set_worker_job(tx, &run.id, &ack.job_id)
+        })
+    };
+    if let Err(err) = bound {
+        // A failure here must not strand an executing job with no bound run:
+        // cancel the job first (supervisor lock alone), then remove the run
+        // (database lock alone) — review R3.
+        {
+            let mut supervisor = state.supervisor.lock().expect("supervisor mutex poisoned");
+            if let Err(cancel_err) = supervisor.cancel_job(&ack.job_id) {
+                tracing_note_cancel(&ack.job_id, &cancel_err);
+            }
+        }
+        let mut conn = state.conn.lock().expect("database mutex poisoned");
+        let _ = crate::repositories::with_write_tx(&mut conn, |tx| {
+            tx.execute("DELETE FROM runs WHERE id = ?1", rusqlite::params![run.id])
+                .map(|_| ())
+                .map_err(CoreError::from)
+        });
+        return Err(err);
     }
     Ok(RunStarted {
         project_id: run.project_id,
         run_id: run.id,
         job_id: ack.job_id,
     })
+}
+
+/// Cancel-noise logging for the run-start error path (observable, never
+/// swallowed — review R2).
+fn tracing_note_cancel(job_id: &str, err: &CoreError) {
+    eprintln!("[morpho-core] cancelling job {job_id} after a failed binding failed: {err}");
 }
 
 /// Maps a core plan task type onto the worker's runtime task type
@@ -966,7 +1024,10 @@ fn approved_plan_wire(
 /// One approved task as the wire shape the worker's strict pydantic models
 /// accept: the core's task id verbatim, the user-edited title/description,
 /// the runtime type mapping, dependency edges as task ids, and the stage
-/// parameters (search query included).
+/// parameters. The search query IS the user's edited task description when
+/// one exists (ADR-024: what the user approved — including edited
+/// descriptions — is exactly what executes); without an edit the query
+/// falls back to the config topic scoped by the section dimension.
 fn approved_task_wire(
     conn: &rusqlite::Connection,
     task: &TaskRecord,
@@ -978,6 +1039,13 @@ fn approved_task_wire(
         .into_iter()
         .map(|dep| Value::String(dep.depends_on_task_id))
         .collect::<Vec<_>>();
+    let query = if task.description.trim().is_empty() {
+        format!("{} {}", config.topic, section.dimension)
+            .trim()
+            .to_string()
+    } else {
+        task.description.trim().to_string()
+    };
     Ok(json!({
         "task_id": task.id,
         "title": task.title,
@@ -986,9 +1054,7 @@ fn approved_task_wire(
         "params": {
             "section_id": section.id,
             "dimension": section.dimension,
-            "query": format!("{} {}", config.topic, section.dimension)
-                .trim()
-                .to_string(),
+            "query": query,
             "topic": config.topic,
             "languages": config.languages,
             "source_types": config.source_types,
@@ -1075,6 +1141,7 @@ fn attach_task_rollup(conn: &rusqlite::Connection, status: &mut Value) -> Result
     status["task_rollup"] = json!({
         "run_id": run_id,
         "run_status": run.status,
+        "delivery_status": run.delivery_status,
         "task_counts": counts,
         "tasks": tasks
             .iter()
@@ -1098,10 +1165,12 @@ pub fn run_cancel(
 fn run_cancel_impl(state: &AppState, job_id: &str) -> Result<bool, CoreError> {
     let mut supervisor = state.supervisor.lock().expect("supervisor mutex poisoned");
     match supervisor.cancel_job(job_id) {
-        // The worker no longer knows the job (restart): converge locally by
-        // applying the same cancellation projection the worker's
-        // run.cancelled event would drive (ADR-019 state machine; audit F5),
-        // so the persisted run cannot dangle at running forever.
+        // The worker no longer knows the job (restart): converge locally
+        // through the SAME atomic event+projection service the pump and
+        // startup recovery use (round-2 review P4) — the cancellation event,
+        // its projection, and the delivery-failed fact commit together or
+        // not at all, and a failed projection surfaces as a command error
+        // instead of a silent `true`.
         Err(err)
             if err.developer_detail.contains("has no job")
                 || err.developer_detail.contains("NOT_FOUND") =>
@@ -1113,45 +1182,16 @@ fn run_cancel_impl(state: &AppState, job_id: &str) -> Result<bool, CoreError> {
             };
             if let Some(run_id) = run_id {
                 let mut conn = state.conn.lock().expect("database mutex poisoned");
-                let event = crate::ipc::ResearchEvent::new(
-                    run_id.clone(),
-                    None,
-                    0,
-                    crate::ids::now_unix_ms() as u64,
-                    "run.cancelled",
-                    json!({"reason": "worker job no longer exists"}),
-                );
-                if persist_local_event(&mut conn, &event).is_ok() {
-                    let _ = crate::orchestrator::OrchestratorService::apply_event(
-                        &mut conn,
-                        &crate::orchestrator::CanonicalEvent::from(&event),
-                    );
-                }
+                crate::recovery::converge_cancelled_run(
+                    &mut conn,
+                    &run_id,
+                    "worker job no longer exists; cancelled locally",
+                )?;
             }
             Ok(true)
         }
         result => result.map(|_| true),
     }
-}
-
-/// Persists a core-originated event (no worker involved): sequence
-/// allocation stays per-run and atomic.
-fn persist_local_event(
-    conn: &mut rusqlite::Connection,
-    event: &crate::ipc::ResearchEvent,
-) -> Result<(), CoreError> {
-    crate::repositories::services::EventService::append_event(
-        conn,
-        crate::repositories::events::NewEvent {
-            run_id: event.run_id.clone(),
-            task_id: event.task_id.clone(),
-            event_type: event.event_type.clone(),
-            payload: serde_json::to_string(&event.payload).map_err(|err| {
-                CoreError::database(format!("serialize event payload failed: {err}"))
-            })?,
-        },
-    )
-    .map(|_| ())
 }
 
 fn find_run_by_worker_job(conn: &rusqlite::Connection, job_id: &str) -> Option<String> {
@@ -1221,6 +1261,10 @@ pub fn run_latest_get_impl(state: &AppState, project_id: &str) -> Result<Value, 
             "project_id": run.project_id,
             "plan_id": run.plan_id,
             "status": run.status,
+            // Delivery is a separate durable fact (migration 006, round-2
+            // review P1): a terminal execution status alone never claims the
+            // results are committed.
+            "delivery_status": run.delivery_status,
             "worker_job_id": run.worker_job_id,
             "started_at": run.started_at,
             "finished_at": run.finished_at,
@@ -1230,6 +1274,7 @@ pub fn run_latest_get_impl(state: &AppState, project_id: &str) -> Result<Value, 
         "task_rollup": {
             "run_id": run.id,
             "run_status": run.status,
+            "delivery_status": run.delivery_status,
             "task_counts": counts,
             "tasks": tasks
                 .iter()
@@ -1656,15 +1701,37 @@ fn vault_export_project_impl(
 
 /// Builds the transport factory from the worker config: the hermetic fake by
 /// default, the HTTP/Python launcher when `worker.transport = "http"`.
+/// Builds the worker transport factory from the app configuration. The
+/// HTTP branch resolves the desktop's provider configuration (Settings +
+/// keychain, review F) at every spawn so worker restarts pick up keychain
+/// changes; the fake branch stays hermetic for dev/tests.
 pub fn transport_factory_from_config(
-    worker: &WorkerConfig,
+    config: &crate::secrets::AppConfig,
+    keychain: std::sync::Arc<dyn crate::secrets::SecretStore>,
 ) -> Box<crate::worker::TransportFactory> {
-    if worker.is_http() {
-        let launcher = worker.clone();
+    if config.worker.is_http() {
+        let launcher = config.worker.clone();
+        let providers = config.providers.clone();
         Box::new(move || {
+            let providers = providers.clone();
+            let keychain = std::sync::Arc::clone(&keychain);
+            let env_source: std::sync::Arc<crate::worker::EnvSource> =
+                std::sync::Arc::new(move || {
+                    crate::secrets::worker_provider_env(
+                        &crate::secrets::AppConfig {
+                            providers: providers.clone(),
+                            ..Default::default()
+                        },
+                        keychain.as_ref(),
+                    )
+                });
             Ok(Box::new(
-                crate::worker::http::HttpWorkerTransport::launching(launcher.clone()),
-            ))
+                crate::worker::http::HttpWorkerTransport::launching_with_env(
+                    launcher.clone(),
+                    env_source,
+                ),
+            )
+                as Box<dyn crate::worker::WorkerTransport + Send>)
         })
     } else {
         let (factory, _handle) = crate::worker::fake::FakeWorkerScript::healthy().factory();
@@ -1710,6 +1777,7 @@ mod tests {
             Arc::new(FakeKeychain::new()),
             root.join("config").join("app.json"),
             root.join("vault"),
+            root.join("cache"),
         )
     }
 
@@ -1745,6 +1813,7 @@ mod tests {
                 Arc::new(FakeKeychain::new()),
                 root.join("config").join("app.json"),
                 root.join("vault"),
+                root.join("cache"),
             ),
             handle,
         )
@@ -1775,6 +1844,7 @@ mod tests {
             Arc::new(FakeKeychain::new()),
             root.join("config").join("app.json"),
             root.join("vault"),
+            root.join("cache"),
         )
     }
 
@@ -1989,6 +2059,126 @@ mod tests {
         assert!(err.developer_detail.contains("not found"));
     }
 
+    /// Round-2 review P4: the worker-gone cancellation convergence goes
+    /// through the SAME atomic event+projection service as the pump and
+    /// startup recovery. A projection failure rolls the event back, the
+    /// command reports the error (never a fake `true`), and the healed path
+    /// converges the run AND its delivery fact in one transaction.
+    #[test]
+    fn run_cancel_convergence_is_atomic_and_reports_projection_failures() {
+        // A forgetful fake: after a "restart" the worker no longer knows the
+        // job (like a real worker process), which drives the local
+        // convergence path.
+        let conn = migrated_memory_db().unwrap();
+        let mut script = FakeWorkerScript::healthy();
+        script.forget_jobs_on_restart = true;
+        let (factory, handle) = script.factory();
+        let supervisor = Supervisor::new(
+            factory,
+            RestartPolicy::default(),
+            Box::new(FakeClock::default()),
+            Box::new(FakeSleeper::default()),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.keep();
+        let state = AppState::new(
+            conn,
+            supervisor,
+            Arc::new(FakeKeychain::new()),
+            root.join("config").join("app.json"),
+            root.join("vault"),
+            root.join("cache"),
+        );
+        let _ = &handle;
+        let (_project_id, plan_id) = seeded_plan(&state);
+        plan_approve_impl(&state, &plan_id).unwrap();
+        let started = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id: plan_id.clone(),
+                approve_plan: true,
+            },
+        )
+        .unwrap();
+        // Claim the plan's task for the run so the cancellation projection
+        // must touch `tasks`.
+        {
+            let mut conn = state.conn.lock().expect("database mutex poisoned");
+            crate::orchestrator::OrchestratorService::apply_event(
+                &mut conn,
+                &crate::orchestrator::CanonicalEvent::new(
+                    started.run_id.clone(),
+                    None,
+                    "run.started",
+                    json!({}),
+                ),
+            )
+            .unwrap();
+        }
+
+        // The worker "restarts" and no longer knows the job; the projection
+        // is forced to fail (SQL trigger on the task updates the
+        // cancellation must make).
+        handle.kill();
+        {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            conn.execute_batch(
+                "CREATE TRIGGER review_fail_task_update BEFORE UPDATE ON tasks BEGIN SELECT \
+                 RAISE(ABORT, 'injected'); END;",
+            )
+            .unwrap();
+        }
+        let err = run_cancel_impl(&state, &started.job_id).unwrap_err();
+        assert!(
+            err.developer_detail.contains("injected") || err.developer_detail.contains("tasks"),
+            "the projection failure surfaces: {err:?}"
+        );
+        {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            let events =
+                crate::repositories::events::Events::list_after(&conn, &started.run_id, 0, 100)
+                    .expect("events after the failed cancel");
+            assert!(
+                events.iter().all(|event| event.event_type == "run.started"),
+                "the failed convergence persisted no run.cancelled event: {:?}",
+                events.iter().map(|e| &e.event_type).collect::<Vec<_>>()
+            );
+            let run = Runs::get(&conn, &started.run_id).unwrap().unwrap();
+            assert_eq!(run.status, "running", "the run was not half-converged");
+            assert_eq!(run.delivery_status, "pending");
+            conn.execute_batch("DROP TRIGGER review_fail_task_update;")
+                .unwrap();
+        }
+
+        // Healed: the same command converges atomically — event, projection,
+        // and the delivery fact land together.
+        assert!(run_cancel_impl(&state, &started.job_id).unwrap());
+        {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            let run = Runs::get(&conn, &started.run_id).unwrap().unwrap();
+            assert_eq!(run.status, "cancelled");
+            assert_eq!(
+                run.delivery_status, "failed",
+                "the worker is gone: its undelivered results are a durable fact"
+            );
+            let events =
+                crate::repositories::events::Events::list_after(&conn, &started.run_id, 0, 100)
+                    .unwrap();
+            assert!(
+                events
+                    .iter()
+                    .any(|event| event.event_type == "run.cancelled"),
+                "the convergence event landed"
+            );
+            let tasks =
+                crate::repositories::tasks::Tasks::list_for_run(&conn, &started.run_id).unwrap();
+            assert!(
+                tasks.iter().all(|task| task.status == "CANCELLED"),
+                "the claimed task closed with the run"
+            );
+        }
+    }
+
     #[test]
     fn run_start_rejects_unapproved_rejected_and_superseded_plans() {
         let state = test_state();
@@ -2064,7 +2254,8 @@ mod tests {
         .unwrap_err();
         assert!(err.developer_detail.contains("active run"));
 
-        // A terminal run (here: cancelled) re-opens the plan for a new run.
+        // A terminal run (here: cancelled) re-opens the plan ONLY while its
+        // tasks were never claimed (the run never executed anything).
         {
             let mut conn = state.conn.lock().expect("database mutex poisoned");
             with_write_tx(&mut conn, |tx| {
@@ -2075,12 +2266,252 @@ mod tests {
         let second = run_start_impl(
             &state,
             RunStartRequest {
-                plan_id,
+                plan_id: plan_id.clone(),
                 approve_plan: true,
             },
         )
         .unwrap();
         assert_ne!(second.run_id, first.run_id);
+    }
+
+    /// Review R4: once a run's `run.started` claimed the plan's tasks, the
+    /// plan is spent — a fresh run of the SAME plan is refused with the
+    /// regenerate path, never a zero-task "success". Applies after
+    /// completed, cancelled, AND failed runs; old history stays untouched.
+    #[test]
+    fn an_executed_plan_refuses_reruns_with_the_regenerate_path() {
+        for terminal in ["completed", "cancelled", "failed"] {
+            let state = test_state();
+            let (project_id, plan_id) = seeded_plan(&state);
+            plan_approve_impl(&state, &plan_id).unwrap();
+            let first = run_start_impl(
+                &state,
+                RunStartRequest {
+                    plan_id: plan_id.clone(),
+                    approve_plan: true,
+                },
+            )
+            .unwrap();
+
+            // run.started claims the plan's single task for the run, then
+            // the run settles terminally.
+            {
+                let mut conn = state.conn.lock().expect("database mutex poisoned");
+                crate::orchestrator::OrchestratorService::apply_event(
+                    &mut conn,
+                    &crate::orchestrator::CanonicalEvent::new(
+                        first.run_id.clone(),
+                        None,
+                        "run.started",
+                        json!({}),
+                    ),
+                )
+                .unwrap();
+                crate::orchestrator::OrchestratorService::apply_event(
+                    &mut conn,
+                    &crate::orchestrator::CanonicalEvent::new(
+                        first.run_id.clone(),
+                        None,
+                        "run.completed",
+                        json!({}),
+                    ),
+                )
+                .unwrap();
+                // Force the terminal run status the scenario names.
+                with_write_tx(&mut conn, |tx| {
+                    Runs::update_status(tx, &first.run_id, terminal).map(|_| ())
+                })
+                .unwrap();
+            }
+
+            let err = run_start_impl(
+                &state,
+                RunStartRequest {
+                    plan_id: plan_id.clone(),
+                    approve_plan: true,
+                },
+            )
+            .unwrap_err();
+            assert!(
+                err.developer_detail.contains("regenerate the plan"),
+                "terminal '{terminal}' must refuse reuse with the legal path: {err:?}"
+            );
+            assert!(
+                err.developer_detail.contains("was already executed"),
+                "{err:?}"
+            );
+
+            // The first run's history is untouched by the refusal.
+            {
+                let conn = state.conn.lock().expect("database mutex poisoned");
+                let tasks =
+                    crate::repositories::tasks::Tasks::list_for_run(&conn, &first.run_id).unwrap();
+                assert_eq!(tasks.len(), 1);
+                assert_eq!(tasks[0].run_id.as_deref(), Some(first.run_id.as_str()));
+            }
+
+            // The legal path works: a regenerated plan of the same project
+            // runs fresh.
+            let regenerated = {
+                let mut conn = state.conn.lock().expect("database mutex poisoned");
+                PlanService::regenerate_plan(&mut conn, &project_id).unwrap()
+            };
+            plan_approve_impl(&state, &regenerated.id).unwrap();
+            let fresh = run_start_impl(
+                &state,
+                RunStartRequest {
+                    plan_id: regenerated.id.clone(),
+                    approve_plan: true,
+                },
+            )
+            .unwrap();
+            {
+                let mut conn = state.conn.lock().expect("database mutex poisoned");
+                crate::orchestrator::OrchestratorService::apply_event(
+                    &mut conn,
+                    &crate::orchestrator::CanonicalEvent::new(
+                        fresh.run_id.clone(),
+                        None,
+                        "run.started",
+                        json!({}),
+                    ),
+                )
+                .unwrap();
+                let tasks =
+                    crate::repositories::tasks::Tasks::list_for_run(&conn, &fresh.run_id).unwrap();
+                assert!(!tasks.is_empty(), "the regenerated plan claims fresh tasks");
+                // The old run's task was not rewritten.
+                let old =
+                    crate::repositories::tasks::Tasks::list_for_run(&conn, &first.run_id).unwrap();
+                assert_eq!(old[0].run_id.as_deref(), Some(first.run_id.as_str()));
+            }
+        }
+    }
+
+    /// Review E: a user-edited task description IS the execution input —
+    /// the wire plan's search query equals the edited description verbatim.
+    #[test]
+    fn a_user_edited_task_description_becomes_the_execution_query() {
+        let (state, handle) = test_state_with_handle();
+        let (project_id, plan_id) = seeded_scripted_plan(&state);
+
+        // Edit one search task's description while the plan is still a
+        // draft (editing closes at approval).
+        let view = {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            let plan = crate::repositories::plans::Plans::get(&conn, &plan_id)
+                .unwrap()
+                .unwrap();
+            crate::projections::plan_view(&conn, &plan).unwrap()
+        };
+        let search_task = view
+            .sections
+            .iter()
+            .flat_map(|section| section.tasks.iter())
+            .find(|task| task.kind == "search")
+            .expect("a search task");
+        let edited = "user-authored research brief about solid-state battery cathodes";
+        plan_update_task_impl(
+            &state,
+            PlanUpdateTaskRequest {
+                project_id: project_id.clone(),
+                task_id: search_task.id.clone(),
+                title: String::new(),
+                description: edited.into(),
+            },
+        )
+        .unwrap();
+        plan_approve_impl(&state, &plan_id).unwrap();
+
+        run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id: plan_id.clone(),
+                approve_plan: true,
+            },
+        )
+        .unwrap();
+        let request = &handle.submitted_requests()[0];
+        let plan = request.plan.as_ref().unwrap();
+        let wire_task = plan["sections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|section| section["tasks"].as_array().unwrap())
+            .find(|task| task["task_id"] == json!(search_task.id))
+            .unwrap();
+        assert_eq!(wire_task["description"], json!(edited));
+        assert_eq!(
+            wire_task["params"]["query"],
+            json!(edited),
+            "the edited description executes verbatim as the search query"
+        );
+    }
+
+    /// Review R3: run_start and the pump take their locks strictly one at a
+    /// time. Concurrent starts plus running pump cycles must never
+    /// deadlock; every start resolves (one success, structured refusals for
+    /// the rest) within the guard timeout.
+    #[test]
+    fn concurrent_run_starts_and_pump_cycles_never_deadlock() {
+        let state = Arc::new(test_state());
+        let (_project_id, plan_id) = seeded_scripted_plan(&state);
+        plan_approve_impl(&state, &plan_id).unwrap();
+
+        // A pump thread churning cycles with a large scripted event batch
+        // (long database-lock windows) while several threads start runs.
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cache = tempfile::tempdir().unwrap();
+        let content_dir = cache.keep();
+        {
+            let pump_state = Arc::clone(&state);
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+                    let _ = AppState::pump_cycle(
+                        &pump_state.supervisor,
+                        &pump_state.conn,
+                        &content_dir,
+                        &|_| {},
+                    );
+                }
+            });
+        }
+
+        let mut handles = Vec::new();
+        for _ in 0..4 {
+            let state = Arc::clone(&state);
+            let plan_id = plan_id.clone();
+            handles.push(std::thread::spawn(move || {
+                run_start_impl(
+                    &state,
+                    RunStartRequest {
+                        plan_id,
+                        approve_plan: true,
+                    },
+                )
+            }));
+        }
+        let mut successes = 0_usize;
+        for handle in handles {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = sender.send(handle.join());
+            });
+            let joined = receiver
+                .recv_timeout(std::time::Duration::from_secs(30))
+                .expect("run_start must resolve — a lock cycle would hang here");
+            match joined.expect("thread must not panic") {
+                Ok(_) => successes += 1,
+                Err(err) => assert!(
+                    err.developer_detail.contains("active run")
+                        || err.developer_detail.contains("already been executed"),
+                    "structured refusal expected, got: {err:?}"
+                ),
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(successes, 1, "exactly one concurrent start wins the plan");
     }
 
     #[test]
@@ -2153,12 +2584,19 @@ mod tests {
             "validation waits for both normalizations"
         );
         let search = tasks[0];
+        // The search query IS the approved task description (ADR-024 /
+        // review E): the scripted draft's description carries the config
+        // topic, so a user edit to the description steers the search.
+        assert_eq!(
+            search["params"]["query"], search["description"],
+            "the query executes the approved description verbatim"
+        );
         assert!(
             search["params"]["query"]
                 .as_str()
                 .unwrap()
                 .contains("LLM scaling"),
-            "the query derives from the config topic"
+            "the scripted description carries the config topic"
         );
         // Real core task ids: every task_id resolves to a tasks row.
         let conn = state.conn.lock().expect("database mutex poisoned");
@@ -2488,15 +2926,25 @@ mod tests {
     #[test]
     fn transport_factory_follows_the_config_selector() {
         // Both branches must build without launching anything: the http
-        // factory only spawns when the supervisor calls spawn().
-        let mut fake = transport_factory_from_config(&WorkerConfig::default());
+        // factory only spawns when the supervisor calls spawn(). The http
+        // branch carries the provider-env resolver (review F); with no
+        // providers configured it resolves an empty handoff, never offline
+        // mode.
+        let fake_config = crate::secrets::AppConfig::default();
+        let mut fake = transport_factory_from_config(
+            &fake_config,
+            Arc::new(crate::secrets::FakeKeychain::new()),
+        );
         let mut fake_transport = fake().unwrap();
         fake_transport.spawn("token-not-a-secret").unwrap();
         assert!(fake_transport.is_alive());
 
-        let mut http_config = WorkerConfig::default();
-        http_config.transport = "http".into();
-        let mut http = transport_factory_from_config(&http_config);
+        let mut http_config = crate::secrets::AppConfig::default();
+        http_config.worker.transport = "http".into();
+        let mut http = transport_factory_from_config(
+            &http_config,
+            Arc::new(crate::secrets::FakeKeychain::new()),
+        );
         let http_transport = http().unwrap();
         assert!(!http_transport.is_alive(), "no process spawned yet");
     }
@@ -2710,6 +3158,7 @@ mod tests {
                         scope: String::new(),
                         confidence: "medium".into(),
                         provenance: "run-1".into(),
+                        status: "draft".into(),
                     },
                 )
                 .map(|(record, _)| record)
@@ -2725,6 +3174,8 @@ mod tests {
                         quote: "uses attention".into(),
                         value: String::new(),
                         locator: "p. 1".into(),
+                        locator_detail: String::new(),
+                        retrieved_at: 1,
                         direction: "support".into(),
                     },
                 )

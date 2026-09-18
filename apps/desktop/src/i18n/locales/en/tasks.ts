@@ -13,6 +13,8 @@ const tasks = {
     detail: "Tasks will execute in dependency order.",
   },
   runBadge: "Run state: {{state}}",
+  runDeliveryPending: "Finished; delivering results",
+  runDeliveryFailed: "Finished; results not delivered",
   empty: {
     title: "No tasks yet",
     approved: "The plan is approved — click “Continue run” in the top right to create tasks.",

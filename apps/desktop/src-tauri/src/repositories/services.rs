@@ -121,25 +121,34 @@ fn scripted_plan_draft(
             (
                 "search",
                 format!("检索 {dimension} 维度来源"),
-                "检索候选来源，记录 URL、类型与检索时间。",
+                // The search task's description IS its execution query
+                // (ADR-024: the approved description is what executes), so
+                // the scripted draft writes a real search brief carrying
+                // the topic and dimension — not generic boilerplate that
+                // would replace the query.
+                format!(
+                    "检索与研究主题「{}」相关的 {dimension} 维度候选来源，记录 URL、类型与\
+                     检索时间。",
+                    config.topic
+                ),
                 vec![],
             ),
             (
                 "source_evaluation",
                 format!("提取并评估 {dimension} 维度内容"),
-                "提取正文与元数据，生成来源质量评估。",
+                "提取正文与元数据，生成来源质量评估。".into(),
                 vec![search_key.clone()],
             ),
             (
                 "normalization",
                 format!("归一化 {dimension} 维度知识"),
-                "生成实体、关系与候选论断，保留出处。",
+                "生成实体、关系与候选论断，保留出处。".into(),
                 vec![evaluation_key.clone()],
             ),
         ] {
             tasks.push(NewTask {
                 title,
-                description: description.into(),
+                description,
                 task_type: kind.into(),
                 idempotency_key: format!("plan-{generation}-d{index}-{kind}"),
                 section_index: Some(section_index),
@@ -1018,6 +1027,7 @@ mod tests {
                     predicate: "uses".into(),
                     object_value: "attention".into(),
                     scope: String::new(),
+                    status: "draft".into(),
                     confidence: "high".into(),
                     provenance: "run-1/task-2".into(),
                 },
@@ -1035,6 +1045,8 @@ mod tests {
                     quote: "transformers use attention".into(),
                     value: String::new(),
                     locator: "p. 2".into(),
+                    locator_detail: String::new(),
+                    retrieved_at: 1,
                     direction: "support".into(),
                 },
             )

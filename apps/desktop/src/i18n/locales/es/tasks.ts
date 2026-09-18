@@ -13,6 +13,8 @@ const tasks = {
     detail: "Las tareas se ejecutarán en orden de dependencia.",
   },
   runBadge: "Estado de ejecución: {{state}}",
+  runDeliveryPending: "Terminado; entregando resultados",
+  runDeliveryFailed: "Terminado; resultados no entregados",
   empty: {
     title: "Aún no hay tareas",
     approved: "El plan está aprobado: haz clic en «Continuar ejecución» arriba a la derecha para crear las tareas.",

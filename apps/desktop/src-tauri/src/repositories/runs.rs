@@ -50,12 +50,21 @@ pub struct RunRecord {
     /// ADR-024). `None` for legacy runs and hermetic fakes.
     #[serde(default)]
     pub worker_job_id: Option<String>,
+    /// Result-delivery state (migration 006, round-2 review P1): `status`
+    /// above is the EXECUTION projection; this records whether the run's
+    /// validated result records were committed to the domain tables —
+    /// `pending`, `delivered`, `failed`, or `unknown` (legacy backfill).
+    #[serde(default)]
+    pub delivery_status: String,
 }
+
+/// Delivery-state vocabulary (migration 006 CHECK).
+pub const DELIVERY_STATES: [&str; 4] = ["pending", "delivered", "failed", "unknown"];
 
 pub struct Runs;
 
 const COLS: &str = "id, project_id, plan_id, status, started_at, finished_at, created_at, \
-                    updated_at, worker_job_id";
+                    updated_at, worker_job_id, delivery_status";
 
 impl Runs {
     pub fn insert(tx: &Transaction<'_>, new: &NewRun) -> Result<RunRecord, CoreError> {
@@ -70,6 +79,7 @@ impl Runs {
             created_at: now,
             updated_at: now,
             worker_job_id: None,
+            delivery_status: "pending".into(),
         };
         tx.execute(
             "INSERT INTO runs (id, project_id, plan_id, status, started_at, finished_at,
@@ -136,6 +146,52 @@ impl Runs {
         Ok(())
     }
 
+    /// Updates the run's result-delivery state (migration 006). Idempotent;
+    /// unknown run ids and unknown states are structured errors. The
+    /// `delivered` transition belongs to the ingestion transaction, `failed`
+    /// to the delivery-failure path and startup convergence.
+    pub fn set_delivery_status(
+        tx: &Transaction<'_>,
+        id: &str,
+        delivery_status: &str,
+    ) -> Result<(), CoreError> {
+        if !DELIVERY_STATES.contains(&delivery_status) {
+            return Err(CoreError::database(format!(
+                "unknown delivery status '{delivery_status}'"
+            )));
+        }
+        let changed = tx
+            .execute(
+                "UPDATE runs SET delivery_status = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, delivery_status, now_unix_ms()],
+            )
+            .map_err(CoreError::from)?;
+        if changed == 0 {
+            return Err(CoreError::database(format!("run '{id}' not found")));
+        }
+        Ok(())
+    }
+
+    /// Runs whose execution is terminal but whose results were never
+    /// committed (`pending` or `failed` delivery) — the startup recovery's
+    /// delivery-convergence input. Legacy `unknown` rows are excluded:
+    /// nothing can be proven about them.
+    pub fn list_terminal_undelivered(conn: &Connection) -> Result<Vec<RunRecord>, CoreError> {
+        let sql = format!(
+            "SELECT {COLS} FROM runs
+             WHERE status IN ('completed', 'failed', 'cancelled')
+               AND delivery_status IN ('pending', 'failed')
+             ORDER BY created_at, id"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(CoreError::from)?;
+        let rows = stmt
+            .query_map([], map_run)
+            .map_err(CoreError::from)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CoreError::from)?;
+        Ok(rows)
+    }
+
     /// Updates a run status. Terminal statuses stamp `finished_at` with the
     /// update time; non-terminal updates clear it again (a reopened run —
     /// for example when the orchestrator retries a failed task — is back in
@@ -188,6 +244,7 @@ fn map_run(row: &Row<'_>) -> rusqlite::Result<RunRecord> {
         created_at: row.get(6)?,
         updated_at: row.get(7)?,
         worker_job_id: row.get(8)?,
+        delivery_status: row.get(9)?,
     })
 }
 

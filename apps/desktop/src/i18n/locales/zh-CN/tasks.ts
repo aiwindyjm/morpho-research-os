@@ -15,6 +15,8 @@ const tasks = {
     detail: "任务将按依赖顺序执行。",
   },
   runBadge: "运行状态：{{state}}",
+  runDeliveryPending: "执行完成，结果交付中",
+  runDeliveryFailed: "执行完成，结果未交付",
   empty: {
     title: "还没有任务",
     approved: "计划已批准，点击右上角「继续运行」创建任务。",

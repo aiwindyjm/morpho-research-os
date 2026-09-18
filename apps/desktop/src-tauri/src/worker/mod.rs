@@ -110,6 +110,11 @@ pub trait WorkerTransport {
 pub type TransportFactory =
     dyn FnMut() -> Result<Box<dyn WorkerTransport + Send>, CoreError> + Send;
 
+/// Provider-configuration environment for the worker process (review F):
+/// resolved at spawn time so keychain changes apply to restarts. The
+/// returned pairs are child-process environment variables only.
+pub type EnvSource = dyn Fn() -> Result<Vec<(String, String)>, CoreError> + Send + Sync;
+
 /// Wall clock port so tests control time.
 pub trait Clock: Send {
     fn now_ms(&self) -> u64;
@@ -189,7 +194,43 @@ struct ActiveJob {
     /// has been forwarded (audit F5) so the core converges on the worker's
     /// final state instead of a silent RUNNING forever.
     cancelling: bool,
+    /// Set when a terminal job event has been PERSISTED (review R2): the
+    /// validated result records must still be fetched and ingested before
+    /// the job may retire. The pump retries delivery on its own schedule —
+    /// it never depends on the terminal event arriving again.
+    results_pending: bool,
+    /// Failed delivery (fetch or ingestion) attempts so far.
+    delivery_attempts: u32,
+    /// Set when `delivery_attempts` reached the bound: the job pauses and
+    /// the run's persistent `delivery_status` flips to `failed` (migration
+    /// 006). Delivery is NOT abandoned — see `delivery_cooldown`.
+    delivery_failed: bool,
+    /// Pump cycles left before a delivery-failed job re-arms automatically
+    /// (round-2 review P1): the automatic retry budget bounds the hot loop,
+    /// never the recovery itself. While the worker lives, a healed failure
+    /// cause (e.g. a transient SQL condition) is picked up after the
+    /// cool-down.
+    delivery_cooldown: u32,
+    /// Failed persist+projection attempts for the current sequence
+    /// (review R5): after the bound the job is parked (stalled) instead of
+    /// hot-looping on a permanently failing event.
+    projection_attempts: u32,
+    projection_stalled: bool,
 }
+
+/// Delivery (fetch + ingest) attempts before a terminal job stops retrying
+/// automatically and parks as `delivery_failed` (still tracked, observable).
+pub const MAX_DELIVERY_ATTEMPTS: u32 = 8;
+
+/// Persist+projection attempts before a job with a repeatedly failing event
+/// is parked as `projection_stalled` (cursor stays put, polling stops).
+pub const MAX_PROJECTION_ATTEMPTS: u32 = 6;
+
+/// Pump cycles a delivery-failed job waits before re-arming automatically
+/// (round-2 review P1): the failure stays durable and observable the whole
+/// time (`runs.delivery_status = 'failed'`), and recovery keeps retrying
+/// with backoff instead of excluding the job forever.
+pub const DELIVERY_REARM_CYCLES: u32 = 8;
 
 /// Supervises one worker process: start, health/version gating, bounded
 /// restarts with backoff, cancellation, event forwarding with dedup, and
@@ -369,6 +410,12 @@ impl Supervisor {
                 run_id: request.run_id.clone(),
                 task_id: request.task_id.clone(),
                 cancelling: false,
+                results_pending: false,
+                delivery_attempts: 0,
+                delivery_failed: false,
+                delivery_cooldown: 0,
+                projection_attempts: 0,
+                projection_stalled: false,
             },
         );
         Ok(ack)
@@ -403,9 +450,112 @@ impl Supervisor {
     }
 
     /// Removes a job from the active set after its terminal event has been
-    /// forwarded and its results drained (the pump calls this).
+    /// forwarded, its results fetched AND ingested (the pump is the only
+    /// legal caller — review R2).
     pub fn retire_job(&mut self, job_id: &str) {
         self.active_jobs.remove(job_id);
+    }
+
+    /// Marks a job's results as pending delivery (the pump calls this once a
+    /// terminal job event has been persisted). The job retires only after
+    /// delivery succeeds.
+    pub fn mark_results_pending(&mut self, job_id: &str) {
+        if let Some(job) = self.active_jobs.get_mut(job_id) {
+            job.results_pending = true;
+        }
+    }
+
+    /// Advances every delivery-failed job's cool-down by one pump cycle;
+    /// a job whose cool-down expired re-arms (the failed flag clears and
+    /// the attempt budget resets) so the next cycle tries again. The run's
+    /// persistent `delivery_status` stays `failed` until a delivery
+    /// actually succeeds — observable the whole time.
+    pub fn tick_delivery_cooldowns(&mut self) {
+        for job in self.active_jobs.values_mut() {
+            if job.delivery_failed && job.delivery_cooldown > 0 {
+                job.delivery_cooldown -= 1;
+                if job.delivery_cooldown == 0 {
+                    job.delivery_failed = false;
+                    job.delivery_attempts = 0;
+                }
+            }
+        }
+    }
+
+    /// Jobs whose results still need a delivery attempt this cycle.
+    pub fn jobs_with_pending_results(&self) -> Vec<String> {
+        self.active_jobs
+            .values()
+            .filter(|job| job.results_pending && !job.delivery_failed)
+            .map(|job| job.job_id.clone())
+            .collect()
+    }
+
+    /// Records one failed delivery attempt; returns `false` when the
+    /// automatic budget is exhausted (the job pauses for the cool-down; the
+    /// caller persists `delivery_status = 'failed'` as the durable,
+    /// observable state — recovery re-arms automatically, see
+    /// [`Supervisor::tick_delivery_cooldowns`]).
+    pub fn note_delivery_failure(&mut self, job_id: &str) -> bool {
+        match self.active_jobs.get_mut(job_id) {
+            Some(job) => {
+                job.delivery_attempts += 1;
+                if job.delivery_attempts >= MAX_DELIVERY_ATTEMPTS {
+                    job.delivery_failed = true;
+                    job.delivery_cooldown = DELIVERY_REARM_CYCLES;
+                }
+                !job.delivery_failed
+            }
+            None => false,
+        }
+    }
+
+    /// Delivery attempts so far (observability for tests and logs).
+    pub fn delivery_attempts(&self, job_id: &str) -> u32 {
+        self.active_jobs
+            .get(job_id)
+            .map(|job| job.delivery_attempts)
+            .unwrap_or(0)
+    }
+
+    /// Whether delivery gave up after the bounded attempts.
+    pub fn delivery_failed(&self, job_id: &str) -> bool {
+        self.active_jobs
+            .get(job_id)
+            .map(|job| job.delivery_failed)
+            .unwrap_or(false)
+    }
+
+    /// Records one failed persist+projection attempt for a job; returns
+    /// `false` when the bound is exhausted (the job parks as stalled: the
+    /// cursor stays at the last acknowledged sequence and polling stops).
+    pub fn note_projection_failure(&mut self, job_id: &str) -> bool {
+        match self.active_jobs.get_mut(job_id) {
+            Some(job) => {
+                job.projection_attempts += 1;
+                if job.projection_attempts >= MAX_PROJECTION_ATTEMPTS {
+                    job.projection_stalled = true;
+                }
+                !job.projection_stalled
+            }
+            None => false,
+        }
+    }
+
+    /// Whether the job was parked after repeated projection failures.
+    pub fn projection_stalled(&self, job_id: &str) -> bool {
+        self.active_jobs
+            .get(job_id)
+            .map(|job| job.projection_stalled)
+            .unwrap_or(false)
+    }
+
+    /// Resets the projection attempt counter after a successful cycle (a
+    /// later failure starts a fresh bounded budget).
+    pub fn note_projection_success(&mut self, job_id: &str) {
+        if let Some(job) = self.active_jobs.get_mut(job_id) {
+            job.projection_attempts = 0;
+        }
     }
 
     /// The run id a job executes (the pump needs it to resolve the project
@@ -543,9 +693,13 @@ fn parse_semver(text: &str) -> Option<(u64, u64, u64)> {
     Some((major, minor, patch))
 }
 
-/// Minimal tracing stand-in: tauri's log plugin is wired in W2-05; until
-/// then failures are only counted in memory by tests via returned errors.
-pub(crate) fn tracing_note(_message: String) {}
+/// Minimal logging stand-in: the dedicated log plugin lands with the W2-05
+/// transport work; until then failures print to stderr (which the desktop
+/// shell captures into the app log) so they are observable — never silently
+/// swallowed (review R2).
+pub fn tracing_note(message: String) {
+    eprintln!("[morpho-core] {message}");
+}
 
 #[cfg(test)]
 mod tests {

@@ -13,6 +13,8 @@ const tasks = {
     detail: "任務將按依賴順序執行。",
   },
   runBadge: "執行狀態：{{state}}",
+  runDeliveryPending: "執行完成，結果交付中",
+  runDeliveryFailed: "執行完成，結果未交付",
   empty: {
     title: "還沒有任務",
     approved: "計畫已核准，點選右上角「繼續執行」建立任務。",

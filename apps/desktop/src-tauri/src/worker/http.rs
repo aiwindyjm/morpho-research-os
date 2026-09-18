@@ -590,6 +590,9 @@ pub struct HttpWorkerTransport {
     port: u16,
     token: String,
     launcher: Option<WorkerConfig>,
+    /// Provider-configuration environment resolved at spawn time (review F):
+    /// the desktop's Settings/keychain provider handoff.
+    env_source: Option<std::sync::Arc<crate::worker::EnvSource>>,
     process: Option<WorkerProcess>,
     alive: bool,
 }
@@ -601,6 +604,7 @@ impl HttpWorkerTransport {
             port,
             token: String::new(),
             launcher: None,
+            env_source: None,
             process: None,
             alive: false,
         }
@@ -614,6 +618,25 @@ impl HttpWorkerTransport {
             port: 0,
             token: String::new(),
             launcher: Some(config),
+            env_source: None,
+            process: None,
+            alive: false,
+        }
+    }
+
+    /// Launching transport with the provider-environment resolver (review F):
+    /// each spawn resolves the desktop provider configuration (and key
+    /// values, from the secret store) fresh, so keychain changes apply to
+    /// worker restarts without rebuilding the supervisor.
+    pub fn launching_with_env(
+        config: WorkerConfig,
+        env_source: std::sync::Arc<crate::worker::EnvSource>,
+    ) -> Self {
+        Self {
+            port: 0,
+            token: String::new(),
+            launcher: Some(config),
+            env_source: Some(env_source),
             process: None,
             alive: false,
         }
@@ -737,7 +760,11 @@ impl WorkerTransport for HttpWorkerTransport {
     fn spawn(&mut self, token: &str) -> Result<(), CoreError> {
         self.token = token.to_string();
         if let Some(config) = self.launcher.clone() {
-            let process = WorkerProcess::start(&config, token)?;
+            let extra_env = match &self.env_source {
+                Some(source) => source()?,
+                None => Vec::new(),
+            };
+            let process = WorkerProcess::start(&config, token, &extra_env)?;
             self.port = process.port();
             self.process = Some(process);
         }

@@ -25,6 +25,14 @@ pub struct NewEvidence {
     pub quote: String,
     pub value: String,
     pub locator: String,
+    /// Lossless structured locator as JSON (migration 006, round-2 review
+    /// P2): the worker's quote/section/url_fragment/position/retrieved_at
+    /// next to the flattened display string.
+    pub locator_detail: String,
+    /// The WORKER's retrieval time in epoch ms — never the ingestion clock
+    /// (round-2 review P2). Callers derive it from the locator's
+    /// `retrieved_at` with documented fallbacks; `0` means unknown.
+    pub retrieved_at: i64,
     pub direction: String,
 }
 
@@ -36,6 +44,10 @@ pub struct EvidenceRecord {
     pub quote: String,
     pub value: String,
     pub locator: String,
+    /// Lossless structured locator JSON (migration 006); empty on rows
+    /// written before it existed.
+    #[serde(default)]
+    pub locator_detail: String,
     pub retrieved_at: i64,
     pub direction: String,
     pub created_at: i64,
@@ -43,8 +55,7 @@ pub struct EvidenceRecord {
 
 pub struct Evidence;
 
-const COLS: &str =
-    "id, project_id, source_id, quote, value, locator, retrieved_at, direction, created_at";
+const COLS: &str = "id, project_id, source_id, quote, value, locator, locator_detail,                     retrieved_at, direction, created_at";
 
 impl Evidence {
     pub fn insert(
@@ -57,10 +68,18 @@ impl Evidence {
                 new.direction
             )));
         }
-        // Idempotent by primary key: an existing id must not create a second
-        // row, and the caller needs the existing record back.
+        // Idempotent by primary key: an existing id of the SAME project must
+        // not create a second row; an id under another project is a worker-id
+        // collision across projects and is rejected (review R1).
         if let Some(id) = &new.id {
             if let Some(existing) = Self::get(tx, id)? {
+                if existing.project_id != new.project_id {
+                    return Err(CoreError::database(format!(
+                        "evidence '{id}' belongs to project '{}' and cannot be reused by project \
+                         '{}'",
+                        existing.project_id, new.project_id
+                    )));
+                }
                 return Ok((existing, false));
             }
         }
@@ -72,14 +91,15 @@ impl Evidence {
             quote: new.quote.clone(),
             value: new.value.clone(),
             locator: new.locator.clone(),
-            retrieved_at: now,
+            locator_detail: new.locator_detail.clone(),
+            retrieved_at: new.retrieved_at,
             direction: new.direction.clone(),
             created_at: now,
         };
         tx.execute(
             "INSERT INTO evidence (id, project_id, source_id, quote, value, locator,
-                                    retrieved_at, direction, created_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?7)",
+                                    locator_detail, retrieved_at, direction, created_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
             params![
                 record.id,
                 record.project_id,
@@ -87,8 +107,10 @@ impl Evidence {
                 record.quote,
                 record.value,
                 record.locator,
+                record.locator_detail,
                 record.retrieved_at,
-                record.direction
+                record.direction,
+                record.created_at
             ],
         )
         .map_err(CoreError::from)?;
@@ -163,9 +185,10 @@ fn map_evidence(row: &Row<'_>) -> rusqlite::Result<EvidenceRecord> {
         quote: row.get(3)?,
         value: row.get(4)?,
         locator: row.get(5)?,
-        retrieved_at: row.get(6)?,
-        direction: row.get(7)?,
-        created_at: row.get(8)?,
+        locator_detail: row.get(6)?,
+        retrieved_at: row.get(7)?,
+        direction: row.get(8)?,
+        created_at: row.get(9)?,
     })
 }
 
@@ -216,6 +239,8 @@ mod tests {
             quote: quote.into(),
             value: String::new(),
             locator: "p. 1".into(),
+            locator_detail: String::new(),
+            retrieved_at: 1,
             direction: "support".into(),
         }
     }

@@ -13,6 +13,8 @@ const tasks = {
     detail: "태스크는 의존 순서대로 실행됩니다.",
   },
   runBadge: "런 상태: {{state}}",
+  runDeliveryPending: "실행 완료, 결과 전달 중",
+  runDeliveryFailed: "실행 완료, 결과 전달 실패",
   empty: {
     title: "아직 태스크가 없습니다",
     approved: "플랜이 승인되었습니다. 오른쪽 위의 '런 계속'을 클릭해 태스크를 만드세요.",
