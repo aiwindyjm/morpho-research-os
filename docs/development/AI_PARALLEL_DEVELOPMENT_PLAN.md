@@ -809,7 +809,7 @@ W0 完成后，UI、Rust、Python、测试四条基础泳道可以并行。W2-06
 
 允许修改：审计脚本、.gitignore、公开隐私文档和明确误纳入的公开文件。禁止把私有文件加入白名单或将个人内容复制到公共文档。
 
-验收：scripts/check-public-boundary.ps1 通过；git ls-files private 只包含允许的占位文件；git diff --cached --name-only 不含私有内容；Secret 扫描和人工抽查通过。
+验收：scripts/check-public-boundary.ps1 通过；git ls-files private 输出为空（占位文件也不得跟踪）；git diff --cached --name-only --diff-filter=ACMR 不含私有路径；Secret 扫描和人工抽查通过。
 ```
 
 #### `REL-04`：人工发布审查

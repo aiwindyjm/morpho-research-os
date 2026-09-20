@@ -35,8 +35,5 @@ docs/assets/generated/
 .playwright-cli/
 apps/desktop/test-results/
 
-# Private conversation journal (never commit)
-private/*
-!private/conversations/
-private/conversations/*
-!private/conversations/.gitkeep
+# Private local data (never commit, including placeholders)
+/private/

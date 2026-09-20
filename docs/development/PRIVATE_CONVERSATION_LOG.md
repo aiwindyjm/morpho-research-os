@@ -6,7 +6,7 @@ The Morpho development process may produce useful design decisions in conversati
 
 - The canonical private location is `private/conversations/`.
 - Files use one Markdown file per local calendar day: `YYYY-MM-DD.md`.
-- The directory and its contents are ignored by Git. `.gitkeep` is the only tracked file.
+- The entire `private/` directory is ignored by Git, including placeholders such as `.gitkeep`. No files under it may be tracked. Create the local journal directory when needed.
 - Conversation capture is explicit. Morpho must never silently upload, publish, or add conversation text to prompts, logs, Issues, PRs, telemetry, or the research Vault.
 - A user may deliberately promote a decision into public documentation, an ADR, a PRD section, or a commit message after reviewing and redacting it.
 - API keys, access tokens, private source content, and personal data must be removed before any promotion.

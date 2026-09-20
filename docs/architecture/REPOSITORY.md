@@ -20,7 +20,7 @@ Each directory has exactly one responsibility and one owning scope. First-round 
 | `scripts/` | Setup, check, and codegen entry points | A | Read-only checks; no product runtime code. |
 | `docs/` | Normative specifications | All groups within their task scope | Must not create competing product versions; `docs/PRD.md` is canonical. |
 | `prototype/` | Static pre-architecture prototype | Maintainer | Reference only; not part of the product build. |
-| `private/` | Local execution rules and conversation journals | Maintainer | Never committed beyond the allowed `.gitkeep` placeholder. |
+| `private/` | Local execution rules and conversation journals | Maintainer | Local-only; no files or placeholders may be tracked by Git. |
 
 ## Dependency direction
 

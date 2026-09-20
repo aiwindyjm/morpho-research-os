@@ -26,7 +26,7 @@ jobs:
       - name: Check private boundary
         shell: bash
         run: |
-          private_files=$(git ls-files private | grep -v '^private/conversations/.gitkeep$' || true)
+          private_files=$(git ls-files -- private)
           test -z "$private_files" || { echo "Private files must not be tracked:"; echo "$private_files"; exit 1; }
       - name: Check task status tracking
         shell: pwsh
