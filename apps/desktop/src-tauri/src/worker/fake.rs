@@ -17,6 +17,10 @@ use std::sync::{Arc, Mutex};
 pub struct FakeWorkerScript {
     /// How many spawn attempts fail before one succeeds.
     pub spawn_failures_before_success: u32,
+    /// When non-zero, at most this many spawn attempts may SUCCEED (the
+    /// initial start); every later restart attempt fails — the supervisor's
+    /// restart-budget-exhaustion path (audit A1).
+    pub max_successful_spawns: u32,
     /// Reported protocol support range (health/version gate).
     pub protocol_min: String,
     pub protocol_max: String,
@@ -48,6 +52,7 @@ impl Default for FakeWorkerScript {
     fn default() -> Self {
         Self {
             spawn_failures_before_success: 0,
+            max_successful_spawns: 0,
             protocol_min: crate::versions::WORKER_PROTOCOL_MIN.to_string(),
             protocol_max: crate::versions::WORKER_PROTOCOL_VERSION.to_string(),
             health_status: "ok".into(),
@@ -90,6 +95,20 @@ impl FakeWorkerScript {
                     true,
                 ));
             }
+            if factory_script.max_successful_spawns > 0
+                && state.successful_spawns >= factory_script.max_successful_spawns
+            {
+                return Err(CoreError::new(
+                    ErrorCode::WorkerNotAvailable,
+                    "The research worker is not available.",
+                    format!(
+                        "fake worker restart attempt {} failed (scripted budget)",
+                        state.spawn_attempts
+                    ),
+                    true,
+                ));
+            }
+            state.successful_spawns += 1;
             state.next_instance += 1;
             let instance_id = state.next_instance;
             state.alive_instance = Some(instance_id);
@@ -106,6 +125,7 @@ impl FakeWorkerScript {
 #[derive(Debug, Default)]
 struct FakeInner {
     spawn_attempts: u32,
+    successful_spawns: u32,
     next_instance: u64,
     alive_instance: Option<u64>,
     received_tokens: Vec<String>,

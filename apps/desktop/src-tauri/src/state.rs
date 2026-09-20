@@ -27,6 +27,15 @@
 //! that exhausts them parks as delivery-failed (tracked, observable, not
 //! retired).
 //!
+//! Worker-death convergence (audit A1): when the supervisor detects the
+//! worker process dying while the core stays alive, the interrupted jobs'
+//! runs are closed durably by the same event+projection path — non-terminal
+//! runs converge to `cancelled` (an auditable `run.cancelled` event reaches
+//! the windows), undelivered terminal runs converge their delivery fact to
+//! `failed`. This is convergence, NOT checkpoint resumption (PRD §7 durable
+//! resume remains a pending decision); a failed convergence write is
+//! retried on later cycles, never dropped.
+//!
 //! Persisted events are re-emitted to every window as `morpho://events` —
 //! payloads are already redacted by [`crate::redaction`] when the
 //! [`ResearchEvent`] is built.
@@ -285,8 +294,12 @@ impl AppState {
                     tracing_note(format!(
                         "result fetch failed for job {job_id} (attempt recorded): {err}"
                     ));
-                    let mut supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
-                    if !supervisor.note_delivery_failure(&job_id) {
+                    let exhausted = {
+                        let mut supervisor =
+                            supervisor_lock.lock().expect("supervisor mutex poisoned");
+                        !supervisor.note_delivery_failure(&job_id)
+                    };
+                    if exhausted {
                         Self::persist_delivery_failure(conn_lock, &job_id, &run_id);
                         tracing_note(format!(
                             "job {job_id} paused: result delivery failed past the automatic \
@@ -310,13 +323,29 @@ impl AppState {
                     ));
                     let mut supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
                     supervisor.retire_job(&job_id);
+                    drop(supervisor);
+                    // Commit notification (audit A2): execution terminal ≠
+                    // domain results committed. The terminal run event was
+                    // emitted possibly cycles ago (before this delivery
+                    // succeeded); re-emit the PERSISTED terminal run event so
+                    // open views learn the moment the results actually landed.
+                    // No new event type is invented — the persisted log row is
+                    // the fact; the UI stream is the notification.
+                    if let Some(event) = Self::terminal_run_event(conn_lock, &run_id) {
+                        emit(&event);
+                        emitted += 1;
+                    }
                 }
                 Err(err) => {
                     tracing_note(format!(
                         "result ingestion failed for job {job_id} (attempt recorded): {err}"
                     ));
-                    let mut supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
-                    if !supervisor.note_delivery_failure(&job_id) {
+                    let exhausted = {
+                        let mut supervisor =
+                            supervisor_lock.lock().expect("supervisor mutex poisoned");
+                        !supervisor.note_delivery_failure(&job_id)
+                    };
+                    if exhausted {
                         Self::persist_delivery_failure(conn_lock, &job_id, &run_id);
                         tracing_note(format!(
                             "job {job_id} paused: result ingestion failed past the automatic \
@@ -324,6 +353,54 @@ impl AppState {
                              delivery re-arms with backoff"
                         ));
                     }
+                }
+            }
+        }
+
+        // Phase E — converge runs whose worker job was interrupted (audit
+        // A1): the supervisor detected the worker process dying while the
+        // core stayed alive (during this cycle's polls/delivery or an
+        // earlier one). Each pending interruption closes its run durably —
+        // non-terminal runs cancel with an auditable event (emitted to
+        // windows), terminal runs keep their execution fact and flip a
+        // pending delivery to durable `failed`. A convergence that fails to
+        // PERSIST stays pending and retries next cycle — never dropped
+        // while the run still looks running. Locks stay one at a time.
+        let pending_interruptions: Vec<(String, String)> = {
+            let supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
+            supervisor.pending_interruptions()
+        };
+        for (job_id, run_id) in pending_interruptions {
+            let outcome = {
+                let Ok(mut conn) = conn_lock.lock() else {
+                    break;
+                };
+                crate::recovery::converge_worker_lost_run(
+                    &mut conn,
+                    &run_id,
+                    "the worker process died mid-execution; the run cannot continue",
+                )
+            };
+            match outcome {
+                Ok(crate::recovery::WorkerLostOutcome::Cancelled(event)) => {
+                    {
+                        let mut supervisor =
+                            supervisor_lock.lock().expect("supervisor mutex poisoned");
+                        supervisor.confirm_interruption_converged(&job_id);
+                    }
+                    // Only persisted events reach windows (audit F5).
+                    emit(&event);
+                    emitted += 1;
+                }
+                Ok(_) => {
+                    let mut supervisor = supervisor_lock.lock().expect("supervisor mutex poisoned");
+                    supervisor.confirm_interruption_converged(&job_id);
+                }
+                Err(err) => {
+                    tracing_note(format!(
+                        "converging run {run_id} after worker death (job {job_id}) failed: {err} \
+                         (stays pending; the next cycle retries)"
+                    ));
                 }
             }
         }
@@ -377,6 +454,40 @@ impl AppState {
             results,
             content_dir,
         )
+    }
+
+    /// The run's most recent PERSISTED terminal run event
+    /// (`run.completed`/`run.failed`/`run.cancelled`), rebuilt as the
+    /// notification envelope for post-commit re-emission (audit A2). None
+    /// when the worker's stream carried no terminal run event. Locks the
+    /// database alone.
+    fn terminal_run_event(conn_lock: &Mutex<Connection>, run_id: &str) -> Option<ResearchEvent> {
+        let conn = conn_lock.lock().expect("database mutex poisoned");
+        let row = conn
+            .query_row(
+                "SELECT sequence, event_type, payload FROM events
+                 WHERE run_id = ?1
+                   AND event_type IN ('run.completed', 'run.failed', 'run.cancelled')
+                 ORDER BY sequence DESC LIMIT 1",
+                rusqlite::params![run_id],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .ok()?;
+        let payload = serde_json::from_str(&row.2).unwrap_or(serde_json::json!({}));
+        Some(ResearchEvent::new(
+            run_id.to_string(),
+            None,
+            row.0.max(0) as u64,
+            crate::ids::now_unix_ms() as u64,
+            row.1,
+            payload,
+        ))
     }
 
     /// Runs the pump until the process exits. The thread is intentionally
@@ -1358,6 +1469,508 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(run.delivery_status, "delivered");
+    }
+
+    // ------------------------------------------------------------------
+    // Worker-death convergence while the core stays alive (audit A1)
+    // ------------------------------------------------------------------
+
+    /// Builds the audit-A1 fixture: one approved scripted plan, one run bound
+    /// to a fake-worker job, and an AppState wiring the supervisor to the
+    /// database — the "core alive, worker dies" scenario harness.
+    fn death_fixture(
+        script: crate::worker::fake::FakeWorkerScript,
+    ) -> (
+        AppState,
+        crate::worker::fake::FakeHandle,
+        tempfile::TempDir,
+        String,
+        String,
+    ) {
+        let mut conn = migrated_memory_db().unwrap();
+        let (project, _) =
+            crate::repositories::services::ProjectService::create_project_with_config(
+                &mut conn,
+                crate::repositories::projects::NewProject {
+                    name: "A1".into(),
+                    description: String::new(),
+                },
+                crate::repositories::configs::NewResearchConfig {
+                    domain: "physics".into(),
+                    topic: "entanglement".into(),
+                    dimensions: vec!["concepts".into()],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let plan =
+            crate::repositories::services::PlanService::regenerate_plan(&mut conn, &project.id)
+                .unwrap();
+        with_write_tx(&mut conn, |tx| {
+            crate::repositories::plans::Plans::update_status(tx, &plan.id, "approved")
+        })
+        .unwrap();
+        let run = with_write_tx(&mut conn, |tx| {
+            crate::repositories::runs::Runs::insert(
+                tx,
+                &crate::repositories::runs::NewRun {
+                    id: None,
+                    project_id: project.id.clone(),
+                    plan_id: plan.id.clone(),
+                    started_at: None,
+                },
+            )
+        })
+        .unwrap();
+        with_write_tx(&mut conn, |tx| {
+            crate::repositories::runs::Runs::set_worker_job(tx, &run.id, "job-a1")
+        })
+        .unwrap();
+        let (factory, handle) = script.factory();
+        let mut supervisor = Supervisor::new(
+            factory,
+            crate::worker::RestartPolicy::default(),
+            Box::new(crate::worker::fake::FakeClock::default()),
+            Box::new(crate::worker::fake::FakeSleeper::default()),
+        );
+        supervisor
+            .submit_job(&crate::worker::JobRequest {
+                job_id: "job-a1".into(),
+                run_id: run.id.clone(),
+                task_id: None,
+                kind: "research_run".into(),
+                params: json!({}),
+                approve_plan: true,
+                plan: None,
+            })
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(
+            conn,
+            supervisor,
+            Arc::new(crate::secrets::FakeKeychain::new()),
+            dir.path().join("app.json"),
+            dir.path().join("vault"),
+            dir.path().join("cache"),
+        );
+        (state, handle, dir, project.id, run.id)
+    }
+
+    /// Script variant: `run.started` only (the run is mid-execution).
+    fn running_script() -> crate::worker::fake::FakeWorkerScript {
+        let mut script = crate::worker::fake::FakeWorkerScript::healthy();
+        script.events = vec![crate::worker::WorkerEvent {
+            job_id: "job-a1".into(),
+            sequence: 1,
+            event_type: "run.started".into(),
+            payload: json!({}),
+        }];
+        script
+    }
+
+    fn pump(state: &AppState) -> usize {
+        AppState::pump_cycle(
+            &state.supervisor,
+            &state.conn,
+            &state.content_cache_dir(),
+            &|_| {},
+        )
+    }
+
+    /// Audit A1 (converted probe): the core stays alive while the worker
+    /// process dies mid-run. The supervisor loses the job from its active
+    /// set — the run must NOT stay a ghost `running` row: it converges to
+    /// `cancelled` with an auditable event, the delivery fact closes as
+    /// failed, and windows are notified of the persisted convergence.
+    #[test]
+    fn worker_death_mid_run_converges_the_running_run() {
+        let (state, handle, _dir, _project, run_id) = death_fixture(running_script());
+        pump(&state);
+        {
+            let conn = state.conn.lock().unwrap();
+            assert_eq!(
+                crate::repositories::runs::Runs::get(&conn, &run_id)
+                    .unwrap()
+                    .unwrap()
+                    .status,
+                "running",
+                "fixture premise: the run is mid-execution"
+            );
+        }
+
+        handle.kill();
+        let emitted = std::cell::RefCell::new(Vec::new());
+        for _ in 0..3 {
+            AppState::pump_cycle(
+                &state.supervisor,
+                &state.conn,
+                &state.content_cache_dir(),
+                &|event: &ResearchEvent| emitted.borrow_mut().push(event.event_type.clone()),
+            );
+        }
+
+        {
+            let supervisor = state.supervisor.lock().unwrap();
+            assert!(
+                supervisor.active_job_ids().is_empty(),
+                "confirm the lost-tracking premise"
+            );
+            assert!(supervisor
+                .interrupted_jobs()
+                .contains(&"job-a1".to_string()));
+        }
+        let conn = state.conn.lock().unwrap();
+        let run = crate::repositories::runs::Runs::get(&conn, &run_id)
+            .unwrap()
+            .unwrap();
+        assert_ne!(
+            run.status, "running",
+            "the crashed worker's run must not stay a ghost running row"
+        );
+        assert_eq!(run.status, "cancelled");
+        assert_eq!(run.delivery_status, "failed");
+        let events = crate::repositories::events::Events::list_after(&conn, &run_id, 0, 10)
+            .unwrap()
+            .into_iter()
+            .map(|event| event.event_type)
+            .collect::<Vec<_>>();
+        assert!(
+            events.contains(&"run.cancelled".to_string()),
+            "the convergence is auditable: {events:?}"
+        );
+        assert!(
+            emitted.borrow().contains(&"run.cancelled".to_string()),
+            "windows are notified of the persisted convergence: {:?}",
+            emitted.borrow()
+        );
+    }
+
+    /// Death before the first event: the run was created (status `running`
+    /// at insert) but nothing executed. It still converges — no ghost.
+    #[test]
+    fn worker_death_before_any_event_converges_the_run() {
+        let (state, handle, _dir, _project, run_id) =
+            death_fixture(crate::worker::fake::FakeWorkerScript::healthy());
+        handle.kill();
+        for _ in 0..3 {
+            pump(&state);
+        }
+        let conn = state.conn.lock().unwrap();
+        let run = crate::repositories::runs::Runs::get(&conn, &run_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.status, "cancelled");
+        assert!(run.finished_at.is_some());
+    }
+
+    /// Death while the terminal events were persisted but the results were
+    /// not yet delivered: the EXECUTION fact (completed) survives, the
+    /// undeliverable results close as durable `delivery_status='failed'` —
+    /// never a fabricated delivery, never a ghost running row.
+    #[test]
+    fn worker_death_with_results_pending_converges_delivery_honestly() {
+        let mut script = running_script();
+        script.events.extend([
+            crate::worker::WorkerEvent {
+                job_id: "job-a1".into(),
+                sequence: 2,
+                event_type: "run.completed".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-a1".into(),
+                sequence: 3,
+                event_type: "job.completed".into(),
+                payload: json!({}),
+            },
+        ]);
+        // The first fetch fails so delivery stays pending across the crash.
+        script.fetch_results_failures = 1;
+        let (state, handle, _dir, _project, run_id) = death_fixture(script);
+        pump(&state);
+        {
+            let conn = state.conn.lock().unwrap();
+            let run = crate::repositories::runs::Runs::get(&conn, &run_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(run.status, "completed", "fixture premise: worker finished");
+            assert_eq!(run.delivery_status, "pending");
+        }
+
+        handle.kill();
+        for _ in 0..3 {
+            pump(&state);
+        }
+        let conn = state.conn.lock().unwrap();
+        let run = crate::repositories::runs::Runs::get(&conn, &run_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.status, "completed", "the execution fact is untouched");
+        assert_eq!(
+            run.delivery_status, "failed",
+            "the undeliverable results close as a durable failure"
+        );
+    }
+
+    /// Two projects' jobs die with the same worker: each run converges to
+    /// its own project — no cross-attribution, none left behind.
+    #[test]
+    fn worker_death_converges_every_projects_run_independently() {
+        let (state, handle, _dir, project_a, run_a) = death_fixture(running_script());
+        // A second project + run + job on the same (doomed) worker.
+        let (run_b, project_b) = {
+            let mut conn = state.conn.lock().unwrap();
+            let (project, _) =
+                crate::repositories::services::ProjectService::create_project_with_config(
+                    &mut conn,
+                    crate::repositories::projects::NewProject {
+                        name: "A1-b".into(),
+                        description: String::new(),
+                    },
+                    crate::repositories::configs::NewResearchConfig {
+                        domain: "physics".into(),
+                        topic: "entanglement".into(),
+                        dimensions: vec!["concepts".into()],
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            let plan =
+                crate::repositories::services::PlanService::regenerate_plan(&mut conn, &project.id)
+                    .unwrap();
+            with_write_tx(&mut conn, |tx| {
+                crate::repositories::plans::Plans::update_status(tx, &plan.id, "approved")
+                    .map(|_| ())
+            })
+            .unwrap();
+            let run = with_write_tx(&mut conn, |tx| {
+                crate::repositories::runs::Runs::insert(
+                    tx,
+                    &crate::repositories::runs::NewRun {
+                        id: None,
+                        project_id: project.id.clone(),
+                        plan_id: plan.id.clone(),
+                        started_at: None,
+                    },
+                )
+            })
+            .unwrap();
+            with_write_tx(&mut conn, |tx| {
+                crate::repositories::runs::Runs::set_worker_job(tx, &run.id, "job-a1-b").map(|_| ())
+            })
+            .unwrap();
+            (run.id, project.id)
+        };
+        {
+            let mut supervisor = state.supervisor.lock().unwrap();
+            supervisor
+                .submit_job(&crate::worker::JobRequest {
+                    job_id: "job-a1-b".into(),
+                    run_id: run_b.clone(),
+                    task_id: None,
+                    kind: "research_run".into(),
+                    params: json!({}),
+                    approve_plan: true,
+                    plan: None,
+                })
+                .unwrap();
+        }
+
+        handle.kill();
+        for _ in 0..3 {
+            pump(&state);
+        }
+        let conn = state.conn.lock().unwrap();
+        for (run_id, project_id) in [(&run_a, &project_a), (&run_b, &project_b)] {
+            let run = crate::repositories::runs::Runs::get(&conn, run_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(run.status, "cancelled");
+            assert_eq!(run.project_id, *project_id, "attribution survives");
+        }
+    }
+
+    /// A convergence whose persistence itself fails is RETRIED on the next
+    /// cycle — never dropped while the run still looks running.
+    #[test]
+    fn convergence_persistence_failure_is_retried_not_dropped() {
+        let (state, handle, _dir, _project, run_id) = death_fixture(running_script());
+        pump(&state);
+        handle.kill();
+        {
+            let conn = state.conn.lock().unwrap();
+            conn.execute_batch(
+                "CREATE TRIGGER a1_fail_convergence BEFORE UPDATE ON runs BEGIN SELECT \
+                 RAISE(ABORT, 'injected convergence failure'); END;",
+            )
+            .unwrap();
+        }
+        pump(&state);
+        {
+            let conn = state.conn.lock().unwrap();
+            assert_eq!(
+                crate::repositories::runs::Runs::get(&conn, &run_id)
+                    .unwrap()
+                    .unwrap()
+                    .status,
+                "running",
+                "the blocked write left the run unconverged — and observable"
+            );
+        }
+        {
+            let conn = state.conn.lock().unwrap();
+            conn.execute_batch("DROP TRIGGER a1_fail_convergence;")
+                .unwrap();
+        }
+        pump(&state);
+        let conn = state.conn.lock().unwrap();
+        assert_eq!(
+            crate::repositories::runs::Runs::get(&conn, &run_id)
+                .unwrap()
+                .unwrap()
+                .status,
+            "cancelled",
+            "the healed persistence converges on the retry"
+        );
+    }
+
+    /// Convergence is idempotent: repeated detection emits exactly ONE
+    /// run.cancelled event, and the interruption is not re-processed forever.
+    #[test]
+    fn worker_death_convergence_is_idempotent() {
+        let (state, handle, _dir, _project, run_id) = death_fixture(running_script());
+        pump(&state);
+        handle.kill();
+        for _ in 0..10 {
+            pump(&state);
+        }
+        let conn = state.conn.lock().unwrap();
+        let cancellations = crate::repositories::events::Events::list_after(&conn, &run_id, 0, 50)
+            .unwrap()
+            .into_iter()
+            .filter(|event| event.event_type == "run.cancelled")
+            .count();
+        assert_eq!(cancellations, 1, "exactly one convergence event");
+        let supervisor = state.supervisor.lock().unwrap();
+        assert!(
+            supervisor.pending_interruptions().is_empty(),
+            "the converged interruption is not re-processed forever"
+        );
+    }
+
+    /// Even when the worker cannot restart at all (budget exhausted), the
+    /// interrupted runs still converge — recovery does not depend on a
+    /// healthy worker.
+    #[test]
+    fn worker_death_with_restart_budget_exhausted_still_converges() {
+        let mut script = running_script();
+        // The initial start succeeds; every restart after the crash fails.
+        script.max_successful_spawns = 1;
+        let (state, handle, _dir, _project, run_id) = death_fixture(script);
+        pump(&state);
+        handle.kill();
+        for _ in 0..6 {
+            pump(&state);
+        }
+        let conn = state.conn.lock().unwrap();
+        assert_eq!(
+            crate::repositories::runs::Runs::get(&conn, &run_id)
+                .unwrap()
+                .unwrap()
+                .status,
+            "cancelled"
+        );
+    }
+
+    /// Audit A2 (converted probe): a delivery retry that SUCCEEDS commits
+    /// the domain data — observers must be notified AFTER the commit. The
+    /// notification re-emits the PERSISTED terminal run event (existing
+    /// vocabulary, existing log row — no invented event types); before this
+    /// fix the successful retry cycle emitted nothing and open views stayed
+    /// stale until an unrelated refresh.
+    #[test]
+    fn delivery_retry_success_notifies_after_the_domain_commit() {
+        let mut script = running_script();
+        script.events.extend([
+            crate::worker::WorkerEvent {
+                job_id: "job-a1".into(),
+                sequence: 2,
+                event_type: "run.completed".into(),
+                payload: json!({}),
+            },
+            crate::worker::WorkerEvent {
+                job_id: "job-a1".into(),
+                sequence: 3,
+                event_type: "job.completed".into(),
+                payload: json!({}),
+            },
+        ]);
+        script.fetch_results_failures = 1;
+        script.job_results = Some(json!({
+            "schema_version": "1", "job_id": "job-a1", "records": [
+                {"kind": "source", "record": {
+                    "source_id": "ws-1", "url": "https://a2.test/a",
+                    "canonical_url": "a2.test/a", "source_type": "paper"}},
+            ],
+        }));
+        let (state, _handle, _dir, project_id, run_id) = death_fixture(script);
+
+        // Cycle 1: terminal events persist; the results fetch fails once —
+        // nothing delivered, nothing notified as delivered.
+        pump(&state);
+        {
+            let conn = state.conn.lock().unwrap();
+            assert!(
+                crate::repositories::sources::Sources::list_for_project(&conn, &project_id)
+                    .unwrap()
+                    .is_empty()
+            );
+            assert_eq!(
+                crate::repositories::runs::Runs::get(&conn, &run_id)
+                    .unwrap()
+                    .unwrap()
+                    .delivery_status,
+                "pending",
+                "before the commit the pending state is never presented as delivered"
+            );
+        }
+
+        // Cycle 2: no new worker events exist — the retry delivers AND the
+        // cycle notifies (emission count > 0) with the persisted terminal
+        // run event.
+        let emitted = std::cell::RefCell::new(Vec::new());
+        let notifications = AppState::pump_cycle(
+            &state.supervisor,
+            &state.conn,
+            &state.content_cache_dir(),
+            &|event: &ResearchEvent| emitted.borrow_mut().push(event.event_type.clone()),
+        );
+        {
+            let conn = state.conn.lock().unwrap();
+            assert_eq!(
+                crate::repositories::sources::Sources::list_for_project(&conn, &project_id)
+                    .unwrap()
+                    .len(),
+                1,
+                "the retried delivery landed the source"
+            );
+            assert_eq!(
+                crate::repositories::runs::Runs::get(&conn, &run_id)
+                    .unwrap()
+                    .unwrap()
+                    .delivery_status,
+                "delivered"
+            );
+        }
+        assert!(
+            notifications > 0,
+            "a successful retry that commits domain data must notify observers"
+        );
+        assert!(
+            emitted.borrow().contains(&"run.completed".to_string()),
+            "the notification is the persisted terminal run event: {:?}",
+            emitted.borrow()
+        );
     }
 
     /// A permanently invalid results envelope (validation failure) parks the

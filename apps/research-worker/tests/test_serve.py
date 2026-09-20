@@ -140,6 +140,45 @@ def _terminal(client: WorkerClient, job_id: str):
     return job if job["status"] in {"COMPLETED", "NEEDS_REVIEW", "FAILED", "CANCELLED"} else None
 
 
+def test_serve_stdin_eof_mid_run_shuts_down_cleanly():
+    """Parent-death contract, mid-run variant (audit A4): the desktop core
+    can die at ANY moment — including while a job is executing — without
+    ever running its Rust destructors. The stdin pipe closes nonetheless,
+    and the worker must exit cleanly on its own (exit 0). Verified against
+    a real child process this test owns; no core-side kill is involved."""
+
+    port = _free_loopback_port()
+    process = _spawn(port)
+    try:
+        client = WorkerClient("127.0.0.1", port, SESSION_TOKEN)
+        _wait_until(lambda: _health_ok(client))
+        request = {
+            "schema_version": "1",
+            "kind": "research_run",
+            "approve_plan": True,
+            "config": {
+                "domain": "physics",
+                "topic": "quantum entanglement",
+                "purpose": "learning",
+                "depth": 3,
+                "dimensions": ["concepts"],
+                "languages": ["en"],
+                "source_types": ["paper"],
+            },
+        }
+        status, _payload = client.post("/jobs", request)
+        assert status == 201
+        # The parent dies immediately — mid-run, before any completion.
+        # communicate() drains the piped stdout/stderr while waiting, so a
+        # chatty worker can never block on a full pipe.
+        process.stdin.close()
+        _stdout, stderr = process.communicate(timeout=30)
+        assert process.returncode == 0, stderr
+    finally:
+        if process.poll() is None:  # pragma: no cover - defensive teardown
+            process.kill()
+
+
 def test_serve_missing_required_environment_is_config_error():
     port = _free_loopback_port()
     process = _spawn(port, env_extra={"MORPHO_WORKER_SESSION_TOKEN": ""})

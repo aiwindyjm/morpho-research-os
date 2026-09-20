@@ -365,9 +365,12 @@ impl ProviderConfig {
 /// Worker launch configuration (the `worker` section of [`AppConfig`]).
 ///
 /// `transport` selects which [`crate::worker::WorkerTransport`] the
-/// supervisor uses: `"fake"` (default; hermetic, no process) or `"http"`
-/// (spawns the Python worker and speaks the loopback HTTP protocol). The
-/// remaining fields describe the launch command for the HTTP transport.
+/// supervisor uses: `"http"` (DEFAULT — spawns the Python worker and speaks
+/// the loopback HTTP protocol; a missing runtime surfaces as the
+/// structured, recoverable `WORKER_NOT_AVAILABLE` at run start, never a
+/// silent no-op success — audit A4) or `"fake"` (the hermetic demo
+/// transport, explicit opt-in for dev/tests; it executes nothing).
+/// The remaining fields describe the launch command for the HTTP transport.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WorkerConfig {
@@ -383,7 +386,7 @@ pub struct WorkerConfig {
 impl Default for WorkerConfig {
     fn default() -> Self {
         Self {
-            transport: "fake".into(),
+            transport: "http".into(),
             python_executable: "python".into(),
             module_args: vec!["-m".into(), "morpho_worker.serve".into()],
         }
@@ -772,11 +775,13 @@ mod tests {
     fn worker_section_defaults_and_back_compatibility() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("legacy.json");
-        // A pre-worker-section config file loads with the hermetic default.
+        // A pre-worker-section config file loads with the PRODUCTION
+        // default: a clean install must never silently succeed against a
+        // no-op fake worker (audit A4).
         std::fs::write(&path, r#"{"providers": [], "worker_entrypoint": null}"#).unwrap();
         let loaded = FileConfigStore::new(&path).load().unwrap();
         assert_eq!(loaded.worker, WorkerConfig::default());
-        assert!(!loaded.worker.is_http());
+        assert!(loaded.worker.is_http());
 
         // Round trip keeps the selector.
         let mut config = loaded;
@@ -787,11 +792,39 @@ mod tests {
         assert_eq!(store.load().unwrap(), config);
         assert!(config.worker.is_http());
 
+        // The hermetic fake stays available as an EXPLICIT demo choice.
+        let mut demo = config;
+        demo.worker.transport = "fake".into();
+        store.save(&demo).unwrap();
+        assert!(!store.load().unwrap().worker.is_http());
+
         // Unknown selectors are rejected, not silently coerced.
-        let mut bad = config;
+        let mut bad = demo;
         bad.worker.transport = "grpc".into();
         assert!(bad.worker.validate().is_err());
         assert!(WorkerConfig::default().validate().is_ok());
+    }
+
+    /// Audit A4: a clean config directory (no app.json at all) resolves to
+    /// the REAL worker launcher — the production execution mode — so a
+    /// missing Python/worker runtime fails loudly at run start instead of
+    /// the no-op fake silently "succeeding".
+    #[test]
+    fn a_clean_config_defaults_to_the_real_worker_transport() {
+        let dir = tempfile::tempdir().unwrap();
+        let loaded = FileConfigStore::new(dir.path().join("absent-app.json"))
+            .load()
+            .unwrap();
+        assert_eq!(loaded, AppConfig::default());
+        assert!(
+            loaded.worker.is_http(),
+            "a fresh install speaks the real worker protocol, not the demo fake"
+        );
+        assert_eq!(loaded.worker.python_executable, "python");
+        assert_eq!(
+            loaded.worker.module_args,
+            vec!["-m".to_string(), "morpho_worker.serve".to_string()]
+        );
     }
 
     /// Installs keyring's in-memory mock credential store for the current

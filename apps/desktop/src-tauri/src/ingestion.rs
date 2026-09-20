@@ -549,9 +549,12 @@ impl ResultIngestion {
         let mut deferred_links: Vec<(String, String)> = Vec::new();
         // Files this batch newly created inside the transaction (round-2
         // review P1): a rolled-back batch compensates by removing them, so a
-        // failed batch never leaves files behind. Pre-existing files are
-        // never touched (their names already hash to their bytes), and a
-        // corrupt file replaced with verified bytes stays replaced.
+        // failed batch never leaves files behind — BUT only files no
+        // persisted row references (audit A5): a file that repairs or
+        // recreates the content-addressed payload a committed row points at
+        // must SURVIVE the rollback, or the committed reference dangles.
+        // Pre-existing intact files are never touched (their names already
+        // hash to their bytes).
         let mut published_files: Vec<std::path::PathBuf> = Vec::new();
         let outcome = with_write_tx(conn, |tx| {
             let mut source_map: HashMap<String, String> = HashMap::new();
@@ -627,6 +630,20 @@ impl ResultIngestion {
 // ---------------------------------------------------------------------------
 // Per-record writers (free functions over the open transaction)
 // ---------------------------------------------------------------------------
+
+/// Whether any `source_contents` row — committed before this transaction or
+/// written earlier inside it — already references the cache path. Such a
+/// file is never a rollback-compensation candidate (audit A5).
+fn cache_path_referenced(tx: &Transaction<'_>, cache_path: &str) -> Result<bool, CoreError> {
+    let referenced: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM source_contents WHERE cache_path = ?1",
+            rusqlite::params![cache_path],
+            |row| row.get(0),
+        )
+        .map_err(CoreError::from)?;
+    Ok(referenced > 0)
+}
 
 /// Resolves a worker source id to the core source id. Sources resolve only
 /// within the batch: worker source ids are per-run, so a reference the batch
@@ -743,7 +760,14 @@ fn write_source_content(
         &wire.content,
         &wire.content_type,
     )?;
-    if created {
+    // Compensation eligibility (audit A5): only a file NO persisted row
+    // references may be deleted on rollback. A file that repaired or
+    // recreated the payload under a committed row's content-addressed path
+    // must survive — the content-addressed name guarantees the bytes match
+    // every referencing row's fingerprint, so keeping it is always
+    // consistent; deleting it would manufacture a dangling committed
+    // reference.
+    if created && !cache_path_referenced(tx, &cache_path)? {
         published_files.push(std::path::PathBuf::from(&cache_path));
     }
     SourceContents::upsert(
@@ -2230,6 +2254,194 @@ mod tests {
             "payload",
             "the verified payload replaced the corrupted bytes"
         );
+    }
+
+    /// Audit A5 (converted probe): a batch that REPAIRS a corrupted cache
+    /// file a committed row still references, then fails later: the database
+    /// rolls back, but the repaired file must SURVIVE — deleting it (the
+    /// round-2 "newly published" compensation) would leave the committed
+    /// source_contents row pointing at nothing.
+    #[test]
+    fn a_repaired_cache_file_survives_a_later_batch_rollback() {
+        let mut conn = migrated_memory_db().unwrap();
+        let project_id = project(&mut conn);
+        let run_id = bound_run(&mut conn, &project_id, "job-a5");
+        let dir = content_dir();
+        let run_target = target(&project_id, "job-a5", &run_id);
+        let hello_fingerprint = sha256_of("hello");
+        let base_records = json!([
+            {"kind":"source","record":{"source_id":"ws-1","url":"https://a5.test/a",
+                "canonical_url":"a5.test/a","source_type":"paper"}},
+            {"kind":"source-content","record":{"source_id":"ws-1","content":"hello",
+                "content_type":"text/plain","fingerprint":hello_fingerprint,
+                "fetched_at":"2026-09-18T00:00:00Z","locator_base":"full-text"}},
+        ]);
+        let valid = json!({"schema_version":"1","job_id":"job-a5","records":base_records});
+        ResultIngestion::ingest(&mut conn, &run_target, &valid, dir.path()).unwrap();
+        let cache_path: String = conn
+            .query_row("SELECT cache_path FROM source_contents LIMIT 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        // Corrupt the file the committed row references.
+        std::fs::write(&cache_path, "corrupted").unwrap();
+
+        // The repair batch carries the CORRECT payload plus a late invalid
+        // record: the transaction fails and rolls back.
+        let mut invalid = valid.clone();
+        invalid["records"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"kind":"relation","record":{
+                "relation_id":"bad-rel","subject_node_id":"missing-a",
+                "predicate":"related","object_node_id":"missing-b",
+                "direction":"directed","confidence":"medium"
+            }}));
+        assert!(ResultIngestion::ingest(&mut conn, &run_target, &invalid, dir.path()).is_err());
+
+        assert_eq!(
+            std::fs::read_to_string(&cache_path).ok().as_deref(),
+            Some("hello"),
+            "rollback deleted a repaired cache file still referenced by a committed row"
+        );
+        // The committed row itself is untouched and still resolves.
+        let committed: i64 = conn
+            .query_row(
+                "SELECT LENGTH(cache_path) FROM source_contents WHERE cache_path = ?1",
+                rusqlite::params![cache_path],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(committed > 0, "the committed reference itself survives");
+    }
+
+    /// Variant: the committed row's file went MISSING (external deletion).
+    /// A batch that recreates it and then fails must leave the recreated
+    /// file in place — the committed row's reference must come back usable,
+    /// not be re-dangled by the rollback compensation.
+    #[test]
+    fn a_recreated_missing_cache_file_survives_a_later_batch_rollback() {
+        let mut conn = migrated_memory_db().unwrap();
+        let project_id = project(&mut conn);
+        let run_id = bound_run(&mut conn, &project_id, "job-a5b");
+        let dir = content_dir();
+        let run_target = target(&project_id, "job-a5b", &run_id);
+        let fingerprint = sha256_of("payload");
+        let valid = json!({"schema_version":"1","job_id":"job-a5b","records":[
+            {"kind":"source","record":{"source_id":"ws-1","url":"https://a5.test/b",
+                "canonical_url":"a5.test/b","source_type":"paper"}},
+            {"kind":"source-content","record":{"source_id":"ws-1","content":"payload",
+                "content_type":"text/plain","fingerprint":fingerprint,
+                "fetched_at":"2026-09-18T00:00:00Z","locator_base":"full-text"}},
+        ]});
+        ResultIngestion::ingest(&mut conn, &run_target, &valid, dir.path()).unwrap();
+        let cache_path: String = conn
+            .query_row("SELECT cache_path FROM source_contents LIMIT 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        std::fs::remove_file(&cache_path).unwrap();
+
+        let mut failing = valid.clone();
+        failing["records"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"kind":"relation","record":{
+                "relation_id":"bad-rel","subject_node_id":"missing-a",
+                "predicate":"related","object_node_id":"missing-b",
+                "direction":"directed","confidence":"medium"
+            }}));
+        assert!(ResultIngestion::ingest(&mut conn, &run_target, &failing, dir.path()).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&cache_path).ok().as_deref(),
+            Some("payload"),
+            "the recreated file stays usable for the committed row"
+        );
+    }
+
+    /// A publish target that cannot be replaced (here: a directory squatting
+    /// on the content-addressed name, so the pre-rename removal fails on
+    /// Windows) rejects the whole batch: nothing lands, committed content is
+    /// untouched, and no temporary file litters the cache directory.
+    #[test]
+    fn an_unpublishable_content_target_rejects_the_batch() {
+        let mut conn = migrated_memory_db().unwrap();
+        let project_id = project(&mut conn);
+        let run_id = bound_run(&mut conn, &project_id, "job-a5c");
+        let dir = content_dir();
+        let run_target = target(&project_id, "job-a5c", &run_id);
+        let fingerprint = sha256_of("payload");
+        // First ingest a DIFFERENT payload so a committed file exists and
+        // must survive; then discover the squatting directory target for the
+        // next batch's payload.
+        let first = json!({"schema_version":"1","job_id":"job-a5c","records":[
+            {"kind":"source","record":{"source_id":"ws-1","url":"https://a5.test/c",
+                "canonical_url":"a5.test/c","source_type":"paper"}},
+            {"kind":"source-content","record":{"source_id":"ws-1","content":"committed",
+                "content_type":"text/plain","fingerprint":sha256_of("committed"),
+                "fetched_at":"2026-09-18T00:00:00Z","locator_base":"full-text"}},
+        ]});
+        ResultIngestion::ingest(&mut conn, &run_target, &first, dir.path()).unwrap();
+        let committed_path: String = conn
+            .query_row("SELECT cache_path FROM source_contents LIMIT 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+
+        // Squat a directory on the new payload's content-addressed name.
+        let core_source_id: String = conn
+            .query_row("SELECT id FROM sources LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        let sanitize = |value: &str| {
+            value
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect::<String>()
+        };
+        let squatted = dir.path().join(format!(
+            "{}-{}.txt",
+            sanitize(&core_source_id),
+            sanitize(&fingerprint)
+        ));
+        std::fs::create_dir_all(&squatted).unwrap();
+
+        let second = json!({"schema_version":"1","job_id":"job-a5c","records":[
+            {"kind":"source","record":{"source_id":"ws-1","url":"https://a5.test/c",
+                "canonical_url":"a5.test/c","source_type":"paper"}},
+            {"kind":"source-content","record":{"source_id":"ws-1","content":"payload",
+                "content_type":"text/plain","fingerprint":fingerprint,
+                "fetched_at":"2026-09-18T00:00:01Z","locator_base":"full-text"}},
+        ]});
+        let err = ResultIngestion::ingest(&mut conn, &run_target, &second, dir.path()).unwrap_err();
+        assert!(
+            err.developer_detail.contains("publishing source content"),
+            "{err:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&committed_path).unwrap(),
+            "committed",
+            "the committed payload is untouched"
+        );
+        let litters: usize = dir
+            .path()
+            .read_dir()
+            .unwrap()
+            .filter(|entry| {
+                entry
+                    .as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".tmp-")
+            })
+            .count();
+        assert_eq!(litters, 0, "the failed publish left no temporary file");
     }
 
     /// Evidence locators persist losslessly with the WORKER's retrieval time

@@ -53,6 +53,12 @@ impl PlanService {
     /// dimension (at most `depth + 3`), each with a search /
     /// source-evaluation / normalization task, plus a cross-validation
     /// section with a validation and a synthesis task.
+    ///
+    /// Carry-over (audit A3): UNEXECUTED approved gap follow-ups of the
+    /// superseded plans move into the new draft (fresh task identity, the
+    /// decision re-links) — a user-accepted follow-up (PRD §14) survives
+    /// regeneration instead of silently orphaning. Executed follow-ups stay
+    /// historical; nothing else carries.
     pub fn regenerate_plan(
         conn: &mut Connection,
         project_id: &str,
@@ -71,11 +77,76 @@ impl PlanService {
                 ))
             })?;
         let draft = scripted_plan_draft(project_id, &config);
+        let carry_token = crate::ids::new_id();
         crate::repositories::with_write_tx(conn, |tx| {
             Plans::supersede_all_for_project(tx, project_id)?;
-            Plans::insert_draft(tx, &draft).map(|created| created.plan)
+            let carried = carry_over_approved_gap_followups(tx, project_id, draft, &carry_token)?;
+            let created = Plans::insert_draft(tx, &carried.0)?;
+            for (dimension, carried_key) in carried.1 {
+                if let Some(task) = created
+                    .tasks
+                    .iter()
+                    .find(|task| task.idempotency_key == carried_key)
+                {
+                    crate::repositories::gap_decisions::GapDecisions::upsert(
+                        tx,
+                        project_id,
+                        &dimension,
+                        "approved",
+                        Some(&task.id),
+                    )?;
+                }
+            }
+            Ok(created.plan)
         })
     }
+}
+
+/// Appends one carried [`NewTask`] per UNEXECUTED approved gap follow-up to
+/// the fresh draft (audit A3). Returns the draft and the
+/// `(dimension, carried idempotency key)` pairs the caller re-links the
+/// decisions to after the draft's task ids exist.
+fn carry_over_approved_gap_followups(
+    tx: &rusqlite::Transaction<'_>,
+    project_id: &str,
+    mut draft: PlanDraft,
+    token: &str,
+) -> Result<(PlanDraft, Vec<(String, String)>), CoreError> {
+    let mut carried_keys = Vec::new();
+    for decision in
+        crate::repositories::gap_decisions::GapDecisions::list_for_project(tx, project_id)?
+    {
+        if decision.status != "approved" {
+            continue;
+        }
+        let Some(task_id) = decision.created_task_id.as_deref() else {
+            continue;
+        };
+        let Some(task) = crate::repositories::tasks::Tasks::get(tx, task_id)? else {
+            continue;
+        };
+        // Only pending, unclaimed follow-ups carry: executed ones are
+        // fulfilled history, running ones belong to a live DAG.
+        if task.status != "PENDING" || task.run_id.is_some() {
+            continue;
+        }
+        let section_index = draft
+            .sections
+            .iter()
+            .position(|section| section.dimension == decision.dimension)
+            .or_else(|| (!draft.sections.is_empty()).then_some(0));
+        let carried_key = format!("{}-carry-{token}", task.idempotency_key);
+        draft.tasks.push(NewTask {
+            title: task.title.clone(),
+            description: task.description.clone(),
+            task_type: task.task_type.clone(),
+            idempotency_key: carried_key.clone(),
+            section_index: section_index.map(|index| index as i64),
+            depends_on: vec![],
+        });
+        carried_keys.push((decision.dimension.clone(), carried_key));
+    }
+    Ok((draft, carried_keys))
 }
 
 /// Builds the scripted V0.1 plan draft from a research configuration.
@@ -222,8 +293,17 @@ pub struct GapService;
 impl GapService {
     /// Approves a gap proposal: creates the follow-up task (PENDING, keyed by
     /// the stable gap id, attached to the current plan's first section) and
-    /// records the decision, then returns the recomputed report. Approving
-    /// an already-approved gap is an idempotent no-op.
+    /// records the decision, then returns the recomputed report.
+    ///
+    /// Executability guard (audit A3): the attach target must still be able
+    /// to EXECUTE the follow-up — approving against a spent or running plan
+    /// would create a task no legal run can ever claim (`run_start` refuses
+    /// executed plans), silently promising research the product cannot
+    /// deliver. Such approvals refuse with an accurate reason and persist
+    /// NOTHING (no task, no decision); the gap stays proposed. Re-approving
+    /// a dimension whose earlier follow-up already EXECUTED creates a fresh
+    /// follow-up (a new acceptance round); one whose follow-up is still
+    /// pending is an idempotent no-op.
     pub fn approve(
         conn: &mut Connection,
         project_id: &str,
@@ -232,18 +312,38 @@ impl GapService {
         let report = crate::projections::gap_report(conn, project_id)?;
         let gap = Self::require_gap(&report, gap_id)?;
         if gap.proposal_status == "approved" {
-            return Ok(report);
+            // Idempotent only while the accepted follow-up is still
+            // EXECUTABLE: an executed follow-up ends its acceptance round,
+            // and a still-gapping dimension may accept a new one.
+            if let Some(task_id) = gap.created_task_id.as_deref() {
+                let task = crate::repositories::tasks::Tasks::get(conn, task_id)?;
+                if matches!(task, Some(ref t) if t.status == "PENDING" && t.run_id.is_none()) {
+                    return Ok(report);
+                }
+            }
         }
         let plan = Plans::latest_for_project(conn, project_id)?.ok_or_else(|| {
             CoreError::database(format!(
                 "project '{project_id}' has no plan to attach a gap task to"
             ))
         })?;
+        Self::ensure_plan_can_execute(conn, &plan)?;
         let section_id = Plans::sections_for_plan(conn, &plan.id)?
             .first()
             .map(|section| section.id.clone());
         let dimension = gap.dimension.clone();
         let proposed = gap.proposed_task.clone();
+        // Round-keyed identity: the FIRST acceptance keeps the bare gap id;
+        // once that task executed (history stays), a new acceptance round
+        // keys by round suffix so task identity stays unique.
+        let mut idempotency_key = gap_id.to_string();
+        let mut round = 1;
+        while crate::repositories::tasks::Tasks::get_by_idempotency_key(conn, &idempotency_key)?
+            .is_some()
+        {
+            round += 1;
+            idempotency_key = format!("{gap_id}-r{round}");
+        }
         crate::repositories::with_write_tx(conn, |tx| {
             let task = crate::repositories::tasks::Tasks::insert(
                 tx,
@@ -254,7 +354,7 @@ impl GapService {
                     title: proposed.title,
                     description: proposed.description,
                     task_type: "search".into(),
-                    idempotency_key: gap_id.to_string(),
+                    idempotency_key,
                 },
             )?;
             crate::repositories::gap_decisions::GapDecisions::upsert(
@@ -267,6 +367,73 @@ impl GapService {
             .map(|_| ())
         })?;
         crate::projections::gap_report(conn, project_id)
+    }
+
+    /// The attach target must be able to execute the follow-up (audit A3):
+    /// a spent plan (any task claimed or non-PENDING) or a plan with an
+    /// active run can never claim a new task, and a rejected/superseded plan
+    /// can never run at all.
+    fn ensure_plan_can_execute(
+        conn: &Connection,
+        plan: &crate::repositories::plans::PlanRecord,
+    ) -> Result<(), CoreError> {
+        if !matches!(plan.status.as_str(), "draft" | "approved") {
+            return Err(CoreError::new(
+                crate::error::ErrorCode::DatabaseError,
+                "该计划已不是可执行的草稿或已批准状态，无法承载补缺任务。请重新生成研究计划后再批准补缺。",
+                format!(
+                    "plan '{}' is '{}' — a follow-up task can only attach to a draft or \
+                     approved plan (regenerate the plan first)",
+                    plan.id, plan.status
+                ),
+                false,
+            ));
+        }
+        for existing in crate::repositories::runs::Runs::list_for_project(conn, &plan.project_id)? {
+            if existing.plan_id == plan.id
+                && matches!(
+                    existing.status.as_str(),
+                    "running" | "paused" | "needs_review"
+                )
+            {
+                return Err(CoreError::new(
+                    crate::error::ErrorCode::DatabaseError,
+                    "该计划正在运行中，无法追加补缺任务。请等待运行结束或取消后再批准。",
+                    format!(
+                        "plan '{}' has an active run '{}' — appending a task mid-run would \
+                         change the reviewed task set of a running DAG",
+                        plan.id, existing.id
+                    ),
+                    false,
+                ));
+            }
+        }
+        let tasks = Plans::tasks_for_plan(conn, &plan.id)?;
+        if let Some(executed) = tasks
+            .iter()
+            .find(|task| task.run_id.is_some() || task.status != "PENDING")
+        {
+            return Err(CoreError::new(
+                crate::error::ErrorCode::DatabaseError,
+                "最新研究计划已经执行过，直接追加的补缺任务将永远无法运行。请先重新生成研究计划（未执行的已批准补缺任务会带入新计划），再批准补缺。",
+                format!(
+                    "plan '{}' was already executed (task '{}' is {}{}, bound to run {:?}) — a \
+                     follow-up attached here can never run; regenerate the plan first and the \
+                     unexecuted approved follow-ups carry over",
+                    plan.id,
+                    executed.id,
+                    executed.status,
+                    if executed.run_id.is_some() {
+                        ""
+                    } else {
+                        " and unclaimed"
+                    },
+                    executed.run_id
+                ),
+                false,
+            ));
+        }
+        Ok(())
     }
 
     /// Dismisses a gap proposal: records the decision so the dimension stays

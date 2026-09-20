@@ -30,9 +30,12 @@ use tauri::Manager;
 
 /// Builds the managed application state: the migrated SQLite database under
 /// the app-data directory, the config-file store, the keychain, the vault
-/// root, the core-owned source-content cache, and the worker supervisor
-/// (fake transport by default so dev/tests stay hermetic;
-/// `worker.transport = "http"` selects the Python process).
+/// root, the core-owned source-content cache, and the worker supervisor.
+/// The DEFAULT transport is the real Python worker launcher (audit A4): a
+/// clean config never silently succeeds against a no-op fake — a missing
+/// runtime surfaces as the structured `WORKER_NOT_AVAILABLE` at run start.
+/// `worker.transport = "fake"` remains the explicit hermetic demo choice
+/// for dev/tests.
 fn build_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error::Error>> {
     let data_dir = app.path().app_data_dir()?;
     std::fs::create_dir_all(&data_dir)?;

@@ -190,10 +190,14 @@ impl Drop for WorkerProcess {
 
 /// A retryable `WORKER_NOT_AVAILABLE`: launch failures are transient from
 /// the supervisor's point of view (it may succeed on the next attempt).
+/// The user message is actionable (audit A4): the common cause is a missing
+/// Python/worker runtime on a clean install.
 fn spawn_error(detail: impl Into<String>) -> CoreError {
     CoreError::new(
         ErrorCode::WorkerNotAvailable,
-        "The research worker is not available.",
+        "The research worker could not be started. Check that Python and the \
+         morpho_worker package are installed (worker.transport in the app \
+         config selects the runtime), then start the run again.",
         format!("worker launch failed: {}", detail.into()),
         true,
     )

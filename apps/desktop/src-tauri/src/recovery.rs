@@ -54,14 +54,16 @@ impl RecoveryReport {
 /// Converges one run locally: persists a `run.cancelled` event, projects it,
 /// and marks the run's result delivery `failed` (the worker that held the
 /// results is gone) — all in ONE write transaction, the same atomicity rule
-/// as the pump (round-2 review P1/P4). Shared by startup recovery and
-/// `run_cancel`'s worker-gone fallback; errors propagate so no caller can
-/// report success on top of a failed projection.
+/// as the pump (round-2 review P1/P4). Shared by startup recovery,
+/// `run_cancel`'s worker-gone fallback, and the pump's worker-death
+/// convergence (audit A1); errors propagate so no caller can report success
+/// on top of a failed projection. Returns the persisted event so the caller
+/// can notify windows of the durable fact.
 pub fn converge_cancelled_run(
     conn: &mut Connection,
     run_id: &str,
     reason: &str,
-) -> Result<(), CoreError> {
+) -> Result<ResearchEvent, CoreError> {
     let worker_job_id: Option<String> = conn
         .query_row(
             "SELECT worker_job_id FROM runs WHERE id = ?1",
@@ -82,8 +84,8 @@ pub fn converge_cancelled_run(
             "results_undelivered": true,
         }),
     );
-    with_write_tx(conn, |tx| {
-        crate::repositories::events::Events::append(
+    let sequence = with_write_tx(conn, |tx| {
+        let record = crate::repositories::events::Events::append(
             tx,
             &crate::repositories::events::NewEvent {
                 run_id: event.run_id.clone(),
@@ -102,8 +104,75 @@ pub fn converge_cancelled_run(
         // result records are unrecoverable, which is a durable, observable
         // fact — never a silent "completed".
         crate::repositories::runs::Runs::set_delivery_status(tx, run_id, "failed")?;
-        Ok(())
-    })
+        Ok(record.sequence)
+    })?;
+    Ok(ResearchEvent::new(
+        event.run_id.clone(),
+        None,
+        sequence.max(0) as u64,
+        event.timestamp_ms,
+        "run.cancelled",
+        event.payload.clone(),
+    ))
+}
+
+/// What one worker-lost convergence did (audit A1).
+#[derive(Debug, Clone, PartialEq)]
+pub enum WorkerLostOutcome {
+    /// A non-terminal run closed as `cancelled`; the persisted, projected
+    /// event is attached so the caller can notify windows.
+    Cancelled(ResearchEvent),
+    /// A terminal run's undelivered results closed as durable
+    /// `delivery_status='failed'` (the execution fact is untouched).
+    DeliveryFailed,
+    /// Nothing to converge: already converged (idempotent re-detection),
+    /// parked at `needs_review` (local user resolution, never auto-closed),
+    /// or the run no longer exists.
+    AlreadyConverged,
+}
+
+/// Converges one run whose worker job was interrupted while the core stayed
+/// alive (audit A1: the supervisor detected the worker process death; the
+/// worker's jobs are in-memory, so the run can never continue on a fresh
+/// instance). This is CONVERGENCE, not checkpoint resumption — PRD §7's
+/// durable resume remains a pending maintainer decision.
+///
+/// Two tiers, mirroring startup recovery exactly:
+/// * non-terminal (`running`/`paused`) runs close as `cancelled` through the
+///   same atomic event+projection transaction [`converge_cancelled_run`]
+///   uses;
+/// * terminal runs keep their execution fact; only a still-`pending`
+///   delivery flips to durable `failed` (no event — the frozen event
+///   vocabulary has no delivery-failure kind; the status is the observable
+///   fact, see the contract-governance decision package);
+/// * `needs_review` runs are parked, never auto-closed.
+///
+/// Idempotent: a run converged once reports [`WorkerLostOutcome::AlreadyConverged`].
+pub fn converge_worker_lost_run(
+    conn: &mut Connection,
+    run_id: &str,
+    reason: &str,
+) -> Result<WorkerLostOutcome, CoreError> {
+    let Some(run) = crate::repositories::runs::Runs::get(conn, run_id)? else {
+        return Ok(WorkerLostOutcome::AlreadyConverged);
+    };
+    match run.status.as_str() {
+        "running" | "paused" => Ok(WorkerLostOutcome::Cancelled(converge_cancelled_run(
+            conn, run_id, reason,
+        )?)),
+        "needs_review" => Ok(WorkerLostOutcome::AlreadyConverged),
+        _ => {
+            if run.delivery_status == "pending" {
+                with_write_tx(conn, |tx| {
+                    crate::repositories::runs::Runs::set_delivery_status(tx, run_id, "failed")
+                        .map(|_| ())
+                })?;
+                Ok(WorkerLostOutcome::DeliveryFailed)
+            } else {
+                Ok(WorkerLostOutcome::AlreadyConverged)
+            }
+        }
+    }
 }
 
 /// Marks every terminal run whose results were never delivered (migration

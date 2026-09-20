@@ -232,6 +232,18 @@ pub const MAX_PROJECTION_ATTEMPTS: u32 = 6;
 /// with backoff instead of excluding the job forever.
 pub const DELIVERY_REARM_CYCLES: u32 = 8;
 
+/// A job the worker lost to a process death or shutdown, carrying the run
+/// binding the pump needs to converge the run durably (audit A1). Entries
+/// stay for the core's lifetime as the in-memory crash record; `converged`
+/// marks that the pump durably closed the run (cancelled / delivery-failed)
+/// so it is not re-processed every cycle.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterruptedJob {
+    pub job_id: String,
+    pub run_id: String,
+    converged: bool,
+}
+
 /// Supervises one worker process: start, health/version gating, bounded
 /// restarts with backoff, cancellation, event forwarding with dedup, and
 /// crash accounting for interrupted jobs.
@@ -244,7 +256,7 @@ pub struct Supervisor {
     state: SupervisorState,
     restart_attempts: u32,
     active_jobs: HashMap<String, ActiveJob>,
-    interrupted_jobs: Vec<String>,
+    interrupted_jobs: Vec<InterruptedJob>,
     event_cursors: HashMap<String, u64>,
     spawned_tokens: Vec<String>,
 }
@@ -284,10 +296,38 @@ impl Supervisor {
         &self.spawned_tokens
     }
 
-    /// Jobs whose worker instance died or was shut down before completion.
-    /// The task layer (RES-02) uses this to mark tasks resumable.
-    pub fn interrupted_jobs(&self) -> &[String] {
-        &self.interrupted_jobs
+    /// Jobs whose worker instance died or was shut down before completion,
+    /// as job ids in interruption order (the task layer's RES-02 resume
+    /// work reads this). Durable run convergence is driven by
+    /// [`Supervisor::pending_interruptions`].
+    pub fn interrupted_jobs(&self) -> Vec<String> {
+        self.interrupted_jobs
+            .iter()
+            .map(|job| job.job_id.clone())
+            .collect()
+    }
+
+    /// Interrupted jobs whose runs the pump has NOT durably converged yet,
+    /// as `(job_id, run_id)` pairs. A convergence that fails to persist
+    /// stays here and retries on the next pump cycle (audit A1).
+    pub fn pending_interruptions(&self) -> Vec<(String, String)> {
+        self.interrupted_jobs
+            .iter()
+            .filter(|job| !job.converged)
+            .map(|job| (job.job_id.clone(), job.run_id.clone()))
+            .collect()
+    }
+
+    /// Marks one interrupted job's run as durably converged (the pump is the
+    /// only legal caller, after the database transaction committed).
+    pub fn confirm_interruption_converged(&mut self, job_id: &str) {
+        if let Some(job) = self
+            .interrupted_jobs
+            .iter_mut()
+            .find(|job| job.job_id == job_id)
+        {
+            job.converged = true;
+        }
     }
 
     /// Ids of jobs currently tracked as active (used by the event pump to
@@ -653,9 +693,14 @@ impl Supervisor {
     fn mark_jobs_interrupted(&mut self) {
         let ids: Vec<String> = self.active_jobs.keys().cloned().collect();
         for id in ids {
-            self.active_jobs.remove(&id);
-            if !self.interrupted_jobs.contains(&id) {
-                self.interrupted_jobs.push(id);
+            if let Some(job) = self.active_jobs.remove(&id) {
+                if !self.interrupted_jobs.iter().any(|job| job.job_id == id) {
+                    self.interrupted_jobs.push(InterruptedJob {
+                        job_id: id,
+                        run_id: job.run_id,
+                        converged: false,
+                    });
+                }
             }
         }
     }

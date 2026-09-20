@@ -6,7 +6,8 @@ import { createQueryClient } from "@/app/queryClient";
 import { OverviewPage } from "./OverviewPage";
 import { mockBackend } from "@/services/mocks/backend";
 import { PROJECT_A_ID, PROJECT_B_ID } from "@/services/mocks/fixtures-a";
-import { timelineService } from "@/services/api";
+import { gapService, timelineService } from "@/services/api";
+import { MorphoError } from "@/services/errors";
 import type { TimelineEntry } from "@/types/domain";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 
@@ -243,6 +244,33 @@ describe("OverviewPage", () => {
     });
     await waitFor(() => {
       expect(within(next).getByText(/已创建任务/)).toBeInTheDocument();
+    });
+  });
+
+  it("surfaces the core's refusal reason instead of failing silently", async () => {
+    const user = userEvent.setup();
+    // Audit A3: the core refuses approvals a spent plan could never
+    // execute; the card must show the core's accurate reason.
+    vi.spyOn(gapService, "act").mockRejectedValue(
+      new MorphoError({
+        code: "DATABASE_ERROR",
+        user_message:
+          "最新研究计划已经执行过，直接追加的补缺任务将永远无法运行。请先重新生成研究计划。",
+        developer_detail: "plan 'p2' was already executed (task 't' is COMPLETED)",
+        retryable: false,
+        correlation_id: "test-correlation",
+      }),
+    );
+    renderPage();
+
+    const next = await screen.findByTestId("overview-next");
+    await user.click(
+      within(next).getByRole("button", { name: "创建研究任务 →" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("overview-gap-approve-error")).toHaveTextContent(
+        "最新研究计划已经执行过",
+      );
     });
   });
 

@@ -38,6 +38,7 @@ import {
   useTasks,
   useTimeline,
 } from "@/services/queries";
+import { isMorphoError } from "@/services/errors";
 
 /**
  * Overview dashboard (spec §5, prototype `view-overview`): a read-only
@@ -206,6 +207,10 @@ export function OverviewPage() {
   // "approved" the card confirms the created task (approve-before-read
   // semantics ported from the former coverage & gaps view).
   const [createdGapId, setCreatedGapId] = useState<string | null>(null);
+  // Why the last approval was refused (audit A3): the core rejects
+  // approvals a spent/running plan could never execute; the card surfaces
+  // the core's reason instead of failing silently.
+  const [approveError, setApproveError] = useState<string | null>(null);
 
   const hasProject = activeProjectId !== "";
 
@@ -596,17 +601,33 @@ export function OverviewPage() {
                   <p className="text-body text-text-secondary">
                     {pendingGap.detail}
                   </p>
+                  {approveError ? (
+                    <p
+                      role="alert"
+                      data-testid="overview-gap-approve-error"
+                      className="text-caption text-error"
+                    >
+                      {approveError}
+                    </p>
+                  ) : null}
                   <div className="flex items-center gap-sm">
                     <Button
                       className="flex-1"
                       variant="secondary"
                       loading={gapActions.approve.isPending}
-                      onClick={() =>
+                      onClick={() => {
+                        setApproveError(null);
                         void gapActions.approve
                           .mutateAsync(pendingGap.id)
                           .then(() => setCreatedGapId(pendingGap.id))
-                          .catch(() => undefined)
-                      }
+                          .catch((err: unknown) => {
+                            setApproveError(
+                              isMorphoError(err)
+                                ? err.userMessage
+                                : t("common:error.unknown"),
+                            );
+                          });
+                      }}
                     >
                       {t("next.createTask")}
                     </Button>
@@ -614,11 +635,12 @@ export function OverviewPage() {
                       variant="ghost"
                       aria-label={t("next.dismissAria")}
                       loading={gapActions.dismiss.isPending}
-                      onClick={() =>
+                      onClick={() => {
+                        setApproveError(null);
                         void gapActions.dismiss
                           .mutateAsync(pendingGap.id)
-                          .catch(() => undefined)
-                      }
+                          .catch(() => undefined);
+                      }}
                     >
                       {t("next.dismiss")}
                     </Button>

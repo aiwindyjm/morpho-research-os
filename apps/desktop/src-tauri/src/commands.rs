@@ -1170,7 +1170,10 @@ fn run_cancel_impl(state: &AppState, job_id: &str) -> Result<bool, CoreError> {
         // startup recovery use (round-2 review P4) — the cancellation event,
         // its projection, and the delivery-failed fact commit together or
         // not at all, and a failed projection surfaces as a command error
-        // instead of a silent `true`.
+        // instead of a silent `true`. The two-tier convergence also keeps a
+        // run the pump already converged (worker death, audit A1) free of
+        // DUPLICATE run.cancelled events — an already-converged run is a
+        // logged no-op.
         Err(err)
             if err.developer_detail.contains("has no job")
                 || err.developer_detail.contains("NOT_FOUND") =>
@@ -1182,11 +1185,19 @@ fn run_cancel_impl(state: &AppState, job_id: &str) -> Result<bool, CoreError> {
             };
             if let Some(run_id) = run_id {
                 let mut conn = state.conn.lock().expect("database mutex poisoned");
-                crate::recovery::converge_cancelled_run(
-                    &mut conn,
-                    &run_id,
-                    "worker job no longer exists; cancelled locally",
-                )?;
+                if matches!(
+                    crate::recovery::converge_worker_lost_run(
+                        &mut conn,
+                        &run_id,
+                        "worker job no longer exists; cancelled locally",
+                    )?,
+                    crate::recovery::WorkerLostOutcome::AlreadyConverged
+                ) {
+                    crate::worker::tracing_note(format!(
+                        "run {run_id} was already converged by the worker-death path; the late \
+                         cancel is a no-op"
+                    ));
+                }
             }
             Ok(true)
         }
@@ -1983,8 +1994,8 @@ mod tests {
         let state = test_state();
         assert_eq!(
             config_get_impl(&state).unwrap().worker.transport,
-            "fake",
-            "absent config defaults to the hermetic fake"
+            "http",
+            "absent config defaults to the production worker transport (audit A4)"
         );
 
         let mut config = AppConfig::default();
@@ -2636,6 +2647,73 @@ mod tests {
         );
     }
 
+    /// Audit A4: through the PRODUCTION transport factory (the clean-config
+    /// default) with a missing worker runtime, run_start returns the
+    /// structured, non-retryable `WORKER_NOT_AVAILABLE` — an actionable
+    /// error, no ghost run, and the approved plan stays reusable once the
+    /// runtime exists. Nothing is ever "successfully submitted" to a no-op.
+    #[test]
+    fn run_start_through_the_production_factory_without_a_worker_is_an_honest_error() {
+        let conn = migrated_memory_db().unwrap();
+        // The production factory over a default (clean-install) config whose
+        // runtime is deliberately absent — hermetic: the bogus executable
+        // never starts a real process.
+        let mut config = crate::secrets::AppConfig::default();
+        config.worker.python_executable = "morpho-definitely-missing-python-42".into();
+        let keychain = Arc::new(FakeKeychain::new());
+        let supervisor = Supervisor::new(
+            transport_factory_from_config(&config, Arc::clone(&keychain) as _),
+            RestartPolicy {
+                max_restarts: 2,
+                base_delay_ms: 1,
+                max_delay_ms: 1,
+            },
+            Box::new(FakeClock::default()),
+            Box::new(FakeSleeper::default()),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.keep();
+        let state = AppState::new(
+            conn,
+            supervisor,
+            keychain,
+            root.join("config").join("app.json"),
+            root.join("vault"),
+            root.join("cache"),
+        );
+        let (project_id, plan_id) = seeded_plan(&state);
+        plan_approve_impl(&state, &plan_id).unwrap();
+
+        let err = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id: plan_id.clone(),
+                approve_plan: true,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err.code, CoreErrorCode::WorkerNotAvailable);
+        assert!(!err.retryable, "the exhausted budget is a hard error");
+        {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            assert!(
+                Runs::list_for_project(&conn, &project_id)
+                    .unwrap()
+                    .is_empty(),
+                "no ghost run lingers behind the honest failure"
+            );
+            // The plan survives approved — the failure is recoverable by
+            // installing the runtime, without re-approving anything.
+            assert_eq!(
+                crate::repositories::plans::Plans::get(&conn, &plan_id)
+                    .unwrap()
+                    .unwrap()
+                    .status,
+                "approved"
+            );
+        }
+    }
+
     #[test]
     fn run_get_attaches_the_persisted_task_rollup() {
         let state = test_state();
@@ -2929,8 +3007,9 @@ mod tests {
         // factory only spawns when the supervisor calls spawn(). The http
         // branch carries the provider-env resolver (review F); with no
         // providers configured it resolves an empty handoff, never offline
-        // mode.
-        let fake_config = crate::secrets::AppConfig::default();
+        // mode. The fake branch is the EXPLICIT demo choice (audit A4).
+        let mut fake_config = crate::secrets::AppConfig::default();
+        fake_config.worker.transport = "fake".into();
         let mut fake = transport_factory_from_config(
             &fake_config,
             Arc::new(crate::secrets::FakeKeychain::new()),
@@ -2939,8 +3018,9 @@ mod tests {
         fake_transport.spawn("token-not-a-secret").unwrap();
         assert!(fake_transport.is_alive());
 
-        let mut http_config = crate::secrets::AppConfig::default();
-        http_config.worker.transport = "http".into();
+        // The clean-config default is the real launcher (audit A4).
+        let http_config = crate::secrets::AppConfig::default();
+        assert!(http_config.worker.is_http());
         let mut http = transport_factory_from_config(
             &http_config,
             Arc::new(crate::secrets::FakeKeychain::new()),
@@ -3275,6 +3355,274 @@ mod tests {
         assert!(
             err.developer_detail.contains("not found"),
             "no proposed gap: {err:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Gap-approval executability (audit A3)
+    // -----------------------------------------------------------------
+
+    /// Marks every task of the project's latest plan as executed (claimed by
+    /// `run_id`, COMPLETED) — the "spent plan" fixture.
+    fn spend_latest_plan(state: &AppState, project_id: &str) -> String {
+        let mut conn = state.conn.lock().expect("database mutex poisoned");
+        let plan = crate::repositories::plans::Plans::latest_for_project(&conn, project_id)
+            .unwrap()
+            .unwrap();
+        let tasks = crate::repositories::plans::Plans::tasks_for_plan(&conn, &plan.id).unwrap();
+        let run = crate::repositories::with_write_tx(&mut conn, |tx| {
+            crate::repositories::runs::Runs::insert(
+                tx,
+                &crate::repositories::runs::NewRun {
+                    id: None,
+                    project_id: project_id.to_string(),
+                    plan_id: plan.id.clone(),
+                    started_at: None,
+                },
+            )
+        })
+        .unwrap();
+        for task in &tasks {
+            crate::repositories::with_write_tx(&mut conn, |tx| {
+                tx.execute(
+                    "UPDATE tasks SET run_id = ?2, status = 'COMPLETED' WHERE id = ?1",
+                    rusqlite::params![task.id, run.id],
+                )
+                .map(|_| ())
+                .map_err(crate::error::CoreError::from)
+            })
+            .unwrap();
+        }
+        crate::repositories::with_write_tx(&mut conn, |tx| {
+            crate::repositories::runs::Runs::update_status(tx, &run.id, "completed").map(|_| ())
+        })
+        .unwrap();
+        run.id
+    }
+
+    /// Audit A3 (converted probe): the natural order "first round completes
+    /// → gap appears → user approves" must never produce an unexecutable
+    /// task. Approving against a SPENT plan refuses with an accurate reason
+    /// and leaves no approved decision or half-made task; the legal path —
+    /// regenerate, re-approve, run — stays executable end to end.
+    #[test]
+    fn gap_approval_after_a_completed_run_refuses_instead_of_promising() {
+        let state = test_state();
+        let project_id = two_dimension_project(&state);
+        plan_regenerate_impl(&state, &project_id).unwrap();
+        {
+            let mut conn = state.conn.lock().expect("database mutex poisoned");
+            let plan = crate::repositories::plans::Plans::latest_for_project(&conn, &project_id)
+                .unwrap()
+                .unwrap();
+            crate::repositories::with_write_tx(&mut conn, |tx| {
+                crate::repositories::plans::Plans::update_status(tx, &plan.id, "approved")
+                    .map(|_| ())
+            })
+            .unwrap();
+        }
+        spend_latest_plan(&state, &project_id);
+        let gap_id = format!("gap:{project_id}:theory");
+
+        let err = gap_approve_proposal_impl(&state, &project_id, &gap_id).unwrap_err();
+        assert!(
+            err.developer_detail.contains("already executed"),
+            "the refusal names the spent plan: {err:?}"
+        );
+        assert!(
+            !err.user_message.is_empty(),
+            "the UI gets an accurate reason"
+        );
+        {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            let orphan: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM tasks WHERE idempotency_key = ?1",
+                    rusqlite::params![gap_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(orphan, 0, "no unexecutable follow-up task was created");
+            let decisions: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM gap_decisions WHERE project_id = ?1 AND status = \
+                     'approved'",
+                    rusqlite::params![project_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(decisions, 0, "the refused approval left no decision behind");
+        }
+        let report = {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            crate::projections::gap_report(&conn, &project_id).unwrap()
+        };
+        let gap = report.gaps.iter().find(|g| g.id == gap_id).unwrap();
+        assert_eq!(
+            gap.proposal_status, "pending_approval",
+            "the gap stays available for a later, legal approval"
+        );
+
+        // The legal path: regenerate (fresh, unspent plan) → approve → run.
+        plan_regenerate_impl(&state, &project_id).unwrap();
+        let report = gap_approve_proposal_impl(&state, &project_id, &gap_id).unwrap();
+        let gap = report.gaps.iter().find(|g| g.id == gap_id).unwrap();
+        assert_eq!(gap.proposal_status, "approved");
+        let task_id = gap.created_task_id.clone().unwrap();
+        let plan_id = {
+            let conn = state.conn.lock().expect("database mutex poisoned");
+            let task = crate::repositories::tasks::Tasks::get(&conn, &task_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(task.status, "PENDING");
+            task.plan_id
+        };
+        {
+            let mut conn = state.conn.lock().expect("database mutex poisoned");
+            crate::repositories::with_write_tx(&mut conn, |tx| {
+                crate::repositories::plans::Plans::update_status(tx, &plan_id, "approved")
+                    .map(|_| ())
+            })
+            .unwrap();
+        }
+        let started = run_start_impl(
+            &state,
+            RunStartRequest {
+                plan_id,
+                approve_plan: true,
+            },
+        );
+        assert!(
+            started.is_ok(),
+            "the approved follow-up must be executable: {started:?}"
+        );
+    }
+
+    /// A plan with an active run cannot accept a follow-up task either:
+    /// appending mid-run changes the reviewed task set of a running DAG.
+    #[test]
+    fn gap_approval_on_a_running_plan_refuses() {
+        let state = test_state();
+        let project_id = two_dimension_project(&state);
+        plan_regenerate_impl(&state, &project_id).unwrap();
+        // Claim one task for an active run: the plan is in flight.
+        {
+            let mut conn = state.conn.lock().expect("database mutex poisoned");
+            let plan = crate::repositories::plans::Plans::latest_for_project(&conn, &project_id)
+                .unwrap()
+                .unwrap();
+            crate::repositories::with_write_tx(&mut conn, |tx| {
+                crate::repositories::plans::Plans::update_status(tx, &plan.id, "approved")
+                    .map(|_| ())
+            })
+            .unwrap();
+            let tasks = crate::repositories::plans::Plans::tasks_for_plan(&conn, &plan.id).unwrap();
+            let run = crate::repositories::with_write_tx(&mut conn, |tx| {
+                crate::repositories::runs::Runs::insert(
+                    tx,
+                    &crate::repositories::runs::NewRun {
+                        id: None,
+                        project_id: project_id.to_string(),
+                        plan_id: plan.id.clone(),
+                        started_at: None,
+                    },
+                )
+            })
+            .unwrap();
+            crate::repositories::with_write_tx(&mut conn, |tx| {
+                tx.execute(
+                    "UPDATE tasks SET run_id = ?2, status = 'RUNNING' WHERE id = ?1",
+                    rusqlite::params![tasks[0].id, run.id],
+                )
+                .map(|_| ())
+                .map_err(crate::error::CoreError::from)
+            })
+            .unwrap();
+        }
+        let gap_id = format!("gap:{project_id}:theory");
+        let err = gap_approve_proposal_impl(&state, &project_id, &gap_id).unwrap_err();
+        assert!(
+            err.developer_detail.contains("active run"),
+            "the refusal names the running plan: {err:?}"
+        );
+        let conn = state.conn.lock().expect("database mutex poisoned");
+        let orphan: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tasks WHERE idempotency_key = ?1",
+                rusqlite::params![gap_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(orphan, 0);
+    }
+
+    /// An APPROVED-but-unexecuted plan still accepts follow-ups: the user
+    /// accepted the proposed task explicitly (PRD §14) and the upcoming run
+    /// will claim it — the guard must not overreach.
+    #[test]
+    fn gap_approval_on_an_approved_unexecuted_plan_attaches() {
+        let state = test_state();
+        let project_id = two_dimension_project(&state);
+        plan_regenerate_impl(&state, &project_id).unwrap();
+        {
+            let mut conn = state.conn.lock().expect("database mutex poisoned");
+            let plan = crate::repositories::plans::Plans::latest_for_project(&conn, &project_id)
+                .unwrap()
+                .unwrap();
+            crate::repositories::with_write_tx(&mut conn, |tx| {
+                crate::repositories::plans::Plans::update_status(tx, &plan.id, "approved")
+                    .map(|_| ())
+            })
+            .unwrap();
+        }
+        let gap_id = format!("gap:{project_id}:theory");
+        let report = gap_approve_proposal_impl(&state, &project_id, &gap_id).unwrap();
+        let gap = report.gaps.iter().find(|g| g.id == gap_id).unwrap();
+        assert_eq!(gap.proposal_status, "approved");
+        assert!(gap.created_task_id.is_some());
+    }
+
+    /// Regenerating a plan carries UNEXECUTED approved gap follow-ups into
+    /// the new draft (fresh task identity, decision re-linked): the user's
+    /// acceptance survives regeneration instead of silently orphaning.
+    /// Executed follow-ups stay historical; only pending work moves.
+    #[test]
+    fn regenerate_carries_unexecuted_approved_gap_followups() {
+        let state = test_state();
+        let project_id = two_dimension_project(&state);
+        plan_regenerate_impl(&state, &project_id).unwrap();
+        let gap_id = format!("gap:{project_id}:theory");
+        let report = gap_approve_proposal_impl(&state, &project_id, &gap_id).unwrap();
+        let gap = report.gaps.iter().find(|g| g.id == gap_id).unwrap();
+        let original_task = gap.created_task_id.clone().unwrap();
+
+        let fresh = plan_regenerate_impl(&state, &project_id).unwrap();
+        let conn = state.conn.lock().expect("database mutex poisoned");
+        let decision =
+            crate::repositories::gap_decisions::GapDecisions::get(&conn, &project_id, "theory")
+                .unwrap()
+                .unwrap();
+        assert_eq!(decision.status, "approved");
+        let carried_id = decision.created_task_id.clone().unwrap();
+        assert_ne!(
+            carried_id, original_task,
+            "the carried follow-up gets a fresh task identity in the new plan"
+        );
+        let carried = crate::repositories::tasks::Tasks::get(&conn, &carried_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(carried.status, "PENDING");
+        assert_eq!(
+            carried.plan_id, fresh.id,
+            "the follow-up lives in the new plan"
+        );
+        assert_eq!(carried.task_type, "search");
+        let original = crate::repositories::tasks::Tasks::get(&conn, &original_task)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            original.status, "PENDING",
+            "the superseded plan's history is untouched"
         );
     }
 
